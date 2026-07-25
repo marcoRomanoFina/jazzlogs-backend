@@ -18,6 +18,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.jazzlogs.backend.config.SecurityConfig;
+import com.jazzlogs.backend.graph.GraphWriteException;
 
 @WebMvcTest(UserController.class)
 @Import(SecurityConfig.class)
@@ -53,5 +54,14 @@ class UserControllerSecurityTest {
 
         mockMvc.perform(get("/me").with(jwt()))
             .andExpect(status().isOk());
+    }
+
+    @Test
+    void meWhenGraphWriteFailsReturns502() throws Exception {
+        when(userService.resolveFromJwt(any(Jwt.class)))
+            .thenThrow(new GraphWriteException("boom", new RuntimeException("connection refused")));
+
+        mockMvc.perform(get("/me").with(jwt()))
+            .andExpect(status().isBadGateway());
     }
 }
