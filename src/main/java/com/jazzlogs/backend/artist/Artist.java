@@ -44,6 +44,9 @@ public class Artist {
     @Setter
     private String spotifyUrl;
 
+    @Setter
+    private String imageUrl;
+
     @OneToOne(mappedBy = "artist", fetch = FetchType.LAZY)
     private ArtistEditorial editorial;
 
@@ -53,11 +56,12 @@ public class Artist {
     @Column(nullable = false)
     private Instant updatedAt;
 
-    public Artist(String name, String spotifyArtistId, String spotifyUrl) {
+    public Artist(String name, String spotifyArtistId, String spotifyUrl, String imageUrl) {
         this.name = name;
         this.normalizedName = Album.normalize(name);
         this.spotifyArtistId = spotifyArtistId;
         this.spotifyUrl = spotifyUrl;
+        this.imageUrl = imageUrl;
     }
 
     // Setters above are Lombok-generated (public, required for MapStruct's

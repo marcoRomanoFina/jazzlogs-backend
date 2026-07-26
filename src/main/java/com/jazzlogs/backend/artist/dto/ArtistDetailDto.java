@@ -14,6 +14,7 @@ public record ArtistDetailDto(
     String name,
     String spotifyArtistId,
     String spotifyUrl,
+    String imageUrl,
     ArtistEditorialDto editorial,
     List<VocabularyTag> instruments,
     List<VocabularyTag> styles,

@@ -39,7 +39,7 @@ public class ArtistService {
     public Artist createArtist(CreateArtistRequest request) {
         SpotifyArtistData data = spotifyCatalogService.fetchArtist(request.spotifyArtistId());
 
-        Artist artist = new Artist(data.name(), request.spotifyArtistId(), data.spotifyUrl());
+        Artist artist = new Artist(data.name(), request.spotifyArtistId(), data.spotifyUrl(), data.imageUrl());
         Artist saved = artistRepository.save(artist);
         graphService.syncArtistNode(saved.getId(), saved.getName());
         return saved;
@@ -92,6 +92,7 @@ public class ArtistService {
             artist.getName(),
             artist.getSpotifyArtistId(),
             artist.getSpotifyUrl(),
+            artist.getImageUrl(),
             editorialService.getArtistEditorialDto(artistId),
             graphService.getArtistInstruments(artistId),
             graphService.getArtistStyles(artistId),

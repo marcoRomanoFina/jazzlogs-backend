@@ -2,11 +2,11 @@ package com.jazzlogs.backend.album;
 
 import java.util.UUID;
 
+import jakarta.validation.Valid;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -26,12 +26,10 @@ import com.jazzlogs.backend.editorial.AlbumEditorial;
 import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.editorial.dto.AlbumEditorialDto;
 import com.jazzlogs.backend.editorial.dto.AlbumEditorialRequest;
-import com.jazzlogs.backend.listen.ListenService;
 import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackService;
 import com.jazzlogs.backend.track.dto.CreateTrackRequest;
 import com.jazzlogs.backend.track.dto.TrackDto;
-import com.jazzlogs.backend.user.UserService;
 
 import lombok.AllArgsConstructor;
 
@@ -43,8 +41,6 @@ public class AlbumController {
     private final AlbumService albumService;
     private final TrackService trackService;
     private final EditorialService editorialService;
-    private final ListenService listenService;
-    private final UserService userService;
 
     @GetMapping("/{id}")
     public AlbumDetailDto getAlbum(@PathVariable UUID id) {
@@ -53,7 +49,7 @@ public class AlbumController {
 
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<AlbumDetailDto> createAlbum(@RequestBody CreateAlbumRequest request) {
+    public ResponseEntity<AlbumDetailDto> createAlbum(@Valid @RequestBody CreateAlbumRequest request) {
         Album album = albumService.createAlbum(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(albumService.getAlbumDetail(album.getId()));
     }
@@ -67,7 +63,7 @@ public class AlbumController {
 
     @PostMapping("/{id}/tracks")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<TrackDto> addTrack(@PathVariable UUID id, @RequestBody CreateTrackRequest request) {
+    public ResponseEntity<TrackDto> addTrack(@PathVariable UUID id, @Valid @RequestBody CreateTrackRequest request) {
         Track track = trackService.addTrack(id, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(trackService.toDto(track));
     }
@@ -111,13 +107,6 @@ public class AlbumController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> addContext(@PathVariable UUID id, @RequestBody ContextTagRequest request) {
         albumService.addContext(id, request);
-        return ResponseEntity.noContent().build();
-    }
-
-    @PostMapping("/{id}/listen")
-    public ResponseEntity<Void> recordListen(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
-        UUID userId = userService.resolveFromJwt(jwt).getId();
-        listenService.recordAlbumListen(userId, id);
         return ResponseEntity.noContent().build();
     }
 }

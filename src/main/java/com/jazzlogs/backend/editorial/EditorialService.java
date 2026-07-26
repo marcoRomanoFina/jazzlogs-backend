@@ -1,10 +1,12 @@
 package com.jazzlogs.backend.editorial;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.springframework.ai.document.Document;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -99,13 +101,9 @@ public class EditorialService {
             }
         }
 
-        // Generate every embedding FIRST, in one batch call — if OpenAI fails, we
-        // bail out here and nothing about this editorial's blocks has been touched.
-        List<float[]> embeddings = embeddingService.embedBatch(requests.stream().map(BlockRequest::text).toList());
-
         Map<String, Object> baseMetadata = buildBaseMetadata(editorial);
 
-        editorial.getBlocks().clear();
+        List<Document> documents = new ArrayList<>(requests.size());
         for (int i = 0; i < requests.size(); i++) {
             BlockRequest request = requests.get(i);
 
@@ -113,6 +111,18 @@ public class EditorialService {
             metadata.put("blockType", request.type().name());
             metadata.put("contentCategory", request.contentCategory().name());
             metadata.put("position", i);
+
+            documents.add(new Document(request.text(), metadata));
+        }
+
+        // Generate every embedding FIRST, in one batch call — if OpenAI fails, we
+        // bail out here and nothing about this editorial's blocks has been touched.
+        // Index i lines up with both requests and documents below.
+        List<float[]> embeddings = embeddingService.embedBatch(documents.stream().map(Document::getText).toList());
+
+        editorial.getBlocks().clear();
+        for (int i = 0; i < requests.size(); i++) {
+            BlockRequest request = requests.get(i);
 
             editorial.getBlocks().add(new EditorialBlock(
                 editorial,
@@ -122,7 +132,7 @@ public class EditorialService {
                 request.text(),
                 request.contentCategory(),
                 embeddings.get(i),
-                metadata
+                documents.get(i).getMetadata()
             ));
         }
 

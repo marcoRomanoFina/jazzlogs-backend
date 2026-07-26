@@ -50,10 +50,6 @@ public class AlbumService {
 
     @Transactional
     public Album createAlbum(CreateAlbumRequest request) {
-        if (!StringUtils.hasText(request.spotifyAlbumId())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "spotifyAlbumId is required");
-        }
-
         Artist artist = getArtistOrThrow(request.artistId());
         SpotifyAlbumData data = spotifyCatalogService.fetchAlbum(request.spotifyAlbumId());
 
