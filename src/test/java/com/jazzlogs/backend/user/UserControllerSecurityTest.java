@@ -19,9 +19,10 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import com.jazzlogs.backend.config.SecurityConfig;
 import com.jazzlogs.backend.graph.GraphWriteException;
+import com.jazzlogs.backend.security.SupabaseJwtAuthenticationConverter;
 
 @WebMvcTest(UserController.class)
-@Import(SecurityConfig.class)
+@Import({SecurityConfig.class, SupabaseJwtAuthenticationConverter.class})
 @TestPropertySource(properties = {
     "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=https://example.invalid/.well-known/jwks.json",
     "app.cors.allowed-origins=http://localhost:3000"
@@ -33,6 +34,9 @@ class UserControllerSecurityTest {
 
     @MockitoBean
     private UserService userService;
+
+    @MockitoBean
+    private UserRepository userRepository;
 
     @Test
     void meWithoutTokenReturns401() throws Exception {

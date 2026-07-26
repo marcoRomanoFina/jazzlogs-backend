@@ -1,0 +1,14 @@
+package com.jazzlogs.backend.editorial;
+
+public enum BlockContentCategory {
+    HISTORICAL_CONTEXT,
+    RECORDING_PROCESS,
+    MUSICAL_ANALYSIS,
+    PERSONNEL_HIGHLIGHT,
+    MOOD_AND_ATMOSPHERE,
+    LEGACY_AND_INFLUENCE,
+    COMPARISON,
+    PERSONAL_TAKE,
+    ANECDOTE,
+    RECOMMENDATION
+}
