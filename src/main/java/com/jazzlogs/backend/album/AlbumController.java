@@ -28,6 +28,7 @@ import com.jazzlogs.backend.editorial.AlbumEditorial;
 import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.editorial.dto.AlbumEditorialDto;
 import com.jazzlogs.backend.editorial.dto.AlbumEditorialRequest;
+import com.jazzlogs.backend.listen.ListenService;
 import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackService;
 import com.jazzlogs.backend.track.dto.CreateTrackRequest;
@@ -44,6 +45,7 @@ public class AlbumController {
     private final AlbumService albumService;
     private final TrackService trackService;
     private final EditorialService editorialService;
+    private final ListenService listenService;
     private final UserService userService;
 
     @GetMapping("/{id}")
@@ -111,6 +113,12 @@ public class AlbumController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> addContext(@PathVariable UUID id, @RequestBody ContextTagRequest request) {
         albumService.addContext(id, request);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/listen")
+    public ResponseEntity<Void> markListened(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
+        listenService.markAlbumListened(currentUserId(jwt), id);
         return ResponseEntity.noContent().build();
     }
 

@@ -1,5 +1,6 @@
 package com.jazzlogs.backend.graph;
 
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -109,6 +110,26 @@ public class GraphService {
                     """)
                 .bind(albumId.toString()).to("albumId")
                 .bind(artistId.toString()).to("artistId")
+                .run());
+    }
+
+    /**
+     * MATCH-then-MERGE, not create-if-missing: if the :User or :Album node isn't
+     * there (e.g. it was created while Neo4j was down), this silently touches
+     * nothing — same as every other relationship write here. Callers that want
+     * this to be non-blocking (see ListenService) catch the GraphWriteException
+     * this throws on failure; it's not swallowed in here.
+     */
+    public void markAlbumListened(UUID userId, UUID albumId, Instant listenedAt) {
+        write("add LISTENED user=" + userId + " album=" + albumId, () ->
+            neo4jClient.query("""
+                    MATCH (u:User {id: $userId}), (al:Album {id: $albumId})
+                    MERGE (u)-[l:LISTENED]->(al)
+                    SET l.listenedAt = $listenedAt
+                    """)
+                .bind(userId.toString()).to("userId")
+                .bind(albumId.toString()).to("albumId")
+                .bind(listenedAt).to("listenedAt")
                 .run());
     }
 
@@ -249,6 +270,20 @@ public class GraphService {
                     """)
                 .bind(trackId.toString()).to("trackId")
                 .bind(artistId.toString()).to("artistId")
+                .run());
+    }
+
+    /** Same MATCH-then-MERGE / non-swallowed-here contract as markAlbumListened. */
+    public void markTrackListened(UUID userId, UUID trackId, Instant listenedAt) {
+        write("add LISTENED user=" + userId + " track=" + trackId, () ->
+            neo4jClient.query("""
+                    MATCH (u:User {id: $userId}), (tr:Track {id: $trackId})
+                    MERGE (u)-[l:LISTENED]->(tr)
+                    SET l.listenedAt = $listenedAt
+                    """)
+                .bind(userId.toString()).to("userId")
+                .bind(trackId.toString()).to("trackId")
+                .bind(listenedAt).to("listenedAt")
                 .run());
     }
 
