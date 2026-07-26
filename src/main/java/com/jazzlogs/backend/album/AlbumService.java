@@ -159,10 +159,10 @@ public class AlbumService {
     }
 
     @Transactional(readOnly = true)
-    public AlbumDetailDto getAlbumDetail(UUID albumId) {
+    public AlbumDetailDto getAlbumDetail(UUID albumId, UUID currentUserId) {
         Album album = getAlbumOrThrow(albumId);
 
-        AlbumEditorialDto editorialDto = editorialService.getAlbumEditorialDto(albumId);
+        AlbumEditorialDto editorialDto = editorialService.getAlbumEditorialDto(albumId, currentUserId);
 
         // One query for every track's placement, instead of one per track.
         Map<UUID, TrackPlacement> placements = graphService.getTrackPlacements(albumId).stream()
