@@ -4,6 +4,8 @@ import java.util.UUID;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -17,11 +19,13 @@ import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.editorial.TrackEditorial;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialRequest;
+import com.jazzlogs.backend.listen.ListenService;
 import com.jazzlogs.backend.track.dto.InstrumentTagRequest;
 import com.jazzlogs.backend.track.dto.PerformerRequest;
 import com.jazzlogs.backend.track.dto.RhythmTagRequest;
 import com.jazzlogs.backend.track.dto.TrackDto;
 import com.jazzlogs.backend.track.dto.UpdateTrackRequest;
+import com.jazzlogs.backend.user.UserService;
 
 import lombok.AllArgsConstructor;
 
@@ -32,6 +36,8 @@ public class TrackController {
 
     private final TrackService trackService;
     private final EditorialService editorialService;
+    private final ListenService listenService;
+    private final UserService userService;
 
     @PatchMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
@@ -86,6 +92,12 @@ public class TrackController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> markEntryPoint(@PathVariable UUID id, @PathVariable UUID artistId) {
         trackService.markEntryPoint(id, artistId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/listen")
+    public ResponseEntity<Void> markListened(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
+        listenService.markTrackListened(userService.resolveFromJwt(jwt).getId(), id);
         return ResponseEntity.noContent().build();
     }
 }
