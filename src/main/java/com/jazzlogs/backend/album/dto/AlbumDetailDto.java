@@ -1,5 +1,6 @@
 package com.jazzlogs.backend.album.dto;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -33,6 +34,8 @@ public record AlbumDetailDto(
     List<VocabularyTag> styles,
     List<VocabularyTag> moods,
     List<VocabularyTag> contexts,
-    List<AlbumPersonnelEntry> personnel
+    List<AlbumPersonnelEntry> personnel,
+    BigDecimal avgRating,
+    long reviewCount
 ) {
 }

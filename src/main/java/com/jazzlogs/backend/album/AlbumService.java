@@ -27,6 +27,8 @@ import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.TrackPlacement;
 import com.jazzlogs.backend.note.NoteService;
 import com.jazzlogs.backend.note.dto.NoteDto;
+import com.jazzlogs.backend.review.ReviewService;
+import com.jazzlogs.backend.review.dto.AlbumRatingStats;
 import com.jazzlogs.backend.spotify.SpotifyAlbumData;
 import com.jazzlogs.backend.spotify.SpotifyCatalogService;
 import com.jazzlogs.backend.track.TrackService;
@@ -49,6 +51,7 @@ public class AlbumService {
     private final TrackService trackService;
     private final EditorialService editorialService;
     private final NoteService noteService;
+    private final ReviewService reviewService;
     private final AlbumMapper albumMapper;
 
     @Transactional
@@ -175,6 +178,8 @@ public class AlbumService {
         // this album, instead of one per track.
         Map<UUID, List<NoteDto>> notesByTrack = noteService.getMyNotesForAlbum(albumId, currentUserId);
 
+        AlbumRatingStats ratingStats = reviewService.getAlbumRatingStats(albumId);
+
         List<TrackDto> trackDtos = album.getTracks().stream()
             .map(track -> trackService.toDto(
                 track,
@@ -206,7 +211,9 @@ public class AlbumService {
             graphService.getStyles(albumId),
             graphService.getMoods(albumId),
             graphService.getContexts(albumId),
-            graphService.getPersonnel(albumId)
+            graphService.getPersonnel(albumId),
+            ratingStats.avgRating(),
+            ratingStats.count()
         );
     }
 

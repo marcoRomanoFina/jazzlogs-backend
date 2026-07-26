@@ -1,6 +1,7 @@
 package com.jazzlogs.backend.listen;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
@@ -11,20 +12,22 @@ import org.springframework.web.server.ResponseStatusException;
 import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.album.AlbumRepository;
 import com.jazzlogs.backend.graph.GraphService;
+import com.jazzlogs.backend.syncfailure.Neo4jAsyncSyncExecutor;
+import com.jazzlogs.backend.syncfailure.SyncFailureEntityType;
 import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackRepository;
 
 import lombok.AllArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 
 /**
  * Dual-write on purpose: Postgres (user_album_listens/user_track_listens) is the
  * primary source of truth — the Review gate and any chronological feed read from
  * here, always, so they work even with Neo4j down. Neo4j gets a best-effort
  * mirror (:User)-[:LISTENED]->(:Album|:Track) for the recommendation agent to
- * traverse; a failure there is logged and swallowed, never lets a listen fail.
+ * traverse, dispatched through Neo4jAsyncSyncExecutor so a slow/down Neo4j never
+ * adds latency to this request thread; a failure there is logged and swallowed,
+ * never lets a listen fail.
  */
-@Slf4j
 @Service
 @AllArgsConstructor
 public class ListenService {
@@ -34,6 +37,7 @@ public class ListenService {
     private final AlbumRepository albumRepository;
     private final TrackRepository trackRepository;
     private final GraphService graphService;
+    private final Neo4jAsyncSyncExecutor syncExecutor;
 
     /**
      * Also marks every track on the album as listened — same idempotent,
@@ -63,11 +67,12 @@ public class ListenService {
         // Today: sync always, for every user — there's no subscription/plan model
         // yet. Once one exists, gate this with `if (!user.hasActiveSubscription()) return;`
         // as the first line here — everything else about this method stays the same.
-        try {
-            graphService.markAlbumListened(userId, albumId, Instant.now());
-        } catch (Exception ex) {
-            log.warn("Failed to sync listened to Neo4j for user {} album {}", userId, albumId, ex);
-        }
+        Instant listenedAt = Instant.now();
+        syncExecutor.sync(
+            SyncFailureEntityType.LISTENED,
+            listenedPayload("ALBUM", userId, albumId, listenedAt),
+            () -> graphService.markAlbumListened(userId, albumId, listenedAt)
+        );
     }
 
     @Transactional
@@ -85,11 +90,24 @@ public class ListenService {
 
     private void syncTrackListenedToGraph(UUID userId, UUID trackId) {
         // Same not-yet-gated-by-subscription note as syncAlbumListenedToGraph.
-        try {
-            graphService.markTrackListened(userId, trackId, Instant.now());
-        } catch (Exception ex) {
-            log.warn("Failed to sync listened to Neo4j for user {} track {}", userId, trackId, ex);
-        }
+        Instant listenedAt = Instant.now();
+        syncExecutor.sync(
+            SyncFailureEntityType.LISTENED,
+            listenedPayload("TRACK", userId, trackId, listenedAt),
+            () -> graphService.markTrackListened(userId, trackId, listenedAt)
+        );
+    }
+
+    // targetType disambiguates ALBUM vs TRACK within the single LISTENED entity
+    // type — see ListenedSyncRetryHandler. Values are stored as canonical
+    // Strings (see SyncFailure's payload contract).
+    private Map<String, Object> listenedPayload(String targetType, UUID userId, UUID targetId, Instant listenedAt) {
+        return Map.of(
+            "targetType", targetType,
+            "userId", userId.toString(),
+            "targetId", targetId.toString(),
+            "listenedAt", listenedAt.toString()
+        );
     }
 
     /**
