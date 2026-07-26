@@ -25,6 +25,8 @@ import com.jazzlogs.backend.editorial.dto.EditorialBlockDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialRequest;
 import com.jazzlogs.backend.embedding.EmbeddingService;
+import com.jazzlogs.backend.like.LikeService;
+import com.jazzlogs.backend.like.LikeableEntityType;
 import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackRepository;
 
@@ -46,6 +48,7 @@ public class EditorialService {
     private final TrackEditorialRepository trackEditorialRepository;
     private final ArtistEditorialRepository artistEditorialRepository;
     private final EmbeddingService embeddingService;
+    private final LikeService likeService;
 
     @Transactional
     public AlbumEditorial upsertAlbumEditorial(UUID albumId, AlbumEditorialRequest request) {
@@ -139,9 +142,9 @@ public class EditorialService {
         return editorial.getBlocks();
     }
 
-    public AlbumEditorialDto getAlbumEditorialDto(UUID albumId) {
+    public AlbumEditorialDto getAlbumEditorialDto(UUID albumId, UUID currentUserId) {
         return albumEditorialRepository.findByAlbumId(albumId)
-            .map(this::toDto)
+            .map(editorial -> toDto(editorial, currentUserId))
             .orElse(null);
     }
 
@@ -157,8 +160,17 @@ public class EditorialService {
             .orElse(null);
     }
 
-    public AlbumEditorialDto toDto(AlbumEditorial editorial) {
-        return new AlbumEditorialDto(editorial.getDek(), editorial.getByline(), editorial.getReadMinutes(), blocksOf(editorial));
+    public AlbumEditorialDto toDto(AlbumEditorial editorial, UUID currentUserId) {
+        UUID editorialId = editorial.getId();
+        return new AlbumEditorialDto(
+            editorialId,
+            editorial.getDek(),
+            editorial.getByline(),
+            editorial.getReadMinutes(),
+            blocksOf(editorial),
+            editorial.getLikeCount(),
+            likeService.hasUserLiked(currentUserId, LikeableEntityType.EDITORIAL, editorialId)
+        );
     }
 
     public TrackEditorialDto toDto(TrackEditorial editorial) {

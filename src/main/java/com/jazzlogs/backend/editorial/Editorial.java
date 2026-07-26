@@ -48,6 +48,12 @@ public abstract class Editorial {
     @OrderBy("position ASC")
     private List<EditorialBlock> blocks = new ArrayList<>();
 
+    // Denormalized on purpose — mutated only via EditorialRepository's atomic
+    // increment/decrement UPDATE queries (see LikeService), never read-modify-saved
+    // in Java, to avoid lost updates under concurrent likes.
+    @Column(name = "like_count", nullable = false)
+    private int likeCount;
+
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 

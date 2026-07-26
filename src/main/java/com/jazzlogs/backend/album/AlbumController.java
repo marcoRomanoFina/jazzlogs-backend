@@ -7,6 +7,8 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -30,6 +32,7 @@ import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackService;
 import com.jazzlogs.backend.track.dto.CreateTrackRequest;
 import com.jazzlogs.backend.track.dto.TrackDto;
+import com.jazzlogs.backend.user.UserService;
 
 import lombok.AllArgsConstructor;
 
@@ -41,24 +44,25 @@ public class AlbumController {
     private final AlbumService albumService;
     private final TrackService trackService;
     private final EditorialService editorialService;
+    private final UserService userService;
 
     @GetMapping("/{id}")
-    public AlbumDetailDto getAlbum(@PathVariable UUID id) {
-        return albumService.getAlbumDetail(id);
+    public AlbumDetailDto getAlbum(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
+        return albumService.getAlbumDetail(id, currentUserId(jwt));
     }
 
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<AlbumDetailDto> createAlbum(@Valid @RequestBody CreateAlbumRequest request) {
+    public ResponseEntity<AlbumDetailDto> createAlbum(@Valid @RequestBody CreateAlbumRequest request, @AuthenticationPrincipal Jwt jwt) {
         Album album = albumService.createAlbum(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(albumService.getAlbumDetail(album.getId()));
+        return ResponseEntity.status(HttpStatus.CREATED).body(albumService.getAlbumDetail(album.getId(), currentUserId(jwt)));
     }
 
     @PatchMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public AlbumDetailDto updateAlbum(@PathVariable UUID id, @RequestBody UpdateAlbumRequest request) {
+    public AlbumDetailDto updateAlbum(@PathVariable UUID id, @RequestBody UpdateAlbumRequest request, @AuthenticationPrincipal Jwt jwt) {
         albumService.updateAlbum(id, request);
-        return albumService.getAlbumDetail(id);
+        return albumService.getAlbumDetail(id, currentUserId(jwt));
     }
 
     @PostMapping("/{id}/tracks")
@@ -70,9 +74,9 @@ public class AlbumController {
 
     @PostMapping("/{id}/editorial")
     @PreAuthorize("hasRole('ADMIN')")
-    public AlbumEditorialDto upsertEditorial(@PathVariable UUID id, @RequestBody AlbumEditorialRequest request) {
+    public AlbumEditorialDto upsertEditorial(@PathVariable UUID id, @RequestBody AlbumEditorialRequest request, @AuthenticationPrincipal Jwt jwt) {
         AlbumEditorial editorial = editorialService.upsertAlbumEditorial(id, request);
-        return editorialService.toDto(editorial);
+        return editorialService.toDto(editorial, currentUserId(jwt));
     }
 
     @PostMapping("/{id}/personnel")
@@ -108,5 +112,9 @@ public class AlbumController {
     public ResponseEntity<Void> addContext(@PathVariable UUID id, @RequestBody ContextTagRequest request) {
         albumService.addContext(id, request);
         return ResponseEntity.noContent().build();
+    }
+
+    private UUID currentUserId(Jwt jwt) {
+        return userService.resolveFromJwt(jwt).getId();
     }
 }
