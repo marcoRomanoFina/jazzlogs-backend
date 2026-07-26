@@ -30,13 +30,15 @@ public class SyncRetryWorker {
         ListenedSyncRetryHandler listenedHandler,
         ReviewRatedSyncRetryHandler reviewRatedHandler,
         ReviewHighlightedSyncRetryHandler reviewHighlightedHandler,
+        TrackRatedSyncRetryHandler trackRatedHandler,
         @Value("${sync-failure.max-attempts:5}") int maxAttempts
     ) {
         this.syncFailureRepository = syncFailureRepository;
         this.handlers = Map.of(
             SyncFailureEntityType.LISTENED, listenedHandler,
             SyncFailureEntityType.REVIEW_RATED, reviewRatedHandler,
-            SyncFailureEntityType.REVIEW_HIGHLIGHTED, reviewHighlightedHandler
+            SyncFailureEntityType.REVIEW_HIGHLIGHTED, reviewHighlightedHandler,
+            SyncFailureEntityType.TRACK_RATED, trackRatedHandler
         );
         this.maxAttempts = maxAttempts;
     }
