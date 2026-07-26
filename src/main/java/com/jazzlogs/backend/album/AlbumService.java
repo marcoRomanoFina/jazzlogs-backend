@@ -25,6 +25,8 @@ import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.editorial.dto.AlbumEditorialDto;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.TrackPlacement;
+import com.jazzlogs.backend.note.NoteService;
+import com.jazzlogs.backend.note.dto.NoteDto;
 import com.jazzlogs.backend.spotify.SpotifyAlbumData;
 import com.jazzlogs.backend.spotify.SpotifyCatalogService;
 import com.jazzlogs.backend.track.TrackService;
@@ -46,6 +48,7 @@ public class AlbumService {
     private final SpotifyCatalogService spotifyCatalogService;
     private final TrackService trackService;
     private final EditorialService editorialService;
+    private final NoteService noteService;
     private final AlbumMapper albumMapper;
 
     @Transactional
@@ -168,8 +171,16 @@ public class AlbumService {
         Map<UUID, TrackPlacement> placements = graphService.getTrackPlacements(albumId).stream()
             .collect(Collectors.toMap(TrackPlacement::trackId, placement -> placement));
 
+        // Same idea: one query for every note the current user left anywhere on
+        // this album, instead of one per track.
+        Map<UUID, List<NoteDto>> notesByTrack = noteService.getMyNotesForAlbum(albumId, currentUserId);
+
         List<TrackDto> trackDtos = album.getTracks().stream()
-            .map(track -> trackService.toDto(track, placements.get(track.getId())))
+            .map(track -> trackService.toDto(
+                track,
+                placements.get(track.getId()),
+                notesByTrack.getOrDefault(track.getId(), List.of())
+            ))
             .sorted(Comparator.comparing(TrackDto::trackNumber, Comparator.nullsLast(Comparator.naturalOrder())))
             .toList();
 

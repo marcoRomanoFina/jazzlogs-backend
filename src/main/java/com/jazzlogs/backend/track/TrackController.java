@@ -1,11 +1,16 @@
 package com.jazzlogs.backend.track;
 
+import java.util.List;
 import java.util.UUID;
 
+import jakarta.validation.Valid;
+
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -20,6 +25,9 @@ import com.jazzlogs.backend.editorial.TrackEditorial;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialRequest;
 import com.jazzlogs.backend.listen.ListenService;
+import com.jazzlogs.backend.note.NoteService;
+import com.jazzlogs.backend.note.dto.CreateNoteRequest;
+import com.jazzlogs.backend.note.dto.NoteDto;
 import com.jazzlogs.backend.track.dto.InstrumentTagRequest;
 import com.jazzlogs.backend.track.dto.PerformerRequest;
 import com.jazzlogs.backend.track.dto.RhythmTagRequest;
@@ -37,6 +45,7 @@ public class TrackController {
     private final TrackService trackService;
     private final EditorialService editorialService;
     private final ListenService listenService;
+    private final NoteService noteService;
     private final UserService userService;
 
     @PatchMapping("/{id}")
@@ -97,7 +106,27 @@ public class TrackController {
 
     @PostMapping("/{id}/listen")
     public ResponseEntity<Void> markListened(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
-        listenService.markTrackListened(userService.resolveFromJwt(jwt).getId(), id);
+        listenService.markTrackListened(currentUserId(jwt), id);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/notes")
+    public ResponseEntity<NoteDto> createNote(@PathVariable UUID id, @Valid @RequestBody CreateNoteRequest request, @AuthenticationPrincipal Jwt jwt) {
+        NoteDto note = noteService.createNote(currentUserId(jwt), id, request.text(), request.timestampSeconds());
+        return ResponseEntity.status(HttpStatus.CREATED).body(note);
+    }
+
+    @GetMapping("/{id}/notes")
+    public List<NoteDto> getTrackNotes(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
+        return noteService.getTrackNotes(id, currentUserId(jwt));
+    }
+
+    @GetMapping("/{id}/notes/me")
+    public List<NoteDto> getMyTrackNotes(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
+        return noteService.getMyTrackNotes(id, currentUserId(jwt));
+    }
+
+    private UUID currentUserId(Jwt jwt) {
+        return userService.resolveFromJwt(jwt).getId();
     }
 }
