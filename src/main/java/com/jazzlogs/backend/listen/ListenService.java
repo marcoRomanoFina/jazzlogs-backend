@@ -35,13 +35,27 @@ public class ListenService {
     private final TrackRepository trackRepository;
     private final GraphService graphService;
 
+    /**
+     * Also marks every track on the album as listened — same idempotent,
+     * per-track dual write as markTrackListened, just driven from here instead
+     * of a separate call per track. Tracks already marked (or added to the
+     * album after a previous listen) are handled the same way either way:
+     * insertIfNotExists no-ops for the ones that already exist.
+     */
     @Transactional
     public void markAlbumListened(UUID userId, UUID albumId) {
-        getAlbumOrThrow(albumId);
+        Album album = getAlbumOrThrow(albumId);
 
         boolean isNew = userAlbumListenRepository.insertIfNotExists(userId, albumId);
         if (isNew) {
             syncAlbumListenedToGraph(userId, albumId);
+        }
+
+        for (Track track : album.getTracks()) {
+            // Track existence is already guaranteed here (it came straight off
+            // the loaded Album), so skip straight to the core logic instead of
+            // re-running markTrackListened's own getTrackOrThrow per track.
+            markTrackListenedCore(userId, track.getId());
         }
     }
 
@@ -59,7 +73,10 @@ public class ListenService {
     @Transactional
     public void markTrackListened(UUID userId, UUID trackId) {
         getTrackOrThrow(trackId);
+        markTrackListenedCore(userId, trackId);
+    }
 
+    private void markTrackListenedCore(UUID userId, UUID trackId) {
         boolean isNew = userTrackListenRepository.insertIfNotExists(userId, trackId);
         if (isNew) {
             syncTrackListenedToGraph(userId, trackId);

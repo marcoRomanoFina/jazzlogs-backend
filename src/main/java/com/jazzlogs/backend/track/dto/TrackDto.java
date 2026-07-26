@@ -8,6 +8,7 @@ import com.jazzlogs.backend.album.VocalProfile;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialDto;
 import com.jazzlogs.backend.graph.TrackPerformerEntry;
 import com.jazzlogs.backend.graph.VocabularyTag;
+import com.jazzlogs.backend.note.dto.NoteDto;
 import com.jazzlogs.backend.track.CompositionType;
 import com.jazzlogs.backend.track.TempoFeel;
 
@@ -33,6 +34,7 @@ public record TrackDto(
     List<VocabularyTag> moods,
     List<VocabularyTag> contexts,
     List<VocabularyTag> rhythms,
-    List<VocabularyTag> featuredInstruments
+    List<VocabularyTag> featuredInstruments,
+    List<NoteDto> myNotes
 ) {
 }

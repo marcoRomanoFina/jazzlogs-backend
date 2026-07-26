@@ -1,5 +1,6 @@
 package com.jazzlogs.backend.track;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
@@ -18,6 +19,7 @@ import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialDto;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.TrackPlacement;
+import com.jazzlogs.backend.note.dto.NoteDto;
 import com.jazzlogs.backend.spotify.SpotifyCatalogService;
 import com.jazzlogs.backend.spotify.SpotifyTrackData;
 import com.jazzlogs.backend.track.dto.CreateTrackRequest;
@@ -140,6 +142,11 @@ public class TrackService {
     }
 
     public TrackDto toDto(Track track, TrackPlacement placement) {
+        return toDto(track, placement, List.of());
+    }
+
+    /** myNotes comes pre-fetched (see AlbumService.getAlbumDetail) — no query in here. */
+    public TrackDto toDto(Track track, TrackPlacement placement, List<NoteDto> myNotes) {
         UUID trackId = track.getId();
         TrackEditorialDto editorialDto = editorialService.getTrackEditorialDto(trackId);
 
@@ -165,7 +172,8 @@ public class TrackService {
             graphService.getTrackMoods(trackId),
             graphService.getTrackContexts(trackId),
             graphService.getTrackRhythms(trackId),
-            graphService.getTrackFeaturedInstruments(trackId)
+            graphService.getTrackFeaturedInstruments(trackId),
+            myNotes
         );
     }
 

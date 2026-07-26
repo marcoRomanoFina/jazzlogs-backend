@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.editorial.EditorialRepository;
+import com.jazzlogs.backend.note.NoteRepository;
 
 @Service
 public class LikeService {
@@ -21,12 +22,14 @@ public class LikeService {
     private final Map<LikeableEntityType, LikeableRepository<?>> repositories;
 
     // Add a repository param + a repositories entry per new likeable type
-    // (Review, Playlist, Note, Series) as each one gets built — no switch to
-    // touch, existence-checking/counting/increment/decrement all dispatch off
-    // this one map.
-    public LikeService(LikeRepository likeRepository, EditorialRepository editorialRepository) {
+    // (Review, Playlist, Series) as each one gets built — no switch to touch,
+    // existence-checking/counting/increment/decrement all dispatch off this one map.
+    public LikeService(LikeRepository likeRepository, EditorialRepository editorialRepository, NoteRepository noteRepository) {
         this.likeRepository = likeRepository;
-        this.repositories = Map.of(LikeableEntityType.EDITORIAL, editorialRepository);
+        this.repositories = Map.of(
+            LikeableEntityType.EDITORIAL, editorialRepository,
+            LikeableEntityType.NOTE, noteRepository
+        );
     }
 
     /**
