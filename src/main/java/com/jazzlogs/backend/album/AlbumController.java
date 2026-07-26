@@ -1,5 +1,6 @@
 package com.jazzlogs.backend.album;
 
+import java.util.List;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
@@ -9,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -29,6 +31,10 @@ import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.editorial.dto.AlbumEditorialDto;
 import com.jazzlogs.backend.editorial.dto.AlbumEditorialRequest;
 import com.jazzlogs.backend.listen.ListenService;
+import com.jazzlogs.backend.review.ReviewService;
+import com.jazzlogs.backend.review.dto.AlbumRatingStats;
+import com.jazzlogs.backend.review.dto.CreateReviewRequest;
+import com.jazzlogs.backend.review.dto.ReviewDto;
 import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackService;
 import com.jazzlogs.backend.track.dto.CreateTrackRequest;
@@ -46,6 +52,7 @@ public class AlbumController {
     private final TrackService trackService;
     private final EditorialService editorialService;
     private final ListenService listenService;
+    private final ReviewService reviewService;
     private final UserService userService;
 
     @GetMapping("/{id}")
@@ -120,6 +127,32 @@ public class AlbumController {
     public ResponseEntity<Void> markListened(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
         listenService.markAlbumListened(currentUserId(jwt), id);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/reviews")
+    public ReviewDto upsertReview(@PathVariable UUID id, @Valid @RequestBody CreateReviewRequest request, @AuthenticationPrincipal Jwt jwt) {
+        return reviewService.upsertReview(currentUserId(jwt), id, request.rating(), request.text(), request.standoutTrackIds());
+    }
+
+    @DeleteMapping("/{id}/reviews")
+    public ResponseEntity<Void> deleteReview(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
+        reviewService.deleteReview(currentUserId(jwt), id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{id}/reviews")
+    public List<ReviewDto> getAlbumReviews(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
+        return reviewService.getAlbumReviews(id, currentUserId(jwt));
+    }
+
+    @GetMapping("/{id}/reviews/me")
+    public ReviewDto getMyReview(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
+        return reviewService.getMyReview(id, currentUserId(jwt));
+    }
+
+    @GetMapping("/{id}/rating")
+    public AlbumRatingStats getAlbumRating(@PathVariable UUID id) {
+        return reviewService.getAlbumRatingStats(id);
     }
 
     private UUID currentUserId(Jwt jwt) {

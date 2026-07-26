@@ -1,5 +1,6 @@
 package com.jazzlogs.backend.graph;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
@@ -23,6 +24,11 @@ import lombok.extern.slf4j.Slf4j;
  *  - Everything else (relationships, tag/personnel reads) IS the point of the
  *    request — there's no Postgres fallback to protect — so failures propagate
  *    as GraphWriteException, which the global handler turns into a 502.
+ *
+ * TODO: once this talks to Aura in production, evaluate wrapping neo4jClient
+ * calls with a circuit breaker (no Resilience4j or equivalent in the repo yet —
+ * this would be the first use). Not worth adding speculatively; revisit once
+ * real prod failure patterns from Aura are observed.
  */
 @Slf4j
 @Service
@@ -130,6 +136,28 @@ public class GraphService {
                 .bind(userId.toString()).to("userId")
                 .bind(albumId.toString()).to("albumId")
                 .bind(listenedAt).to("listenedAt")
+                .run());
+    }
+
+    /**
+     * Delete-then-recreate, not MERGE+SET — a rating can change, so any stale
+     * RATED edge from a previous review must go before the new one lands.
+     * Same MATCH-then-MERGE / non-swallowed-here contract as markAlbumListened;
+     * ReviewService catches the GraphWriteException this throws on failure.
+     */
+    public void rateAlbum(UUID userId, UUID albumId, BigDecimal rating, Instant ratedAt) {
+        write("set RATED user=" + userId + " album=" + albumId, () ->
+            neo4jClient.query("""
+                    MATCH (u:User {id: $userId}), (al:Album {id: $albumId})
+                    OPTIONAL MATCH (u)-[old:RATED]->(al)
+                    DELETE old
+                    MERGE (u)-[r:RATED]->(al)
+                    SET r.rating = $rating, r.ratedAt = $ratedAt
+                    """)
+                .bind(userId.toString()).to("userId")
+                .bind(albumId.toString()).to("albumId")
+                .bind(rating).to("rating")
+                .bind(ratedAt).to("ratedAt")
                 .run());
     }
 
@@ -285,6 +313,37 @@ public class GraphService {
                 .bind(trackId.toString()).to("trackId")
                 .bind(listenedAt).to("listenedAt")
                 .run());
+    }
+
+    /**
+     * Clear + recreate — replaces every HIGHLIGHTED this user has on tracks of
+     * this specific album with exactly trackIds (empty list just clears). Two
+     * statements in one write(): delete is scoped to tracks of albumId via
+     * CONTAINS, so it never touches HIGHLIGHTED edges on other albums' tracks.
+     */
+    public void setHighlightedTracks(UUID userId, UUID albumId, List<UUID> trackIds) {
+        write("set HIGHLIGHTED user=" + userId + " album=" + albumId, () -> {
+            neo4jClient.query("""
+                    MATCH (u:User {id: $userId})-[r:HIGHLIGHTED]->(:Track)<-[:CONTAINS]-(al:Album {id: $albumId})
+                    DELETE r
+                    """)
+                .bind(userId.toString()).to("userId")
+                .bind(albumId.toString()).to("albumId")
+                .run();
+
+            if (!trackIds.isEmpty()) {
+                List<String> trackIdStrings = trackIds.stream().map(UUID::toString).toList();
+                neo4jClient.query("""
+                        MATCH (u:User {id: $userId})
+                        UNWIND $trackIds AS trackId
+                        MATCH (tr:Track {id: trackId})
+                        MERGE (u)-[:HIGHLIGHTED]->(tr)
+                        """)
+                    .bind(userId.toString()).to("userId")
+                    .bind(trackIdStrings).to("trackIds")
+                    .run();
+            }
+        });
     }
 
     public List<VocabularyTag> getTrackMoods(UUID trackId) {
