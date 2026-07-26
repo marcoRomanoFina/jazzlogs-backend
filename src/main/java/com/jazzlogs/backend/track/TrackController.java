@@ -33,6 +33,9 @@ import com.jazzlogs.backend.track.dto.PerformerRequest;
 import com.jazzlogs.backend.track.dto.RhythmTagRequest;
 import com.jazzlogs.backend.track.dto.TrackDto;
 import com.jazzlogs.backend.track.dto.UpdateTrackRequest;
+import com.jazzlogs.backend.trackrating.TrackRatingService;
+import com.jazzlogs.backend.trackrating.dto.CreateTrackRatingRequest;
+import com.jazzlogs.backend.trackrating.dto.TrackRatingDto;
 import com.jazzlogs.backend.user.UserService;
 
 import lombok.AllArgsConstructor;
@@ -46,6 +49,7 @@ public class TrackController {
     private final EditorialService editorialService;
     private final ListenService listenService;
     private final NoteService noteService;
+    private final TrackRatingService trackRatingService;
     private final UserService userService;
 
     @PatchMapping("/{id}")
@@ -124,6 +128,11 @@ public class TrackController {
     @GetMapping("/{id}/notes/me")
     public List<NoteDto> getMyTrackNotes(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
         return noteService.getMyTrackNotes(id, currentUserId(jwt));
+    }
+
+    @PostMapping("/{id}/ratings")
+    public TrackRatingDto upsertRating(@PathVariable UUID id, @Valid @RequestBody CreateTrackRatingRequest request, @AuthenticationPrincipal Jwt jwt) {
+        return trackRatingService.upsertRating(currentUserId(jwt), id, request.rating());
     }
 
     private UUID currentUserId(Jwt jwt) {

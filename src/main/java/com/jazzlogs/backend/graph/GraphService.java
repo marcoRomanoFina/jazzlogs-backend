@@ -161,6 +161,29 @@ public class GraphService {
                 .run());
     }
 
+    /**
+     * Delete-then-recreate, same contract as rateAlbum — a rating can change,
+     * so any stale RATED_TRACK edge must go before the new one lands.
+     * RATED_TRACK, not RATED, to avoid ambiguity with the Album-level
+     * relationship rateAlbum creates. TrackRatingService catches the
+     * GraphWriteException this throws on failure.
+     */
+    public void rateTrack(UUID userId, UUID trackId, BigDecimal rating, Instant ratedAt) {
+        write("set RATED_TRACK user=" + userId + " track=" + trackId, () ->
+            neo4jClient.query("""
+                    MATCH (u:User {id: $userId}), (tr:Track {id: $trackId})
+                    OPTIONAL MATCH (u)-[old:RATED_TRACK]->(tr)
+                    DELETE old
+                    MERGE (u)-[r:RATED_TRACK]->(tr)
+                    SET r.rating = $rating, r.ratedAt = $ratedAt
+                    """)
+                .bind(userId.toString()).to("userId")
+                .bind(trackId.toString()).to("trackId")
+                .bind(rating).to("rating")
+                .bind(ratedAt).to("ratedAt")
+                .run());
+    }
+
     public void addStyle(UUID albumId, String styleCode) {
         write("add BELONGS_TO album=" + albumId + " style=" + styleCode, () ->
             neo4jClient.query("""
