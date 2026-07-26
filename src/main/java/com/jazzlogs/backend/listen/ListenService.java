@@ -12,6 +12,8 @@ import org.springframework.web.server.ResponseStatusException;
 import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.album.AlbumRepository;
 import com.jazzlogs.backend.graph.GraphService;
+import com.jazzlogs.backend.saveditem.SaveableEntityType;
+import com.jazzlogs.backend.saveditem.SavedItemRepository;
 import com.jazzlogs.backend.syncfailure.Neo4jAsyncSyncExecutor;
 import com.jazzlogs.backend.syncfailure.SyncFailureEntityType;
 import com.jazzlogs.backend.track.Track;
@@ -27,6 +29,10 @@ import lombok.AllArgsConstructor;
  * traverse, dispatched through Neo4jAsyncSyncExecutor so a slow/down Neo4j never
  * adds latency to this request thread; a failure there is logged and swallowed,
  * never lets a listen fail.
+ *
+ * Also auto-removes the matching saved_items row (if any) in the same
+ * transaction as the Postgres listen insert — unlike the Neo4j sync, there's no
+ * external system involved here, so a failure just rolls back normally.
  */
 @Service
 @AllArgsConstructor
@@ -36,6 +42,7 @@ public class ListenService {
     private final UserTrackListenRepository userTrackListenRepository;
     private final AlbumRepository albumRepository;
     private final TrackRepository trackRepository;
+    private final SavedItemRepository savedItemRepository;
     private final GraphService graphService;
     private final Neo4jAsyncSyncExecutor syncExecutor;
 
@@ -51,6 +58,7 @@ public class ListenService {
         Album album = getAlbumOrThrow(albumId);
 
         boolean isNew = userAlbumListenRepository.insertIfNotExists(userId, albumId);
+        savedItemRepository.deleteByUserIdAndEntityTypeAndEntityId(userId, SaveableEntityType.ALBUM, albumId);
         if (isNew) {
             syncAlbumListenedToGraph(userId, albumId);
         }
@@ -83,6 +91,7 @@ public class ListenService {
 
     private void markTrackListenedCore(UUID userId, UUID trackId) {
         boolean isNew = userTrackListenRepository.insertIfNotExists(userId, trackId);
+        savedItemRepository.deleteByUserIdAndEntityTypeAndEntityId(userId, SaveableEntityType.TRACK, trackId);
         if (isNew) {
             syncTrackListenedToGraph(userId, trackId);
         }
