@@ -16,6 +16,8 @@ import com.jazzlogs.backend.album.VocalProfile;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
 import com.jazzlogs.backend.listen.ListenService;
+import com.jazzlogs.backend.playlist.Playlist;
+import com.jazzlogs.backend.playlist.PlaylistRepository;
 import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackRepository;
 import com.jazzlogs.backend.user.User;
@@ -47,6 +49,26 @@ class SavedItemServiceTest {
 
     @Autowired
     private TrackRepository trackRepository;
+
+    @Autowired
+    private PlaylistRepository playlistRepository;
+
+    @Test
+    void save_isIdempotent_forPlaylist() {
+        User user = persistUser();
+        UUID playlistId = persistPlaylist();
+
+        boolean firstSave = savedItemService.save(user.getId(), SaveableEntityType.PLAYLIST, playlistId);
+        boolean secondSave = savedItemService.save(user.getId(), SaveableEntityType.PLAYLIST, playlistId);
+
+        assertThat(firstSave).isTrue();
+        assertThat(secondSave).isFalse();
+        assertThat(exists(user.getId(), SaveableEntityType.PLAYLIST, playlistId)).isTrue();
+
+        savedItemService.remove(user.getId(), SaveableEntityType.PLAYLIST, playlistId);
+        savedItemService.remove(user.getId(), SaveableEntityType.PLAYLIST, playlistId);
+        assertThat(exists(user.getId(), SaveableEntityType.PLAYLIST, playlistId)).isFalse();
+    }
 
     @Test
     void save_isIdempotent() {
@@ -126,6 +148,16 @@ class SavedItemServiceTest {
             artist, "Test Album", null, null, null, 2024, 1, null,
             VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
         ));
+    }
+
+    // Saved directly via the repository, not PlaylistService.create — that also
+    // does a synchronous Neo4j tag read for the returned detail DTO, which this
+    // test doesn't care about and which would require a live Neo4j to succeed.
+    private UUID persistPlaylist() {
+        Playlist playlist = playlistRepository.save(new Playlist(
+            "test-slug-" + UUID.randomUUID(), "Test Playlist", null, null, null, null, true
+        ));
+        return playlist.getId();
     }
 
     // Keeps both sides of the bidirectional Album<->Track association in sync in

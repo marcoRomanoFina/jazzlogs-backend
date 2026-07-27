@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.album.AlbumRepository;
+import com.jazzlogs.backend.playlist.PlaylistRepository;
 import com.jazzlogs.backend.saveditem.dto.SavedItemSummary;
 import com.jazzlogs.backend.track.TrackRepository;
 
@@ -22,18 +23,20 @@ public class SavedItemService {
     private final SavedItemRepository savedItemRepository;
     private final Map<SaveableEntityType, SavedItemResolver> resolvers;
 
-    // Add a resolver param + a resolvers entry per new saveable type (Playlist)
-    // once it exists — no switch to touch, existence-checking (save) and
-    // display-data resolution (list) both dispatch off this one map.
+    // Add a resolver param + a resolvers entry per new saveable type — no
+    // switch to touch, existence-checking (save) and display-data resolution
+    // (list) both dispatch off this one map.
     public SavedItemService(
         SavedItemRepository savedItemRepository,
         AlbumRepository albumRepository,
-        TrackRepository trackRepository
+        TrackRepository trackRepository,
+        PlaylistRepository playlistRepository
     ) {
         this.savedItemRepository = savedItemRepository;
         this.resolvers = Map.of(
             SaveableEntityType.ALBUM, albumRepository,
-            SaveableEntityType.TRACK, trackRepository
+            SaveableEntityType.TRACK, trackRepository,
+            SaveableEntityType.PLAYLIST, playlistRepository
         );
     }
 
