@@ -25,7 +25,9 @@ import com.jazzlogs.backend.user.UserRepository;
 // No live Neo4j in this test environment (bolt://localhost:7687 with a
 // placeholder password, see src/test/resources/application.properties) — these
 // assert the fire-and-forget contract holds: a listen must land in Postgres
-// regardless of whether the async Neo4j mirror succeeds.
+// regardless of whether the async Neo4j mirror succeeds. One polymorphic
+// `listens` table backs every type (see ListenService's class javadoc), so a
+// single ListenRepository check works for all of them.
 @SpringBootTest
 @Transactional
 class ListenServiceTest {
@@ -34,13 +36,7 @@ class ListenServiceTest {
     private ListenService listenService;
 
     @Autowired
-    private UserAlbumListenRepository userAlbumListenRepository;
-
-    @Autowired
-    private UserTrackListenRepository userTrackListenRepository;
-
-    @Autowired
-    private UserPlaylistListenRepository userPlaylistListenRepository;
+    private ListenRepository listenRepository;
 
     @Autowired
     private UserRepository userRepository;
@@ -64,7 +60,7 @@ class ListenServiceTest {
 
         listenService.markAlbumListened(user.getId(), album.getId());
 
-        assertThat(userAlbumListenRepository.existsById(new UserAlbumListenId(user.getId(), album.getId()))).isTrue();
+        assertThat(hasListened(user.getId(), ListenableEntityType.ALBUM, album.getId())).isTrue();
     }
 
     @Test
@@ -74,7 +70,7 @@ class ListenServiceTest {
 
         listenService.markTrackListened(user.getId(), track.getId());
 
-        assertThat(userTrackListenRepository.existsById(new UserTrackListenId(user.getId(), track.getId()))).isTrue();
+        assertThat(hasListened(user.getId(), ListenableEntityType.TRACK, track.getId())).isTrue();
     }
 
     @Test
@@ -85,7 +81,7 @@ class ListenServiceTest {
         listenService.markPlaylistListened(user.getId(), playlist.getId());
         listenService.markPlaylistListened(user.getId(), playlist.getId());
 
-        assertThat(userPlaylistListenRepository.existsById(new UserPlaylistListenId(user.getId(), playlist.getId()))).isTrue();
+        assertThat(hasListened(user.getId(), ListenableEntityType.PLAYLIST, playlist.getId())).isTrue();
     }
 
     @Test
@@ -97,7 +93,11 @@ class ListenServiceTest {
         listenService.unmarkPlaylistListened(user.getId(), playlist.getId());
         listenService.unmarkPlaylistListened(user.getId(), playlist.getId());
 
-        assertThat(userPlaylistListenRepository.existsById(new UserPlaylistListenId(user.getId(), playlist.getId()))).isFalse();
+        assertThat(hasListened(user.getId(), ListenableEntityType.PLAYLIST, playlist.getId())).isFalse();
+    }
+
+    private boolean hasListened(UUID userId, ListenableEntityType entityType, UUID entityId) {
+        return listenRepository.existsById(new ListenId(userId, entityType, entityId));
     }
 
     // Saved directly via the repository, not PlaylistService.create — that also

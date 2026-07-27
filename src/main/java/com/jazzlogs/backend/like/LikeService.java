@@ -16,6 +16,7 @@ import com.jazzlogs.backend.editorial.EditorialRepository;
 import com.jazzlogs.backend.note.NoteRepository;
 import com.jazzlogs.backend.playlist.PlaylistRepository;
 import com.jazzlogs.backend.review.ReviewRepository;
+import com.jazzlogs.backend.series.SeriesRepository;
 
 @Service
 public class LikeService {
@@ -23,22 +24,24 @@ public class LikeService {
     private final LikeRepository likeRepository;
     private final Map<LikeableEntityType, LikeableRepository<?>> repositories;
 
-    // Add a repository param + a repositories entry per new likeable type
-    // (Series) as each one gets built — no switch to touch,
-    // existence-checking/counting/increment/decrement all dispatch off this one map.
+    // Add a repository param + a repositories entry per new likeable type as
+    // each one gets built — no switch to touch, existence-checking/counting/
+    // increment/decrement all dispatch off this one map.
     public LikeService(
         LikeRepository likeRepository,
         EditorialRepository editorialRepository,
         NoteRepository noteRepository,
         ReviewRepository reviewRepository,
-        PlaylistRepository playlistRepository
+        PlaylistRepository playlistRepository,
+        SeriesRepository seriesRepository
     ) {
         this.likeRepository = likeRepository;
         this.repositories = Map.of(
             LikeableEntityType.EDITORIAL, editorialRepository,
             LikeableEntityType.NOTE, noteRepository,
             LikeableEntityType.REVIEW, reviewRepository,
-            LikeableEntityType.PLAYLIST, playlistRepository
+            LikeableEntityType.PLAYLIST, playlistRepository,
+            LikeableEntityType.SERIES, seriesRepository
         );
     }
 
