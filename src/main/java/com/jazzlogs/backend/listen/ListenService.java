@@ -12,6 +12,8 @@ import org.springframework.web.server.ResponseStatusException;
 import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.album.AlbumRepository;
 import com.jazzlogs.backend.graph.GraphService;
+import com.jazzlogs.backend.playlist.Playlist;
+import com.jazzlogs.backend.playlist.PlaylistRepository;
 import com.jazzlogs.backend.saveditem.SaveableEntityType;
 import com.jazzlogs.backend.saveditem.SavedItemRepository;
 import com.jazzlogs.backend.syncfailure.Neo4jAsyncSyncExecutor;
@@ -22,12 +24,13 @@ import com.jazzlogs.backend.track.TrackRepository;
 import lombok.AllArgsConstructor;
 
 /**
- * Dual-write on purpose: Postgres (user_album_listens/user_track_listens) is the
- * primary source of truth — the Review gate and any chronological feed read from
- * here, always, so they work even with Neo4j down. Neo4j gets a best-effort
- * mirror (:User)-[:LISTENED]->(:Album|:Track) for the recommendation agent to
- * traverse, dispatched through Neo4jAsyncSyncExecutor so a slow/down Neo4j never
- * adds latency to this request thread; a failure there is logged and swallowed,
+ * Dual-write on purpose: Postgres (user_album_listens/user_track_listens/
+ * user_playlist_listens) is the primary source of truth — the Review creation
+ * gate and any chronological feed read from here, always, so they work even
+ * with Neo4j down. Neo4j gets a best-effort mirror (:User)-[:LISTENED]->
+ * (:Album|:Track|:Playlist) for the recommendation agent to traverse,
+ * dispatched through Neo4jAsyncSyncExecutor so a slow/down Neo4j never adds
+ * latency to this request thread; a failure there is logged and swallowed,
  * never lets a listen fail.
  *
  * Also auto-removes the matching saved_items row (if any) in the same
@@ -40,8 +43,10 @@ public class ListenService {
 
     private final UserAlbumListenRepository userAlbumListenRepository;
     private final UserTrackListenRepository userTrackListenRepository;
+    private final UserPlaylistListenRepository userPlaylistListenRepository;
     private final AlbumRepository albumRepository;
     private final TrackRepository trackRepository;
+    private final PlaylistRepository playlistRepository;
     private final SavedItemRepository savedItemRepository;
     private final GraphService graphService;
     private final Neo4jAsyncSyncExecutor syncExecutor;
@@ -134,6 +139,41 @@ public class ListenService {
         return userTrackListenRepository.existsById(new UserTrackListenId(userId, trackId));
     }
 
+    @Transactional
+    public void markPlaylistListened(UUID userId, UUID playlistId) {
+        getPlaylistOrThrow(playlistId);
+        boolean isNew = userPlaylistListenRepository.insertIfNotExists(userId, playlistId);
+        savedItemRepository.deleteByUserIdAndEntityTypeAndEntityId(userId, SaveableEntityType.PLAYLIST, playlistId);
+        if (isNew) {
+            syncPlaylistListenedToGraph(userId, playlistId);
+        }
+    }
+
+    private void syncPlaylistListenedToGraph(UUID userId, UUID playlistId) {
+        Instant listenedAt = Instant.now();
+        syncExecutor.sync(
+            SyncFailureEntityType.LISTENED,
+            listenedPayload("PLAYLIST", userId, playlistId, listenedAt),
+            () -> graphService.markPlaylistListened(userId, playlistId, listenedAt)
+        );
+    }
+
+    /**
+     * Idempotent — does nothing if the playlist wasn't marked as listened.
+     * Postgres-only: unlike mark, this doesn't remove the Neo4j LISTENED edge —
+     * no unmark exists for Album/Track either, and MERGE means a later re-mark
+     * just overwrites listenedAt, so a stale edge here is harmless.
+     */
+    @Transactional
+    public void unmarkPlaylistListened(UUID userId, UUID playlistId) {
+        userPlaylistListenRepository.deleteByUserIdAndPlaylistId(userId, playlistId);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean hasListenedToPlaylist(UUID userId, UUID playlistId) {
+        return userPlaylistListenRepository.existsById(new UserPlaylistListenId(userId, playlistId));
+    }
+
     private Album getAlbumOrThrow(UUID albumId) {
         return albumRepository.findById(albumId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Album not found: " + albumId));
@@ -142,5 +182,10 @@ public class ListenService {
     private Track getTrackOrThrow(UUID trackId) {
         return trackRepository.findById(trackId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Track not found: " + trackId));
+    }
+
+    private Playlist getPlaylistOrThrow(UUID playlistId) {
+        return playlistRepository.findById(playlistId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Playlist not found: " + playlistId));
     }
 }

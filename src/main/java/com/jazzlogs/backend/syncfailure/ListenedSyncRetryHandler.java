@@ -10,7 +10,7 @@ import com.jazzlogs.backend.graph.GraphService;
 
 import lombok.AllArgsConstructor;
 
-// LISTENED covers both album and track listens (see ListenService) — the
+// LISTENED covers album, track, and playlist listens (see ListenService) — the
 // payload's targetType says which one this particular failure was.
 @Component
 @AllArgsConstructor
@@ -28,6 +28,7 @@ public class ListenedSyncRetryHandler implements SyncRetryHandler {
         switch (targetType) {
             case "ALBUM" -> graphService.markAlbumListened(userId, targetId, listenedAt);
             case "TRACK" -> graphService.markTrackListened(userId, targetId, listenedAt);
+            case "PLAYLIST" -> graphService.markPlaylistListened(userId, targetId, listenedAt);
             default -> throw new IllegalStateException("Unknown LISTENED targetType in payload: " + targetType);
         }
     }

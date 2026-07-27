@@ -31,6 +31,9 @@ public class SyncRetryWorker {
         ReviewRatedSyncRetryHandler reviewRatedHandler,
         ReviewHighlightedSyncRetryHandler reviewHighlightedHandler,
         TrackRatedSyncRetryHandler trackRatedHandler,
+        PlaylistTrackAddedSyncRetryHandler playlistTrackAddedHandler,
+        PlaylistTrackRemovedSyncRetryHandler playlistTrackRemovedHandler,
+        PlaylistTracksReorderedSyncRetryHandler playlistTracksReorderedHandler,
         @Value("${sync-failure.max-attempts:5}") int maxAttempts
     ) {
         this.syncFailureRepository = syncFailureRepository;
@@ -38,7 +41,10 @@ public class SyncRetryWorker {
             SyncFailureEntityType.LISTENED, listenedHandler,
             SyncFailureEntityType.REVIEW_RATED, reviewRatedHandler,
             SyncFailureEntityType.REVIEW_HIGHLIGHTED, reviewHighlightedHandler,
-            SyncFailureEntityType.TRACK_RATED, trackRatedHandler
+            SyncFailureEntityType.TRACK_RATED, trackRatedHandler,
+            SyncFailureEntityType.PLAYLIST_TRACK_ADDED, playlistTrackAddedHandler,
+            SyncFailureEntityType.PLAYLIST_TRACK_REMOVED, playlistTrackRemovedHandler,
+            SyncFailureEntityType.PLAYLIST_TRACKS_REORDERED, playlistTracksReorderedHandler
         );
         this.maxAttempts = maxAttempts;
     }

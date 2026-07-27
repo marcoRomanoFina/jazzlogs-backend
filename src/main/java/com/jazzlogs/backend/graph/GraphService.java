@@ -70,6 +70,17 @@ public class GraphService {
         }
     }
 
+    public void syncPlaylistNode(UUID playlistId, String name) {
+        try {
+            neo4jClient.query("MERGE (p:Playlist {id: $id}) SET p.name = $name")
+                .bind(playlistId.toString()).to("id")
+                .bind(name).to("name")
+                .run();
+        } catch (Exception ex) {
+            log.error("Failed to sync Neo4j :Playlist node for id={}", playlistId, ex);
+        }
+    }
+
     public void addTrackToAlbum(UUID albumId, UUID trackId, int trackNumber, String trackRole) {
         write("add CONTAINS album=" + albumId + " track=" + trackId, () ->
             neo4jClient.query("""
@@ -577,6 +588,120 @@ public class GraphService {
                     Boolean.TRUE.equals(row.get("primaryCredit"))
                 ))
                 .toList());
+    }
+
+    // --- Playlist relationships ---
+
+    /** Same MATCH-then-MERGE / non-swallowed-here contract as markAlbumListened/markTrackListened. */
+    public void markPlaylistListened(UUID userId, UUID playlistId, Instant listenedAt) {
+        write("add LISTENED user=" + userId + " playlist=" + playlistId, () ->
+            neo4jClient.query("""
+                    MATCH (u:User {id: $userId}), (p:Playlist {id: $playlistId})
+                    MERGE (u)-[l:LISTENED]->(p)
+                    SET l.listenedAt = $listenedAt
+                    """)
+                .bind(userId.toString()).to("userId")
+                .bind(playlistId.toString()).to("playlistId")
+                .bind(listenedAt).to("listenedAt")
+                .run());
+    }
+
+    /** MATCH-then-MERGE, single edge — PlaylistService.addTrack's sync target. */
+    public void addPlaylistTrack(UUID playlistId, UUID trackId, int position) {
+        write("add BELONGS_TO track=" + trackId + " playlist=" + playlistId, () ->
+            neo4jClient.query("""
+                    MATCH (tr:Track {id: $trackId}), (p:Playlist {id: $playlistId})
+                    MERGE (tr)-[b:BELONGS_TO]->(p)
+                    SET b.position = $position
+                    """)
+                .bind(trackId.toString()).to("trackId")
+                .bind(playlistId.toString()).to("playlistId")
+                .bind(position).to("position")
+                .run());
+    }
+
+    /** Single edge delete — PlaylistService.removeTrack's sync target. */
+    public void removePlaylistTrack(UUID playlistId, UUID trackId) {
+        write("remove BELONGS_TO track=" + trackId + " playlist=" + playlistId, () ->
+            neo4jClient.query("""
+                    MATCH (:Track {id: $trackId})-[r:BELONGS_TO]->(:Playlist {id: $playlistId})
+                    DELETE r
+                    """)
+                .bind(trackId.toString()).to("trackId")
+                .bind(playlistId.toString()).to("playlistId")
+                .run());
+    }
+
+    /**
+     * MATCH on the existing edges only — no MERGE, no DELETE. The set of
+     * BELONGS_TO edges doesn't change on a reorder, only their position, so
+     * unlike addPlaylistTrack/removePlaylistTrack this can't create or remove
+     * relationships, only update the ones already there.
+     */
+    public void reorderPlaylistTracks(UUID playlistId, Map<UUID, Integer> positions) {
+        write("reorder BELONGS_TO tracks for playlist=" + playlistId, () -> {
+            if (positions.isEmpty()) {
+                return;
+            }
+            List<Map<String, Object>> rows = positions.entrySet().stream()
+                .map(entry -> Map.<String, Object>of("trackId", entry.getKey().toString(), "position", entry.getValue()))
+                .toList();
+            neo4jClient.query("""
+                    MATCH (p:Playlist {id: $playlistId})
+                    UNWIND $rows AS row
+                    MATCH (tr:Track {id: row.trackId})-[b:BELONGS_TO]->(p)
+                    SET b.position = row.position
+                    """)
+                .bind(playlistId.toString()).to("playlistId")
+                .bind(rows).to("rows")
+                .run();
+        });
+    }
+
+    /**
+     * Clear + recreate all three vocab relationship types together (style/mood/
+     * context) — always recreated as one unit from PlaylistService. Neo4j-only,
+     * same failure policy as Album's addStyle/addMood/addContext: synchronous,
+     * propagates GraphWriteException on failure (no Postgres table backing this,
+     * nothing to fall back to). Targets nodes already seeded by VocabularySeeder;
+     * never creates vocabulary nodes here.
+     */
+    public void setPlaylistTags(UUID playlistId, List<String> styleCodes, List<String> moodCodes, List<String> contextCodes) {
+        write("set tags for playlist=" + playlistId, () -> {
+            replaceVocabEdges(playlistId, "Style", "BELONGS_TO", styleCodes);
+            replaceVocabEdges(playlistId, "Mood", "EVOKES_MOOD", moodCodes);
+            replaceVocabEdges(playlistId, "Context", "PERFECT_FOR", contextCodes);
+        });
+    }
+
+    public List<VocabularyTag> getPlaylistStyles(UUID playlistId) {
+        return getTags("Playlist", playlistId, "BELONGS_TO", "Style");
+    }
+
+    public List<VocabularyTag> getPlaylistMoods(UUID playlistId) {
+        return getTags("Playlist", playlistId, "EVOKES_MOOD", "Mood");
+    }
+
+    public List<VocabularyTag> getPlaylistContexts(UUID playlistId) {
+        return getTags("Playlist", playlistId, "PERFECT_FOR", "Context");
+    }
+
+    private void replaceVocabEdges(UUID playlistId, String vocabLabel, String relationshipType, List<String> codes) {
+        neo4jClient.query(
+                "MATCH (:Playlist {id: $playlistId})-[r:" + relationshipType + "]->(:" + vocabLabel + ") DELETE r")
+            .bind(playlistId.toString()).to("playlistId")
+            .run();
+
+        if (!codes.isEmpty()) {
+            neo4jClient.query(
+                    "MATCH (p:Playlist {id: $playlistId}) "
+                        + "UNWIND $codes AS code "
+                        + "MATCH (v:" + vocabLabel + " {code: code}) "
+                        + "MERGE (p)-[:" + relationshipType + "]->(v)")
+                .bind(playlistId.toString()).to("playlistId")
+                .bind(codes).to("codes")
+                .run();
+        }
     }
 
     private List<VocabularyTag> getTags(String sourceLabel, UUID sourceId, String relationshipType, String targetLabel) {
