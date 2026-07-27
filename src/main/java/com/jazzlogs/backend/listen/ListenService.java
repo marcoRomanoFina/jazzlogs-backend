@@ -16,6 +16,8 @@ import com.jazzlogs.backend.playlist.Playlist;
 import com.jazzlogs.backend.playlist.PlaylistRepository;
 import com.jazzlogs.backend.saveditem.SaveableEntityType;
 import com.jazzlogs.backend.saveditem.SavedItemRepository;
+import com.jazzlogs.backend.series.SeriesChapter;
+import com.jazzlogs.backend.series.SeriesChapterRepository;
 import com.jazzlogs.backend.syncfailure.Neo4jAsyncSyncExecutor;
 import com.jazzlogs.backend.syncfailure.SyncFailureEntityType;
 import com.jazzlogs.backend.track.Track;
@@ -24,14 +26,23 @@ import com.jazzlogs.backend.track.TrackRepository;
 import lombok.AllArgsConstructor;
 
 /**
- * Dual-write on purpose: Postgres (user_album_listens/user_track_listens/
- * user_playlist_listens) is the primary source of truth — the Review creation
+ * One polymorphic table (listens: user_id, entity_type, entity_id) backs
+ * every listenable type — same shape as Like/SavedItem, not a dedicated table
+ * per type. Postgres is the primary source of truth — the Review creation
  * gate and any chronological feed read from here, always, so they work even
  * with Neo4j down. Neo4j gets a best-effort mirror (:User)-[:LISTENED]->
  * (:Album|:Track|:Playlist) for the recommendation agent to traverse,
  * dispatched through Neo4jAsyncSyncExecutor so a slow/down Neo4j never adds
  * latency to this request thread; a failure there is logged and swallowed,
- * never lets a listen fail.
+ * never lets a listen fail. Series chapters are the exception — Postgres-only,
+ * no Neo4j mirror at all (Series is out of the graph by design, see
+ * SeriesService).
+ *
+ * Deliberately keeps one named public method per type (markAlbumListened,
+ * markTrackListened, ...) instead of a single generic mark(entityType, id) —
+ * each type has different side effects (Neo4j sync or not, saved_items
+ * cleanup or not), and burying that behind one generic entry point would
+ * hide, not simplify, those differences.
  *
  * Also auto-removes the matching saved_items row (if any) in the same
  * transaction as the Postgres listen insert — unlike the Neo4j sync, there's no
@@ -41,12 +52,11 @@ import lombok.AllArgsConstructor;
 @AllArgsConstructor
 public class ListenService {
 
-    private final UserAlbumListenRepository userAlbumListenRepository;
-    private final UserTrackListenRepository userTrackListenRepository;
-    private final UserPlaylistListenRepository userPlaylistListenRepository;
+    private final ListenRepository listenRepository;
     private final AlbumRepository albumRepository;
     private final TrackRepository trackRepository;
     private final PlaylistRepository playlistRepository;
+    private final SeriesChapterRepository seriesChapterRepository;
     private final SavedItemRepository savedItemRepository;
     private final GraphService graphService;
     private final Neo4jAsyncSyncExecutor syncExecutor;
@@ -62,7 +72,7 @@ public class ListenService {
     public void markAlbumListened(UUID userId, UUID albumId) {
         Album album = getAlbumOrThrow(albumId);
 
-        boolean isNew = userAlbumListenRepository.insertIfNotExists(userId, albumId);
+        boolean isNew = listenRepository.insertIfNotExists(userId, ListenableEntityType.ALBUM, albumId);
         savedItemRepository.deleteByUserIdAndEntityTypeAndEntityId(userId, SaveableEntityType.ALBUM, albumId);
         if (isNew) {
             syncAlbumListenedToGraph(userId, albumId);
@@ -95,7 +105,7 @@ public class ListenService {
     }
 
     private void markTrackListenedCore(UUID userId, UUID trackId) {
-        boolean isNew = userTrackListenRepository.insertIfNotExists(userId, trackId);
+        boolean isNew = listenRepository.insertIfNotExists(userId, ListenableEntityType.TRACK, trackId);
         savedItemRepository.deleteByUserIdAndEntityTypeAndEntityId(userId, SaveableEntityType.TRACK, trackId);
         if (isNew) {
             syncTrackListenedToGraph(userId, trackId);
@@ -112,9 +122,9 @@ public class ListenService {
         );
     }
 
-    // targetType disambiguates ALBUM vs TRACK within the single LISTENED entity
-    // type — see ListenedSyncRetryHandler. Values are stored as canonical
-    // Strings (see SyncFailure's payload contract).
+    // targetType disambiguates ALBUM vs TRACK vs PLAYLIST within the single
+    // LISTENED entity type — see ListenedSyncRetryHandler. Values are stored as
+    // canonical Strings (see SyncFailure's payload contract).
     private Map<String, Object> listenedPayload(String targetType, UUID userId, UUID targetId, Instant listenedAt) {
         return Map.of(
             "targetType", targetType,
@@ -131,18 +141,18 @@ public class ListenService {
      */
     @Transactional(readOnly = true)
     public boolean hasListenedToAlbum(UUID userId, UUID albumId) {
-        return userAlbumListenRepository.existsById(new UserAlbumListenId(userId, albumId));
+        return listenRepository.existsById(new ListenId(userId, ListenableEntityType.ALBUM, albumId));
     }
 
     @Transactional(readOnly = true)
     public boolean hasListenedToTrack(UUID userId, UUID trackId) {
-        return userTrackListenRepository.existsById(new UserTrackListenId(userId, trackId));
+        return listenRepository.existsById(new ListenId(userId, ListenableEntityType.TRACK, trackId));
     }
 
     @Transactional
     public void markPlaylistListened(UUID userId, UUID playlistId) {
         getPlaylistOrThrow(playlistId);
-        boolean isNew = userPlaylistListenRepository.insertIfNotExists(userId, playlistId);
+        boolean isNew = listenRepository.insertIfNotExists(userId, ListenableEntityType.PLAYLIST, playlistId);
         savedItemRepository.deleteByUserIdAndEntityTypeAndEntityId(userId, SaveableEntityType.PLAYLIST, playlistId);
         if (isNew) {
             syncPlaylistListenedToGraph(userId, playlistId);
@@ -166,12 +176,27 @@ public class ListenService {
      */
     @Transactional
     public void unmarkPlaylistListened(UUID userId, UUID playlistId) {
-        userPlaylistListenRepository.deleteByUserIdAndPlaylistId(userId, playlistId);
+        listenRepository.deleteByUserIdAndEntityTypeAndEntityId(userId, ListenableEntityType.PLAYLIST, playlistId);
     }
 
     @Transactional(readOnly = true)
     public boolean hasListenedToPlaylist(UUID userId, UUID playlistId) {
-        return userPlaylistListenRepository.existsById(new UserPlaylistListenId(userId, playlistId));
+        return listenRepository.existsById(new ListenId(userId, ListenableEntityType.PLAYLIST, playlistId));
+    }
+
+    /**
+     * Postgres-only, no Neo4j call at all — see class javadoc. This row IS the
+     * "chapter completed" signal (no separate progress table, per SeriesService).
+     */
+    @Transactional
+    public void markSeriesChapterListened(UUID userId, UUID chapterId) {
+        getSeriesChapterOrThrow(chapterId);
+        listenRepository.insertIfNotExists(userId, ListenableEntityType.SERIES_CHAPTER, chapterId);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean hasListenedToSeriesChapter(UUID userId, UUID chapterId) {
+        return listenRepository.existsById(new ListenId(userId, ListenableEntityType.SERIES_CHAPTER, chapterId));
     }
 
     private Album getAlbumOrThrow(UUID albumId) {
@@ -182,6 +207,11 @@ public class ListenService {
     private Track getTrackOrThrow(UUID trackId) {
         return trackRepository.findById(trackId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Track not found: " + trackId));
+    }
+
+    private SeriesChapter getSeriesChapterOrThrow(UUID chapterId) {
+        return seriesChapterRepository.findById(chapterId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Series chapter not found: " + chapterId));
     }
 
     private Playlist getPlaylistOrThrow(UUID playlistId) {
