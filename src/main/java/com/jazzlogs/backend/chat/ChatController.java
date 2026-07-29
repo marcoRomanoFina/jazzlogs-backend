@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.jazzlogs.backend.chat.dto.ChatDto;
 import com.jazzlogs.backend.chat.dto.ChatExchangeDto;
 import com.jazzlogs.backend.chat.dto.CreateChatExchangeRequest;
+import com.jazzlogs.backend.chat.dto.CreateChatWithExchangeRequest;
 import com.jazzlogs.backend.user.UserService;
 
 import lombok.AllArgsConstructor;
@@ -39,13 +40,19 @@ public class ChatController {
         return chatService.getChatExchanges(chatId, currentUserId(jwt));
     }
 
-    // Creates the chat too when isNewChat is true — no standalone "create an
-    // empty chat" endpoint, see CreateChatExchangeRequest.
-    @PostMapping("/exchanges")
-    public ChatExchangeDto createExchange(@Valid @RequestBody CreateChatExchangeRequest request, @AuthenticationPrincipal Jwt jwt) {
-        return chatService.createExchange(
-            currentUserId(jwt), request.chatId(), request.isNewChat(), request.userMessage(), request.finalResponse()
-        );
+   
+    @PostMapping("/new-with-exchange")
+    public ChatExchangeDto createChatWithExchange(@Valid @RequestBody CreateChatWithExchangeRequest request, @AuthenticationPrincipal Jwt jwt) {
+        return chatService.createChatWithExchange(currentUserId(jwt), request.userMessage(), request.finalResponse(), request.winners());
+    }
+
+    @PostMapping("/{chatId}/exchanges")
+    public ChatExchangeDto createExchange(
+        @PathVariable UUID chatId,
+        @Valid @RequestBody CreateChatExchangeRequest request,
+        @AuthenticationPrincipal Jwt jwt
+    ) {
+        return chatService.createExchange(chatId, currentUserId(jwt), request.userMessage(), request.finalResponse(), request.winners());
     }
 
     private UUID currentUserId(Jwt jwt) {

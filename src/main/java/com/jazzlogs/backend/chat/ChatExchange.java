@@ -1,7 +1,11 @@
 package com.jazzlogs.backend.chat;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
+
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -37,13 +41,19 @@ public class ChatExchange {
     @Column(name = "final_response", nullable = false, columnDefinition = "TEXT")
     private String finalResponse;
 
+    // Null/empty when this exchange didn't recommend anything.
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "winners")
+    private List<WinnerRef> winners;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
-    public ChatExchange(Chat chat, String userMessage, String finalResponse) {
+    public ChatExchange(Chat chat, String userMessage, String finalResponse, List<WinnerRef> winners) {
         this.chat = chat;
         this.userMessage = userMessage;
         this.finalResponse = finalResponse;
+        this.winners = winners;
     }
 
     public UUID getChatId() {

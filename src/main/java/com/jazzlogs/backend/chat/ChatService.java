@@ -22,6 +22,7 @@ public class ChatService {
     private final ChatRepository chatRepository;
     private final ChatExchangeRepository chatExchangeRepository;
     private final UserRepository userRepository;
+    private final ChatRecommendationMemoryService chatRecommendationMemoryService;
 
     @Transactional(readOnly = true)
     public List<ChatDto> getUserChats(UUID userId) {
@@ -36,24 +37,30 @@ public class ChatService {
     }
 
    
-    @Transactional
-    public ChatExchangeDto createExchange(UUID requestingUserId, UUID chatId, boolean isNewChat, String userMessage, String finalResponse) {
-        Chat chat;
-        if (isNewChat) {
-            User user = getUserOrThrow(requestingUserId);
-            chat = chatRepository.save(new Chat(user, null));
-        } else {
-            if (chatId == null) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "chatId is required when isNewChat is false");
-            }
-            chat = getChatOrThrow(chatId);
-            assertOwner(chat, requestingUserId);
-        }
 
-        ChatExchange saved = chatExchangeRepository.save(new ChatExchange(chat, userMessage, finalResponse));
+    @Transactional
+    public ChatExchangeDto createChatWithExchange(UUID requestingUserId, String userMessage, String finalResponse, List<WinnerRef> winners) {
+        User user = getUserOrThrow(requestingUserId);
+        Chat chat = chatRepository.save(new Chat(user, null));
+        return persistExchange(chat, userMessage, finalResponse, winners);
+    }
+
+    @Transactional
+    public ChatExchangeDto createExchange(UUID chatId, UUID requestingUserId, String userMessage, String finalResponse, List<WinnerRef> winners) {
+        Chat chat = getChatOrThrow(chatId);
+        assertOwner(chat, requestingUserId);
+        return persistExchange(chat, userMessage, finalResponse, winners);
+    }
+
+    private ChatExchangeDto persistExchange(Chat chat, String userMessage, String finalResponse, List<WinnerRef> winners) {
+        ChatExchange saved = chatExchangeRepository.save(new ChatExchange(chat, userMessage, finalResponse, winners));
 
         chat.recordExchangeAt(saved.getCreatedAt());
         chatRepository.save(chat);
+
+        if (winners != null && !winners.isEmpty()) {
+            chatRecommendationMemoryService.syncWinners(chat.getId(), winners);
+        }
 
         return toDto(saved);
     }
@@ -74,6 +81,7 @@ public class ChatService {
             exchange.getChatId(),
             exchange.getUserMessage(),
             exchange.getFinalResponse(),
+            exchange.getWinners(),
             exchange.getCreatedAt()
         );
     }
