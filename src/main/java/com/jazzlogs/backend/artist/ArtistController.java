@@ -86,7 +86,7 @@ public class ArtistController {
 
     @PostMapping("/{id}/editorial")
     @PreAuthorize("hasRole('ADMIN')")
-    public ArtistEditorialDto upsertEditorial(@PathVariable UUID id, @RequestBody ArtistEditorialRequest request) {
+    public ArtistEditorialDto upsertEditorial(@PathVariable UUID id, @Valid @RequestBody ArtistEditorialRequest request) {
         ArtistEditorial editorial = editorialService.upsertArtistEditorial(id, request);
         return editorialService.toDto(editorial);
     }

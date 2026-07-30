@@ -51,7 +51,7 @@ public enum MoodVocabulary implements EditorialVocabularyValue {
     // Sonic texture
     ELEGANT("Elegant"),
     SMOOTH("Smooth"),
-    EARTHY("Earthy"),
+    GROOVY("Groovy"),
     GRITTY("Gritty"),
     SPACIOUS("Spacious"),
     BLUESY("Bluesy");

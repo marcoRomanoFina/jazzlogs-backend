@@ -83,7 +83,7 @@ public class AlbumController {
 
     @PostMapping("/{id}/editorial")
     @PreAuthorize("hasRole('ADMIN')")
-    public AlbumEditorialDto upsertEditorial(@PathVariable UUID id, @RequestBody AlbumEditorialRequest request, @AuthenticationPrincipal Jwt jwt) {
+    public AlbumEditorialDto upsertEditorial(@PathVariable UUID id, @Valid @RequestBody AlbumEditorialRequest request, @AuthenticationPrincipal Jwt jwt) {
         AlbumEditorial editorial = editorialService.upsertAlbumEditorial(id, request);
         return editorialService.toDto(editorial, currentUserId(jwt));
     }

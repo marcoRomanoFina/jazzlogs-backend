@@ -57,7 +57,7 @@ public class EditorialService {
         AlbumEditorial editorial = albumEditorialRepository.findByAlbumId(albumId)
             .orElseGet(() -> new AlbumEditorial(album));
 
-        editorial.update(request.dek(), request.byline(), request.readMinutes());
+        editorial.update(request.title(), request.dek(), request.byline(), request.readMinutes());
         AlbumEditorial saved = albumEditorialRepository.save(editorial);
 
         upsertBlocks(saved, request.blocks());
@@ -71,6 +71,7 @@ public class EditorialService {
 
         TrackEditorial editorial = trackEditorialRepository.findByTrackId(trackId)
             .orElseGet(() -> new TrackEditorial(track));
+        editorial.update(request.title(), null, null, null);
         TrackEditorial saved = trackEditorialRepository.save(editorial);
 
         upsertBlocks(saved, request.blocks());
@@ -85,7 +86,7 @@ public class EditorialService {
         ArtistEditorial editorial = artistEditorialRepository.findByArtistId(artistId)
             .orElseGet(() -> new ArtistEditorial(artist));
 
-        editorial.update(request.dek(), request.byline(), request.readMinutes());
+        editorial.update(request.title(), request.dek(), request.byline(), request.readMinutes());
         ArtistEditorial saved = artistEditorialRepository.save(editorial);
 
         upsertBlocks(saved, request.blocks());
@@ -164,6 +165,7 @@ public class EditorialService {
         UUID editorialId = editorial.getId();
         return new AlbumEditorialDto(
             editorialId,
+            editorial.getTitle(),
             editorial.getDek(),
             editorial.getByline(),
             editorial.getReadMinutes(),
@@ -174,11 +176,13 @@ public class EditorialService {
     }
 
     public TrackEditorialDto toDto(TrackEditorial editorial) {
-        return new TrackEditorialDto(blocksOf(editorial));
+        return new TrackEditorialDto(editorial.getTitle(), blocksOf(editorial));
     }
 
     public ArtistEditorialDto toDto(ArtistEditorial editorial) {
-        return new ArtistEditorialDto(editorial.getDek(), editorial.getByline(), editorial.getReadMinutes(), blocksOf(editorial));
+        return new ArtistEditorialDto(
+            editorial.getTitle(), editorial.getDek(), editorial.getByline(), editorial.getReadMinutes(), blocksOf(editorial)
+        );
     }
 
     private List<EditorialBlockDto> blocksOf(Editorial editorial) {
