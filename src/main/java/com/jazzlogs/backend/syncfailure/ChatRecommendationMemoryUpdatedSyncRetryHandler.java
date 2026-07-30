@@ -20,7 +20,8 @@ public class ChatRecommendationMemoryUpdatedSyncRetryHandler implements SyncRetr
     @Override
     public void retry(Map<String, Object> payload) {
         UUID chatId = UUID.fromString((String) payload.get("chatId"));
-        List<WinnerRef> winners = ChatRecommendationMemoryService.fromPayload(payload);
-        chatRecommendationMemoryService.recordWinners(chatId, winners);
+        List<WinnerRef> winners = ChatRecommendationMemoryService.winnersFromPayload(payload);
+        String updatedSessionSummary = ChatRecommendationMemoryService.summaryFromPayload(payload);
+        chatRecommendationMemoryService.recordMemoryUpdate(chatId, winners, updatedSessionSummary);
     }
 }

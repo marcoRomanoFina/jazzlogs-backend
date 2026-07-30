@@ -22,7 +22,6 @@ public class ChatService {
     private final ChatRepository chatRepository;
     private final ChatExchangeRepository chatExchangeRepository;
     private final UserRepository userRepository;
-    private final ChatRecommendationMemoryService chatRecommendationMemoryService;
 
     @Transactional(readOnly = true)
     public List<ChatDto> getUserChats(UUID userId) {
@@ -36,33 +35,23 @@ public class ChatService {
         return chatExchangeRepository.findByChatIdOrderByCreatedAtAsc(chatId).stream().map(this::toDto).toList();
     }
 
-   
-
+    // user is a freshly-fetched entity here, not a lazy proxy — safe to read
+    // from AgentOrchestrator's async loop with no extra fetch needed.
     @Transactional
-    public ChatExchangeDto createChatWithExchange(UUID requestingUserId, String userMessage, String finalResponse, List<WinnerRef> winners) {
+    public Chat createChat(UUID requestingUserId) {
         User user = getUserOrThrow(requestingUserId);
-        Chat chat = chatRepository.save(new Chat(user, null));
-        return persistExchange(chat, userMessage, finalResponse, winners);
+        return chatRepository.save(new Chat(user, null));
     }
 
-    @Transactional
-    public ChatExchangeDto createExchange(UUID chatId, UUID requestingUserId, String userMessage, String finalResponse, List<WinnerRef> winners) {
-        Chat chat = getChatOrThrow(chatId);
+    // findByIdWithUser (not getChatOrThrow/findById) — this Chat is handed to
+    // AgentOrchestrator's async loop, which needs chat.getUser() to already
+    // be initialized; see ChatRepository.findByIdWithUser.
+    @Transactional(readOnly = true)
+    public Chat getOwnedChat(UUID chatId, UUID requestingUserId) {
+        Chat chat = chatRepository.findByIdWithUser(chatId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chat not found: " + chatId));
         assertOwner(chat, requestingUserId);
-        return persistExchange(chat, userMessage, finalResponse, winners);
-    }
-
-    private ChatExchangeDto persistExchange(Chat chat, String userMessage, String finalResponse, List<WinnerRef> winners) {
-        ChatExchange saved = chatExchangeRepository.save(new ChatExchange(chat, userMessage, finalResponse, winners));
-
-        chat.recordExchangeAt(saved.getCreatedAt());
-        chatRepository.save(chat);
-
-        if (winners != null && !winners.isEmpty()) {
-            chatRecommendationMemoryService.syncWinners(chat.getId(), winners);
-        }
-
-        return toDto(saved);
+        return chat;
     }
 
     private void assertOwner(Chat chat, UUID requestingUserId) {
