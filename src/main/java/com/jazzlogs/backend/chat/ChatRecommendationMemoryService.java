@@ -17,12 +17,16 @@ import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 // A performance layer over data that's in the worst case reconstructible by
-// scanning chat_exchanges.winners — never the source of truth. syncWinners is
-// the fire-and-forget entry point ChatService calls: off the request thread,
-// and on failure it records a sync_failures row (same table/worker as the
-// Neo4j sync, see ChatRecommendationMemoryUpdatedSyncRetryHandler) instead of
-// propagating — a failure here must never take the exchange write down with
-// it. recordWinners is the actual write, reused directly by the retry handler.
+// scanning chat_exchanges.winners — never the source of truth for winners.
+// session_summary is the one exception (it's LLM-generated free text, not
+// reconstructible from raw rows), but it shares this table/write-path anyway
+// since it's produced at the exact same moment as winners, by the same
+// submit_final_answer turn. syncMemoryUpdate is the fire-and-forget entry
+// point ChatExchangeService calls: off the request thread, and on failure
+// it records a sync_failures row (same table/worker as the Neo4j sync, see
+// ChatRecommendationMemoryUpdatedSyncRetryHandler) instead of propagating —
+// a failure here must never take the exchange write down with it.
+// recordMemoryUpdate is the actual write, reused directly by the retry handler.
 @Slf4j
 @Service
 @AllArgsConstructor
@@ -35,36 +39,53 @@ public class ChatRecommendationMemoryService {
     private final SyncFailureRepository syncFailureRepository;
 
     @Async
-    public void syncWinners(UUID chatId, List<WinnerRef> winners) {
+    public void syncMemoryUpdate(UUID chatId, List<WinnerRef> winners, String updatedSessionSummary) {
         try {
-            recordWinners(chatId, winners);
+            recordMemoryUpdate(chatId, winners, updatedSessionSummary);
         } catch (Exception ex) {
             log.warn("Failed to update chat_recommendation_memory for chat {}", chatId, ex);
             String error = ex.getClass().getSimpleName() + ": " + ex.getMessage();
-            syncFailureRepository.save(new SyncFailure(SyncFailureEntityType.CHAT_RECOMMENDATION_MEMORY_UPDATED, toPayload(chatId, winners), error));
+            Map<String, Object> payload = toPayload(chatId, winners, updatedSessionSummary);
+            syncFailureRepository.save(new SyncFailure(SyncFailureEntityType.CHAT_RECOMMENDATION_MEMORY_UPDATED, payload, error));
         }
     }
 
     @Transactional
-    public void recordWinners(UUID chatId, List<WinnerRef> winners) {
+    public void recordMemoryUpdate(UUID chatId, List<WinnerRef> winners, String updatedSessionSummary) {
         ChatRecommendationMemory memory = chatRecommendationMemoryRepository.findByChatId(chatId)
             .orElseGet(() -> new ChatRecommendationMemory(chatId));
-        memory.appendWinners(winners, WINNERS_HISTORY_CAP);
+
+        if (winners != null && !winners.isEmpty()) {
+            memory.appendWinners(winners, WINNERS_HISTORY_CAP);
+        }
+        if (updatedSessionSummary != null && !updatedSessionSummary.isBlank()) {
+            memory.updateSessionSummary(updatedSessionSummary);
+        }
+
         chatRecommendationMemoryRepository.save(memory);
     }
 
-    // Canonical-Strings payload contract (see ReviewService) — nested as a list
-    // of maps since WinnerRef isn't primitive-only (primaryArtist can be null,
-    // which Map.of() can't hold, hence LinkedHashMap here).
-    public static Map<String, Object> toPayload(UUID chatId, List<WinnerRef> winners) {
-        List<Map<String, Object>> winnerMaps = winners.stream().map(ChatRecommendationMemoryService::toMap).toList();
-        return Map.of("chatId", chatId.toString(), "winners", winnerMaps);
+    // Canonical-Strings payload contract (see ReviewService) — winners nested
+    // as a list of maps since WinnerRef isn't primitive-only.
+    public static Map<String, Object> toPayload(UUID chatId, List<WinnerRef> winners, String updatedSessionSummary) {
+        List<WinnerRef> safeWinners = winners == null ? List.of() : winners;
+        List<Map<String, Object>> winnerMaps = safeWinners.stream().map(ChatRecommendationMemoryService::toMap).toList();
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("chatId", chatId.toString());
+        payload.put("winners", winnerMaps);
+        payload.put("updatedSessionSummary", updatedSessionSummary);
+        return payload;
     }
 
     @SuppressWarnings("unchecked")
-    public static List<WinnerRef> fromPayload(Map<String, Object> payload) {
+    public static List<WinnerRef> winnersFromPayload(Map<String, Object> payload) {
         List<Map<String, Object>> winnerMaps = (List<Map<String, Object>>) payload.get("winners");
-        return winnerMaps.stream().map(ChatRecommendationMemoryService::toWinnerRef).toList();
+        return winnerMaps == null ? List.of() : winnerMaps.stream().map(ChatRecommendationMemoryService::toWinnerRef).toList();
+    }
+
+    public static String summaryFromPayload(Map<String, Object> payload) {
+        return (String) payload.get("updatedSessionSummary");
     }
 
     private static Map<String, Object> toMap(WinnerRef winner) {

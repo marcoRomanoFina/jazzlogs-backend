@@ -90,18 +90,34 @@ All routes except `/public/**` require a `Authorization: Bearer <supabase-jwt>` 
 
 ## Running locally
 
-Requirements: Java 21, Maven, a Postgres instance (Supabase or local), and a local Neo4j (Community Edition works fine via Docker).
+Requirements: Java 21, Maven, and a local Neo4j (Community Edition works fine via Docker).
+
+Two Spring profiles control the datasource — `application-dev.properties` /
+`application-prod.properties`:
+
+- **`dev` (default, no flag needed)** — an in-memory H2 database, schema
+  created fresh on every boot (`ddl-auto=update`), no Postgres required. Data
+  does not survive a restart. Browse it at
+  [http://localhost:8080/h2-console](http://localhost:8080/h2-console)
+  (JDBC URL `jdbc:h2:mem:jazzlogs`, user `sa`, blank password).
+- **`prod`** — the real Supabase Postgres, via `DATABASE_URL` /
+  `DATABASE_USERNAME` / `DATABASE_PASSWORD`. Activate with
+  `SPRING_PROFILES_ACTIVE=prod` (set automatically in deployment, e.g. Railway).
 
 ```bash
 ./mvnw spring-boot:run
+# against real Postgres instead:
+SPRING_PROFILES_ACTIVE=prod ./mvnw spring-boot:run
 ```
 
-Configuration is read from environment variables (see `application.properties` for the full list and defaults):
+Configuration is read from environment variables (see `application.properties`,
+`application-dev.properties` and `application-prod.properties` for the full
+list and defaults):
 
 | Variable | Required | Notes |
 |---|---|---|
 | `SUPABASE_JWKS_URI` | yes | JWKS endpoint used to validate incoming JWTs |
-| `DATABASE_URL` / `DATABASE_USERNAME` / `DATABASE_PASSWORD` | no | defaults to a local Postgres instance |
+| `DATABASE_URL` / `DATABASE_USERNAME` / `DATABASE_PASSWORD` | only for `prod` | ignored on the `dev` profile (H2) |
 | `NEO4J_URI` / `NEO4J_USERNAME` / `NEO4J_PASSWORD` | password only | defaults to `bolt://localhost:7687` |
 | `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` | no | catalog enrichment is skipped without these |
 | `OPENAI_API_KEY` | no | editorial embeddings are skipped without this |

@@ -59,6 +59,10 @@ public class Chat {
         this.lastMessageAt = exchangeCreatedAt;
     }
 
+    public void updateTitle(String title) {
+        this.title = title;
+    }
+
     @PrePersist
     void onCreate() {
         Instant now = Instant.now();

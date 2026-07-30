@@ -37,8 +37,15 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/public/**").permitAll()
+                // Only actually served when spring.h2.console.enabled=true (dev
+                // profile only, see application-dev.properties) — a dead route
+                // everywhere else, so permitting it here doesn't open anything in prod.
+                .requestMatchers("/h2-console/**").permitAll()
                 .anyRequest().authenticated()
             )
+            // H2 console renders inside a frame — default X-Frame-Options: DENY
+            // would block it. Same-origin only, not disabled outright.
+            .headers(headers -> headers.frameOptions(frameOptions -> frameOptions.sameOrigin()))
             .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter)));
 
         return http.build();

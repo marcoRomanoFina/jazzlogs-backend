@@ -61,7 +61,7 @@ public class TrackController {
 
     @PostMapping("/{id}/editorial")
     @PreAuthorize("hasRole('ADMIN')")
-    public TrackEditorialDto upsertEditorial(@PathVariable UUID id, @RequestBody TrackEditorialRequest request) {
+    public TrackEditorialDto upsertEditorial(@PathVariable UUID id, @Valid @RequestBody TrackEditorialRequest request) {
         TrackEditorial editorial = editorialService.upsertTrackEditorial(id, request);
         return editorialService.toDto(editorial);
     }

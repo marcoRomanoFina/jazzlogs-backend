@@ -62,6 +62,10 @@ public class ChatRecommendationMemory {
         this.chatId = chatId;
     }
 
+    public void updateSessionSummary(String sessionSummary) {
+        this.sessionSummary = sessionSummary;
+    }
+
     public void appendWinners(List<WinnerRef> newWinners, int cap) {
         List<WinnerRef> combined = new ArrayList<>(winnersHistory);
         combined.addAll(newWinners);

@@ -37,11 +37,16 @@ public abstract class Editorial {
     @GeneratedValue
     private UUID id;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(nullable = false)
+    private String title;
+
+    @Column(columnDefinition = "TEXT", nullable = false)
     private String dek;
 
+    @Column(nullable = false)
     private String byline;
 
+    @Column(nullable = false)
     private Integer readMinutes;
 
     @OneToMany(mappedBy = "editorial", cascade = CascadeType.ALL, orphanRemoval = true)
@@ -60,7 +65,8 @@ public abstract class Editorial {
     @Column(nullable = false)
     private Instant updatedAt;
 
-    public void update(String dek, String byline, Integer readMinutes) {
+    public void update(String title, String dek, String byline, Integer readMinutes) {
+        this.title = title;
         this.dek = dek;
         this.byline = byline;
         this.readMinutes = readMinutes;

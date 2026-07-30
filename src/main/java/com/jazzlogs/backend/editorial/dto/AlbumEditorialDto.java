@@ -5,6 +5,7 @@ import java.util.UUID;
 
 public record AlbumEditorialDto(
     UUID id,
+    String title,
     String dek,
     String byline,
     Integer readMinutes,

@@ -2,5 +2,7 @@ package com.jazzlogs.backend.editorial.dto;
 
 import java.util.List;
 
-public record TrackEditorialRequest(List<BlockRequest> blocks) {
+import jakarta.validation.constraints.NotBlank;
+
+public record TrackEditorialRequest(@NotBlank String title, List<BlockRequest> blocks) {
 }
