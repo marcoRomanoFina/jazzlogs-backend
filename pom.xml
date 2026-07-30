@@ -102,10 +102,15 @@
 			<artifactId>lombok</artifactId>
 			<optional>true</optional>
 		</dependency>
+		<!-- Explicit compile scope overrides the "test" scope Spring Boot's parent BOM
+		     declares for h2 in dependencyManagement — needed because the dev profile
+		     (default locally) runs the app itself against an in-memory H2 instance, not
+		     just the test suite, and H2ConsoleConfig references org.h2.server.web.WebServlet
+		     directly. -->
 		<dependency>
 			<groupId>com.h2database</groupId>
 			<artifactId>h2</artifactId>
-			<scope>test</scope>
+			<scope>compile</scope>
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
