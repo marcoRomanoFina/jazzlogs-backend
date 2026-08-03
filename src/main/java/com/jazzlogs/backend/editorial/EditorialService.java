@@ -98,13 +98,6 @@ public class EditorialService {
     public List<EditorialBlock> upsertBlocks(Editorial editorial, List<BlockRequest> blockRequests) {
         List<BlockRequest> requests = blockRequests == null ? List.of() : blockRequests;
 
-        for (int i = 0; i < requests.size(); i++) {
-            BlockRequest request = requests.get(i);
-            if (request.title() == null || request.title().isBlank()) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Block at position " + i + " is missing a title");
-            }
-        }
-
         Map<String, Object> baseMetadata = buildBaseMetadata(editorial);
 
         List<Document> documents = new ArrayList<>(requests.size());
@@ -132,7 +125,7 @@ public class EditorialService {
                 editorial,
                 i,
                 request.type(),
-                request.title(),
+                request.subhead(),
                 request.text(),
                 request.contentCategory(),
                 embeddings.get(i),
@@ -190,7 +183,7 @@ public class EditorialService {
             .map(block -> new EditorialBlockDto(
                 block.getPosition(),
                 block.getType(),
-                block.getTitle(),
+                block.getSubhead(),
                 block.getText(),
                 block.getContentCategory()
             ))
