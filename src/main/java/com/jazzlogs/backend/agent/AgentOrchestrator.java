@@ -19,6 +19,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openai.models.responses.ResponseInputItem;
 
+import com.jazzlogs.backend.agent.tools.JazzTool;
+import com.jazzlogs.backend.agent.tools.SubmitFinalAnswerTool;
 import com.jazzlogs.backend.chat.CatalogRef;
 import com.jazzlogs.backend.chat.Chat;
 import com.jazzlogs.backend.chat.ChatExchangeService;

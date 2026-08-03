@@ -19,6 +19,9 @@ import com.openai.models.responses.ResponseStreamEvent;
 import com.openai.models.responses.ToolChoiceFunction;
 import com.openai.models.responses.ToolChoiceOptions;
 
+import com.jazzlogs.backend.agent.tools.JazzTool;
+import com.jazzlogs.backend.agent.tools.SubmitFinalAnswerTool;
+
 /**
  * Thin wrapper over the official OpenAI Java SDK's Responses API (pinned at
  * 4.45.0 in pom.xml) — resolves every SDK-specific mechanic AgentOrchestrator

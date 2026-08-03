@@ -1,9 +1,12 @@
-package com.jazzlogs.backend.agent;
+package com.jazzlogs.backend.agent.tools;
 
 import java.util.List;
 import java.util.Map;
 
 import org.springframework.stereotype.Component;
+
+import com.jazzlogs.backend.agent.ToolCallRequest;
+import com.jazzlogs.backend.agent.ToolExecutionResult;
 
 // The one JazzTool defined so far — real catalog tools (SEMANTIC_CATALOG_SEARCH,
 // FILTER_CATALOG, etc.) are a later task. Unlike those, this one never goes

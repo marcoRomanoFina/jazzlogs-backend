@@ -24,6 +24,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import com.jazzlogs.backend.agent.tools.JazzTool;
+import com.jazzlogs.backend.agent.tools.SubmitFinalAnswerTool;
 import com.jazzlogs.backend.chat.Chat;
 import com.jazzlogs.backend.chat.ChatExchangeService;
 import com.jazzlogs.backend.chat.dto.ChatExchangeDto;
