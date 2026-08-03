@@ -90,24 +90,21 @@ All routes except `/public/**` require a `Authorization: Bearer <supabase-jwt>` 
 
 ## Running locally
 
-Requirements: Java 21, Maven, and a local Neo4j (Community Edition works fine via Docker).
+Requirements: Java 21, Maven, a Postgres instance with the `pg_trgm` and
+`vector` extensions available (the real Supabase project is the expected
+target — see `DATABASE_URL` below), and a local Neo4j (Community Edition
+works fine via Docker).
 
-Two Spring profiles control the datasource — `application-dev.properties` /
-`application-prod.properties`:
-
-- **`dev` (default, no flag needed)** — an in-memory H2 database, schema
-  created fresh on every boot (`ddl-auto=update`), no Postgres required. Data
-  does not survive a restart. Browse it at
-  [http://localhost:8080/h2-console](http://localhost:8080/h2-console)
-  (JDBC URL `jdbc:h2:mem:jazzlogs`, user `sa`, blank password).
-- **`prod`** — the real Supabase Postgres, via `DATABASE_URL` /
-  `DATABASE_USERNAME` / `DATABASE_PASSWORD`. Activate with
-  `SPRING_PROFILES_ACTIVE=prod` (set automatically in deployment, e.g. Railway).
+Two Spring profiles exist — `application-dev.properties` /
+`application-prod.properties` — but both point at the same real Postgres via
+`DATABASE_URL` / `DATABASE_USERNAME` / `DATABASE_PASSWORD`; `prod` is just
+what deployment sets automatically (`SPRING_PROFILES_ACTIVE=prod`, e.g.
+Railway). An in-memory H2 profile was tried for a while for zero-setup local
+dev, but couldn't run the `pg_trgm`/`pgvector` SQL the agent's catalog/editorial
+search tools depend on, so it was dropped.
 
 ```bash
 ./mvnw spring-boot:run
-# against real Postgres instead:
-SPRING_PROFILES_ACTIVE=prod ./mvnw spring-boot:run
 ```
 
 Configuration is read from environment variables (see `application.properties`,
@@ -117,10 +114,10 @@ list and defaults):
 | Variable | Required | Notes |
 |---|---|---|
 | `SUPABASE_JWKS_URI` | yes | JWKS endpoint used to validate incoming JWTs |
-| `DATABASE_URL` / `DATABASE_USERNAME` / `DATABASE_PASSWORD` | only for `prod` | ignored on the `dev` profile (H2) |
+| `DATABASE_URL` / `DATABASE_USERNAME` / `DATABASE_PASSWORD` | yes | same real Postgres in every profile |
 | `NEO4J_URI` / `NEO4J_USERNAME` / `NEO4J_PASSWORD` | password only | defaults to `bolt://localhost:7687` |
 | `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` | no | catalog enrichment is skipped without these |
-| `OPENAI_API_KEY` | no | editorial embeddings are skipped without this |
+| `OPENAI_API_KEY` | no | editorial embeddings/agent calls are skipped without this |
 
 ## Testing
 
@@ -128,4 +125,8 @@ list and defaults):
 ./mvnw test
 ```
 
-Tests run against an in-memory H2 database with the real Spring context — no external services required.
+Tests run against the same real Postgres as `dev`/`prod` (see `DATABASE_URL`
+above) with the real Spring context. `PlaylistTrackSyncFailureTest` in
+particular writes a real, non-rolled-back row to `sync_failures` on every run
+(it tests a fire-and-forget async path that commits on its own thread,
+outside the test's transaction) — clean that table out periodically.

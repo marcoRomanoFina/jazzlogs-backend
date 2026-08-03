@@ -120,14 +120,14 @@ class ListenServiceTest {
 
     private Album persistAlbum(Artist artist) {
         return albumRepository.save(new Album(
-            artist, "Test Album", null, null, null, 2024, 1, null,
+            artist, "Test Album", null, null, null, 2024, 1, "LOG-1",
             VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
         ));
     }
 
     private Track persistTrack(Album album) {
         Track track = trackRepository.save(new Track(
-            album, null, null, "Test Track", null, null, null, false,
+            album, null, "Test Track", null, null, null, false,
             null, null, null, null, null, null
         ));
         album.getTracks().add(track);

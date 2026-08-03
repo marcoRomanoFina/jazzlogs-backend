@@ -11,7 +11,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -31,8 +30,6 @@ import com.jazzlogs.backend.note.dto.NoteDto;
 import com.jazzlogs.backend.track.dto.InstrumentTagRequest;
 import com.jazzlogs.backend.track.dto.PerformerRequest;
 import com.jazzlogs.backend.track.dto.RhythmTagRequest;
-import com.jazzlogs.backend.track.dto.TrackDto;
-import com.jazzlogs.backend.track.dto.UpdateTrackRequest;
 import com.jazzlogs.backend.trackrating.TrackRatingService;
 import com.jazzlogs.backend.trackrating.dto.CreateTrackRatingRequest;
 import com.jazzlogs.backend.trackrating.dto.TrackRatingDto;
@@ -51,13 +48,6 @@ public class TrackController {
     private final NoteService noteService;
     private final TrackRatingService trackRatingService;
     private final UserService userService;
-
-    @PatchMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
-    public TrackDto updateTrack(@PathVariable UUID id, @RequestBody UpdateTrackRequest request) {
-        Track track = trackService.updateTrack(id, request);
-        return trackService.toDto(track);
-    }
 
     @PostMapping("/{id}/editorial")
     @PreAuthorize("hasRole('ADMIN')")

@@ -12,7 +12,6 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -25,7 +24,6 @@ import com.jazzlogs.backend.album.dto.CreateAlbumRequest;
 import com.jazzlogs.backend.album.dto.MoodTagRequest;
 import com.jazzlogs.backend.album.dto.PersonnelRequest;
 import com.jazzlogs.backend.album.dto.StyleTagRequest;
-import com.jazzlogs.backend.album.dto.UpdateAlbumRequest;
 import com.jazzlogs.backend.editorial.AlbumEditorial;
 import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.editorial.dto.AlbumEditorialDto;
@@ -60,24 +58,21 @@ public class AlbumController {
         return albumService.getAlbumDetail(id, currentUserId(jwt));
     }
 
+    // Upserts by spotifyAlbumId — posting the same album again updates it in
+    // place instead of creating a duplicate. See AlbumService.createOrUpdateAlbum.
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<AlbumDetailDto> createAlbum(@Valid @RequestBody CreateAlbumRequest request, @AuthenticationPrincipal Jwt jwt) {
-        Album album = albumService.createAlbum(request);
+    public ResponseEntity<AlbumDetailDto> createOrUpdateAlbum(@Valid @RequestBody CreateAlbumRequest request, @AuthenticationPrincipal Jwt jwt) {
+        Album album = albumService.createOrUpdateAlbum(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(albumService.getAlbumDetail(album.getId(), currentUserId(jwt)));
     }
 
-    @PatchMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
-    public AlbumDetailDto updateAlbum(@PathVariable UUID id, @RequestBody UpdateAlbumRequest request, @AuthenticationPrincipal Jwt jwt) {
-        albumService.updateAlbum(id, request);
-        return albumService.getAlbumDetail(id, currentUserId(jwt));
-    }
-
+    // Upserts by spotifyTrackId — posting the same track again updates it in
+    // place instead of creating a duplicate. See TrackService.createOrUpdateTrack.
     @PostMapping("/{id}/tracks")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<TrackDto> addTrack(@PathVariable UUID id, @Valid @RequestBody CreateTrackRequest request) {
-        Track track = trackService.addTrack(id, request);
+    public ResponseEntity<TrackDto> createOrUpdateTrack(@PathVariable UUID id, @Valid @RequestBody CreateTrackRequest request) {
+        Track track = trackService.createOrUpdateTrack(id, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(trackService.toDto(track));
     }
 

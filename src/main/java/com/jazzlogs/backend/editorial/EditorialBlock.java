@@ -45,8 +45,9 @@ public class EditorialBlock {
     @Column(nullable = false)
     private EditorialBlockType type;
 
-    @Column(nullable = false)
-    private String title;
+    // Optional — a block (of any type) can carry a subhead above its text
+    // instead of SUBHEAD being its own EditorialBlockType.
+    private String subhead;
 
     @Column(nullable = false, columnDefinition = "TEXT")
     private String text;
@@ -73,7 +74,7 @@ public class EditorialBlock {
         Editorial editorial,
         int position,
         EditorialBlockType type,
-        String title,
+        String subhead,
         String text,
         BlockContentCategory contentCategory,
         float[] embedding,
@@ -82,7 +83,7 @@ public class EditorialBlock {
         this.editorial = editorial;
         this.position = position;
         this.type = type;
-        this.title = title;
+        this.subhead = subhead;
         this.text = text;
         this.contentCategory = contentCategory;
         this.embedding = embedding;

@@ -68,6 +68,7 @@ public class Album {
     private Integer totalTracks;
 
     @Setter
+    @Column(nullable = false)
     private String logNumber;
 
     @Setter

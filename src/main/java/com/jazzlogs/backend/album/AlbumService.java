@@ -1,5 +1,6 @@
 package com.jazzlogs.backend.album;
 
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -9,7 +10,6 @@ import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.album.dto.AlbumDetailDto;
@@ -18,7 +18,6 @@ import com.jazzlogs.backend.album.dto.CreateAlbumRequest;
 import com.jazzlogs.backend.album.dto.MoodTagRequest;
 import com.jazzlogs.backend.album.dto.PersonnelRequest;
 import com.jazzlogs.backend.album.dto.StyleTagRequest;
-import com.jazzlogs.backend.album.dto.UpdateAlbumRequest;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
 import com.jazzlogs.backend.editorial.EditorialService;
@@ -52,29 +51,34 @@ public class AlbumService {
     private final EditorialService editorialService;
     private final NoteService noteService;
     private final ReviewService reviewService;
-    private final AlbumMapper albumMapper;
 
+    // Upsert on spotifyAlbumId: re-posting an album that's already in the
+    // catalog updates it in place (fresh Spotify data + the editable fields
+    // below) instead of creating a duplicate. postedAt is only stamped on the
+    // create path — an update never resets when the album was first posted.
     @Transactional
-    public Album createAlbum(CreateAlbumRequest request) {
+    public Album createOrUpdateAlbum(CreateAlbumRequest request) {
         Artist artist = getArtistOrThrow(request.artistId());
         SpotifyAlbumData data = spotifyCatalogService.fetchAlbum(request.spotifyAlbumId());
 
-        Album album = new Album(
-            artist,
-            data.name(),
-            request.spotifyAlbumId(),
-            data.spotifyUrl(),
-            data.imageUrl(),
-            data.releaseYear(),
-            data.totalTracks(),
-            request.logNumber(),
-            request.vocalProfile(),
-            request.energy(),
-            request.moodIntensity(),
-            request.accessibility(),
-            request.postedAt(),
-            request.instagramPermalink()
-        );
+        Album album = albumRepository.findBySpotifyAlbumId(request.spotifyAlbumId())
+            .map(existing -> applyToExisting(existing, data, request))
+            .orElseGet(() -> new Album(
+                artist,
+                data.name(),
+                request.spotifyAlbumId(),
+                data.spotifyUrl(),
+                data.imageUrl(),
+                data.releaseYear(),
+                data.totalTracks(),
+                request.logNumber(),
+                request.vocalProfile(),
+                request.energy(),
+                request.moodIntensity(),
+                request.accessibility(),
+                Instant.now(),
+                request.instagramPermalink()
+            ));
 
         Album saved = albumRepository.save(album);
         graphService.syncAlbumNode(saved.getId(), saved.getName());
@@ -85,47 +89,19 @@ public class AlbumService {
         return saved;
     }
 
-    @Transactional
-    public Album updateAlbum(UUID albumId, UpdateAlbumRequest request) {
-        Album album = getAlbumOrThrow(albumId);
-
-        String name = request.name();
-        String imageUrl = request.imageUrl();
-        String spotifyUrl = request.spotifyUrl();
-        Integer totalTracks = request.totalTracks();
-        Integer releaseYear = request.releaseYear();
-
-        if (StringUtils.hasText(request.spotifyAlbumId())) {
-            SpotifyAlbumData data = spotifyCatalogService.fetchAlbum(request.spotifyAlbumId());
-            name = data.name();
-            imageUrl = data.imageUrl();
-            spotifyUrl = data.spotifyUrl();
-            totalTracks = data.totalTracks();
-            releaseYear = data.releaseYear();
-        }
-
-        UpdateAlbumRequest effectiveRequest = new UpdateAlbumRequest(
-            name,
-            request.spotifyAlbumId(),
-            spotifyUrl,
-            imageUrl,
-            releaseYear,
-            totalTracks,
-            request.logNumber(),
-            request.vocalProfile(),
-            request.energy(),
-            request.moodIntensity(),
-            request.accessibility(),
-            request.postedAt(),
-            request.instagramPermalink()
-        );
-        albumMapper.applyPatch(effectiveRequest, album);
-
-        Album saved = albumRepository.save(album);
-        if (name != null) {
-            graphService.syncAlbumNode(saved.getId(), saved.getName());
-        }
-        return saved;
+    private Album applyToExisting(Album album, SpotifyAlbumData data, CreateAlbumRequest request) {
+        album.setName(data.name());
+        album.setSpotifyUrl(data.spotifyUrl());
+        album.setImageUrl(data.imageUrl());
+        album.setReleaseYear(data.releaseYear());
+        album.setTotalTracks(data.totalTracks());
+        album.setLogNumber(request.logNumber());
+        album.setVocalProfile(request.vocalProfile());
+        album.setEnergy(request.energy());
+        album.setMoodIntensity(request.moodIntensity());
+        album.setAccessibility(request.accessibility());
+        album.setInstagramPermalink(request.instagramPermalink());
+        return album;
     }
 
     public void addPersonnel(UUID albumId, PersonnelRequest request) {

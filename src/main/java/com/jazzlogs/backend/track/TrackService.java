@@ -27,7 +27,6 @@ import com.jazzlogs.backend.track.dto.InstrumentTagRequest;
 import com.jazzlogs.backend.track.dto.PerformerRequest;
 import com.jazzlogs.backend.track.dto.RhythmTagRequest;
 import com.jazzlogs.backend.track.dto.TrackDto;
-import com.jazzlogs.backend.track.dto.UpdateTrackRequest;
 import com.jazzlogs.backend.vocabulary.ContextVocabulary;
 import com.jazzlogs.backend.vocabulary.InstrumentVocabulary;
 import com.jazzlogs.backend.vocabulary.MoodVocabulary;
@@ -45,49 +44,58 @@ public class TrackService {
     private final ArtistRepository artistRepository;
     private final GraphService graphService;
     private final EditorialService editorialService;
-    private final TrackMapper trackMapper;
     private final SpotifyCatalogService spotifyCatalogService;
 
+    // Upsert on spotifyTrackId: re-posting a track that's already in the
+    // catalog updates it in place (fresh Spotify data + the editable fields
+    // below) instead of creating a duplicate. The track's album is never
+    // reassigned on update — see AlbumService.applyToExisting for the same
+    // reasoning on albums/artists — so the Neo4j CONTAINS edge uses the
+    // track's actual album, not necessarily the one in the URL.
     @Transactional
-    public Track addTrack(UUID albumId, CreateTrackRequest request) {
+    public Track createOrUpdateTrack(UUID albumId, CreateTrackRequest request) {
         Album album = getAlbumOrThrow(albumId);
         SpotifyTrackData data = spotifyCatalogService.fetchTrack(request.spotifyTrackId());
 
-        Track track = new Track(
-            album,
-            data.spotifyTrackId(),
-            request.logNumber(),
-            data.name(),
-            data.durationMs(),
-            data.spotifyUrl(),
-            data.imageUrl(),
-            request.standout(),
-            request.vocalProfile(),
-            request.energy(),
-            request.accessibility(),
-            request.moodIntensity(),
-            request.tempoFeel(),
-            request.compositionType()
-        );
+        Track track = trackRepository.findBySpotifyTrackId(request.spotifyTrackId())
+            .map(existing -> applyToExisting(existing, data, request))
+            .orElseGet(() -> new Track(
+                album,
+                data.spotifyTrackId(),
+                data.name(),
+                data.durationMs(),
+                data.spotifyUrl(),
+                data.imageUrl(),
+                request.standout(),
+                request.vocalProfile(),
+                request.energy(),
+                request.accessibility(),
+                request.moodIntensity(),
+                request.tempoFeel(),
+                request.compositionType()
+            ));
         Track saved = trackRepository.save(track);
 
         graphService.syncTrackNode(saved.getId(), saved.getName());
         String trackRole = request.trackRole() == null ? "MAIN" : request.trackRole();
-        graphService.addTrackToAlbum(albumId, saved.getId(), data.trackNumber(), trackRole);
+        graphService.addTrackToAlbum(saved.getAlbum().getId(), saved.getId(), data.trackNumber(), trackRole);
 
         return saved;
     }
 
-    @Transactional
-    public Track updateTrack(UUID trackId, UpdateTrackRequest request) {
-        Track track = getTrackOrThrow(trackId);
-        trackMapper.applyPatch(request, track);
-
-        Track saved = trackRepository.save(track);
-        if (request.name() != null) {
-            graphService.syncTrackNode(saved.getId(), saved.getName());
-        }
-        return saved;
+    private Track applyToExisting(Track track, SpotifyTrackData data, CreateTrackRequest request) {
+        track.setName(data.name());
+        track.setDurationMs(data.durationMs());
+        track.setSpotifyUrl(data.spotifyUrl());
+        track.setImageUrl(data.imageUrl());
+        track.setStandout(request.standout());
+        track.setVocalProfile(request.vocalProfile());
+        track.setEnergy(request.energy());
+        track.setAccessibility(request.accessibility());
+        track.setMoodIntensity(request.moodIntensity());
+        track.setTempoFeel(request.tempoFeel());
+        track.setCompositionType(request.compositionType());
+        return track;
     }
 
     public void addPerformer(UUID trackId, PerformerRequest request) {
@@ -155,7 +163,6 @@ public class TrackService {
             placement == null ? null : placement.trackNumber(),
             placement == null ? null : placement.trackRole(),
             track.getSpotifyTrackId(),
-            track.getLogNumber(),
             track.getName(),
             track.getDurationMs(),
             track.getSpotifyUrl(),

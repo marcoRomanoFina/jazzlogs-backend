@@ -19,6 +19,10 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openai.models.responses.ResponseInputItem;
 
+import com.jazzlogs.backend.agent.tools.EditorialContentTool;
+import com.jazzlogs.backend.agent.tools.EditorialSearchTool;
+import com.jazzlogs.backend.agent.tools.JazzTool;
+import com.jazzlogs.backend.agent.tools.SubmitFinalAnswerTool;
 import com.jazzlogs.backend.chat.CatalogRef;
 import com.jazzlogs.backend.chat.Chat;
 import com.jazzlogs.backend.chat.ChatExchangeService;
@@ -69,6 +73,8 @@ public class AgentOrchestrator {
         "CATALOG_CONTEXT", "Reuniendo contexto",
         "ALBUM_TRACKS", "Revisando el tracklist",
         "KNOWLEDGE_GRAPH_FEEDBACK", "Guardando tu feedback",
+        EditorialContentTool.NAME, "Leyendo la editorial",
+        EditorialSearchTool.NAME, "Buscando en las notas editoriales",
         SubmitFinalAnswerTool.NAME, "Armando la recomendación"
     );
     private static final String DEFAULT_TOOL_LABEL = "Trabajando en tu pedido";

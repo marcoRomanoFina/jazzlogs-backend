@@ -8,7 +8,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -20,7 +19,6 @@ import com.jazzlogs.backend.album.dto.StyleTagRequest;
 import com.jazzlogs.backend.artist.dto.ArtistDetailDto;
 import com.jazzlogs.backend.artist.dto.CreateArtistRequest;
 import com.jazzlogs.backend.artist.dto.SimilarArtistRequest;
-import com.jazzlogs.backend.artist.dto.UpdateArtistRequest;
 import com.jazzlogs.backend.editorial.ArtistEditorial;
 import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.editorial.dto.ArtistEditorialDto;
@@ -42,18 +40,13 @@ public class ArtistController {
         return artistService.getArtistDetail(id);
     }
 
+    // Upserts by spotifyArtistId — posting the same artist again updates it in
+    // place instead of creating a duplicate. See ArtistService.createOrUpdateArtist.
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<ArtistDetailDto> createArtist(@Valid @RequestBody CreateArtistRequest request) {
-        Artist artist = artistService.createArtist(request);
+    public ResponseEntity<ArtistDetailDto> createOrUpdateArtist(@Valid @RequestBody CreateArtistRequest request) {
+        Artist artist = artistService.createOrUpdateArtist(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(artistService.getArtistDetail(artist.getId()));
-    }
-
-    @PatchMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ArtistDetailDto updateArtist(@PathVariable UUID id, @RequestBody UpdateArtistRequest request) {
-        artistService.updateArtist(id, request);
-        return artistService.getArtistDetail(id);
     }
 
     @PostMapping("/{id}/instrument")

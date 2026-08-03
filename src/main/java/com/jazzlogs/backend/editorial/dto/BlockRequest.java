@@ -5,7 +5,7 @@ import com.jazzlogs.backend.editorial.EditorialBlockType;
 
 public record BlockRequest(
     EditorialBlockType type,
-    String title,
+    String subhead,
     String text,
     BlockContentCategory contentCategory
 ) {
