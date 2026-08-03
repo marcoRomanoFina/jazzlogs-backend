@@ -2,6 +2,7 @@ package com.jazzlogs.backend.graph;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,11 +25,6 @@ import lombok.extern.slf4j.Slf4j;
  *  - Everything else (relationships, tag/personnel reads) IS the point of the
  *    request — there's no Postgres fallback to protect — so failures propagate
  *    as GraphWriteException, which the global handler turns into a 502.
- *
- * TODO: once this talks to Aura in production, evaluate wrapping neo4jClient
- * calls with a circuit breaker (no Resilience4j or equivalent in the repo yet —
- * this would be the first use). Not worth adding speculatively; revisit once
- * real prod failure patterns from Aura are observed.
  */
 @Slf4j
 @Service
@@ -140,13 +136,18 @@ public class GraphService {
     public void markAlbumListened(UUID userId, UUID albumId, Instant listenedAt) {
         write("add LISTENED user=" + userId + " album=" + albumId, () ->
             neo4jClient.query("""
-                    MATCH (u:User {id: $userId}), (al:Album {id: $albumId})
+                    MATCH (u:User {id: $userId})
+                    MATCH (al:Album {id: $albumId})
                     MERGE (u)-[l:LISTENED]->(al)
                     SET l.listenedAt = $listenedAt
                     """)
                 .bind(userId.toString()).to("userId")
                 .bind(albumId.toString()).to("albumId")
-                .bind(listenedAt).to("listenedAt")
+                // Instant itself isn't a type the driver's automatic Java ->
+                // Cypher conversion understands (see Values.value(Object)) —
+                // it needs an offset/zone attached, and Instant is by
+                // definition UTC already, so UTC is not a lossy choice here.
+                .bind(listenedAt.atOffset(ZoneOffset.UTC)).to("listenedAt")
                 .run());
     }
 
@@ -159,7 +160,8 @@ public class GraphService {
     public void rateAlbum(UUID userId, UUID albumId, BigDecimal rating, Instant ratedAt) {
         write("set RATED user=" + userId + " album=" + albumId, () ->
             neo4jClient.query("""
-                    MATCH (u:User {id: $userId}), (al:Album {id: $albumId})
+                    MATCH (u:User {id: $userId})
+                    MATCH (al:Album {id: $albumId})
                     OPTIONAL MATCH (u)-[old:RATED]->(al)
                     DELETE old
                     MERGE (u)-[r:RATED]->(al)
@@ -167,8 +169,12 @@ public class GraphService {
                     """)
                 .bind(userId.toString()).to("userId")
                 .bind(albumId.toString()).to("albumId")
-                .bind(rating).to("rating")
-                .bind(ratedAt).to("ratedAt")
+                // Neither BigDecimal nor Instant is a type the driver's
+                // automatic Java -> Cypher conversion understands (see
+                // Values.value(Object)) — Cypher only has a 64-bit float, and
+                // temporal values need an offset/zone attached.
+                .bind(rating.doubleValue()).to("rating")
+                .bind(ratedAt.atOffset(ZoneOffset.UTC)).to("ratedAt")
                 .run());
     }
 
@@ -182,7 +188,8 @@ public class GraphService {
     public void rateTrack(UUID userId, UUID trackId, BigDecimal rating, Instant ratedAt) {
         write("set RATED_TRACK user=" + userId + " track=" + trackId, () ->
             neo4jClient.query("""
-                    MATCH (u:User {id: $userId}), (tr:Track {id: $trackId})
+                    MATCH (u:User {id: $userId})
+                    MATCH (tr:Track {id: $trackId})
                     OPTIONAL MATCH (u)-[old:RATED_TRACK]->(tr)
                     DELETE old
                     MERGE (u)-[r:RATED_TRACK]->(tr)
@@ -190,8 +197,9 @@ public class GraphService {
                     """)
                 .bind(userId.toString()).to("userId")
                 .bind(trackId.toString()).to("trackId")
-                .bind(rating).to("rating")
-                .bind(ratedAt).to("ratedAt")
+                // See rateAlbum's comment — same BigDecimal/Instant conversion.
+                .bind(rating.doubleValue()).to("rating")
+                .bind(ratedAt.atOffset(ZoneOffset.UTC)).to("ratedAt")
                 .run());
     }
 
@@ -339,13 +347,15 @@ public class GraphService {
     public void markTrackListened(UUID userId, UUID trackId, Instant listenedAt) {
         write("add LISTENED user=" + userId + " track=" + trackId, () ->
             neo4jClient.query("""
-                    MATCH (u:User {id: $userId}), (tr:Track {id: $trackId})
+                    MATCH (u:User {id: $userId})
+                    MATCH (tr:Track {id: $trackId})
                     MERGE (u)-[l:LISTENED]->(tr)
                     SET l.listenedAt = $listenedAt
                     """)
                 .bind(userId.toString()).to("userId")
                 .bind(trackId.toString()).to("trackId")
-                .bind(listenedAt).to("listenedAt")
+                // See markAlbumListened's comment — same Instant conversion.
+                .bind(listenedAt.atOffset(ZoneOffset.UTC)).to("listenedAt")
                 .run());
     }
 
@@ -596,13 +606,15 @@ public class GraphService {
     public void markPlaylistListened(UUID userId, UUID playlistId, Instant listenedAt) {
         write("add LISTENED user=" + userId + " playlist=" + playlistId, () ->
             neo4jClient.query("""
-                    MATCH (u:User {id: $userId}), (p:Playlist {id: $playlistId})
+                    MATCH (u:User {id: $userId})
+                    MATCH (p:Playlist {id: $playlistId})
                     MERGE (u)-[l:LISTENED]->(p)
                     SET l.listenedAt = $listenedAt
                     """)
                 .bind(userId.toString()).to("userId")
                 .bind(playlistId.toString()).to("playlistId")
-                .bind(listenedAt).to("listenedAt")
+                // See markAlbumListened's comment — same Instant conversion.
+                .bind(listenedAt.atOffset(ZoneOffset.UTC)).to("listenedAt")
                 .run());
     }
 
