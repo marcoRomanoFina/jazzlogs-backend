@@ -729,6 +729,25 @@ public class GraphService {
                 .toList());
     }
 
+    // Reverse of getTags: given a vocabulary tag, which entities point at it —
+    // for EDITORIAL_SEARCH's vocabularyFilter (see
+    // com.jazzlogs.backend.agent.tools.VocabularyEditorialResolver), which
+    // supplies sourceLabel/relationshipType/targetLabel per (vocabulary type,
+    // entity type) combination, since neither is uniform across entity types
+    // (e.g. Style is BELONGS_TO for Album but HAS_STYLE for Artist).
+    public List<UUID> findEntityIdsByVocabulary(String sourceLabel, String relationshipType, String targetLabel, String code) {
+        return read("find " + sourceLabel + " via " + relationshipType + " " + targetLabel + "=" + code, () ->
+            neo4jClient.query(
+                    "MATCH (src:" + sourceLabel + ")-[:" + relationshipType + "]->(:" + targetLabel + " {code: $code}) "
+                        + "RETURN src.id AS id")
+                .bind(code).to("code")
+                .fetch()
+                .all()
+                .stream()
+                .map(row -> UUID.fromString((String) row.get("id")))
+                .toList());
+    }
+
     private void write(String description, Runnable action) {
         try {
             action.run();
