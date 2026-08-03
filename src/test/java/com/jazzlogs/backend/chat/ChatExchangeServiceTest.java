@@ -102,7 +102,7 @@ class ChatExchangeServiceTest {
     void resolvesRealTrackId_primaryArtistComesFromItsAlbum() {
         Artist artist = new Artist("John Coltrane", null, null, null);
         Album album = new Album(artist, "A Love Supreme", null, null, null, 1965, 4, null, null, null, null, null, null, null);
-        Track track = new Track(album, null, null, "Acknowledgement", null, null, null, false, null, null, null, null, null, null);
+        Track track = new Track(album, null, "Acknowledgement", null, null, null, false, null, null, null, null, null, null);
         UUID trackId = UUID.randomUUID();
         ReflectionTestUtils.setField(track, "id", trackId);
 

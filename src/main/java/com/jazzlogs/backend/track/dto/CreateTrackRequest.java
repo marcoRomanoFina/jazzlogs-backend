@@ -17,7 +17,6 @@ import com.jazzlogs.backend.track.TempoFeel;
 public record CreateTrackRequest(
     String trackRole,
     @NotBlank String spotifyTrackId,
-    String logNumber,
     boolean standout,
     VocalProfile vocalProfile,
     Level energy,

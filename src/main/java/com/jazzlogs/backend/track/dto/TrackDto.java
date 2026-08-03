@@ -17,7 +17,6 @@ public record TrackDto(
     Integer trackNumber,
     String trackRole,
     String spotifyTrackId,
-    String logNumber,
     String name,
     Integer durationMs,
     String spotifyUrl,

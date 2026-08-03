@@ -15,6 +15,11 @@ import com.jazzlogs.backend.saveditem.SavedItemResolver;
 
 public interface TrackRepository extends JpaRepository<Track, UUID>, SavedItemResolver, CatalogEntityResolver {
 
+    // Spotify identity is what POST /albums/{id}/tracks upserts on — a track
+    // with this spotifyTrackId already existing means "update it", not
+    // "create a duplicate".
+    Optional<Track> findBySpotifyTrackId(String spotifyTrackId);
+
     @Override
     default Optional<Resolved> resolve(UUID entityId) {
         return findById(entityId).map(TrackRepository::toResolved);

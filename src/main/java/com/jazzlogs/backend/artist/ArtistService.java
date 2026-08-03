@@ -12,7 +12,6 @@ import com.jazzlogs.backend.album.dto.StyleTagRequest;
 import com.jazzlogs.backend.artist.dto.ArtistDetailDto;
 import com.jazzlogs.backend.artist.dto.CreateArtistRequest;
 import com.jazzlogs.backend.artist.dto.SimilarArtistRequest;
-import com.jazzlogs.backend.artist.dto.UpdateArtistRequest;
 import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.spotify.SpotifyArtistData;
@@ -33,28 +32,28 @@ public class ArtistService {
     private final GraphService graphService;
     private final EditorialService editorialService;
     private final SpotifyCatalogService spotifyCatalogService;
-    private final ArtistMapper artistMapper;
 
+    // Upsert on spotifyArtistId: re-posting an artist that's already in the
+    // catalog updates it in place (fresh Spotify data) instead of creating a
+    // duplicate.
     @Transactional
-    public Artist createArtist(CreateArtistRequest request) {
+    public Artist createOrUpdateArtist(CreateArtistRequest request) {
         SpotifyArtistData data = spotifyCatalogService.fetchArtist(request.spotifyArtistId());
 
-        Artist artist = new Artist(data.name(), request.spotifyArtistId(), data.spotifyUrl(), data.imageUrl());
+        Artist artist = artistRepository.findBySpotifyArtistId(request.spotifyArtistId())
+            .map(existing -> applyToExisting(existing, data))
+            .orElseGet(() -> new Artist(data.name(), request.spotifyArtistId(), data.spotifyUrl(), data.imageUrl()));
+
         Artist saved = artistRepository.save(artist);
         graphService.syncArtistNode(saved.getId(), saved.getName());
         return saved;
     }
 
-    @Transactional
-    public Artist updateArtist(UUID artistId, UpdateArtistRequest request) {
-        Artist artist = getArtistOrThrow(artistId);
-        artistMapper.applyPatch(request, artist);
-
-        Artist saved = artistRepository.save(artist);
-        if (request.name() != null) {
-            graphService.syncArtistNode(saved.getId(), saved.getName());
-        }
-        return saved;
+    private Artist applyToExisting(Artist artist, SpotifyArtistData data) {
+        artist.setName(data.name());
+        artist.setSpotifyUrl(data.spotifyUrl());
+        artist.setImageUrl(data.imageUrl());
+        return artist;
     }
 
     public void setPrimaryInstrument(UUID artistId, InstrumentTagRequest request) {

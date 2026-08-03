@@ -15,6 +15,10 @@ import com.jazzlogs.backend.saveditem.SavedItemResolver;
 
 public interface ArtistRepository extends JpaRepository<Artist, UUID>, SavedItemResolver, CatalogEntityResolver {
 
+    // Spotify identity is what POST /artists upserts on — an artist with this
+    // spotifyArtistId already existing means "update it", not "create a duplicate".
+    Optional<Artist> findBySpotifyArtistId(String spotifyArtistId);
+
     @Override
     default Optional<Resolved> resolve(UUID entityId) {
         return findById(entityId).map(ArtistRepository::toResolved);

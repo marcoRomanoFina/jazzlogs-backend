@@ -48,9 +48,6 @@ public class Track {
     private String spotifyTrackId;
 
     @Setter
-    private String logNumber;
-
-    @Setter
     @Column(nullable = false)
     private String name;
 
@@ -113,7 +110,6 @@ public class Track {
     public Track(
         Album album,
         String spotifyTrackId,
-        String logNumber,
         String name,
         Integer durationMs,
         String spotifyUrl,
@@ -128,7 +124,6 @@ public class Track {
     ) {
         this.album = album;
         this.spotifyTrackId = spotifyTrackId;
-        this.logNumber = logNumber;
         this.name = name;
         this.normalizedName = Album.normalize(name);
         this.durationMs = durationMs;
