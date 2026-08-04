@@ -40,13 +40,11 @@ public abstract class Editorial {
     @Column(nullable = false)
     private String title;
 
-    @Column(columnDefinition = "TEXT", nullable = false)
+    @Column(columnDefinition = "TEXT")
     private String dek;
 
-    @Column(nullable = false)
     private String byline;
 
-    @Column(nullable = false)
     private Integer readMinutes;
 
     @OneToMany(mappedBy = "editorial", cascade = CascadeType.ALL, orphanRemoval = true)

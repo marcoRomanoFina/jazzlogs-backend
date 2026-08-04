@@ -71,7 +71,7 @@ public class EditorialService {
 
         TrackEditorial editorial = trackEditorialRepository.findByTrackId(trackId)
             .orElseGet(() -> new TrackEditorial(track));
-        editorial.update(request.title(), null, null, null);
+        editorial.update(request.title(), request.dek(), request.byline(), null);
         TrackEditorial saved = trackEditorialRepository.save(editorial);
 
         upsertBlocks(saved, request.blocks());
@@ -169,7 +169,9 @@ public class EditorialService {
     }
 
     public TrackEditorialDto toDto(TrackEditorial editorial) {
-        return new TrackEditorialDto(editorial.getTitle(), blocksOf(editorial));
+        return new TrackEditorialDto(
+            editorial.getTitle(), editorial.getDek(), editorial.getByline(), blocksOf(editorial)
+        );
     }
 
     public ArtistEditorialDto toDto(ArtistEditorial editorial) {
