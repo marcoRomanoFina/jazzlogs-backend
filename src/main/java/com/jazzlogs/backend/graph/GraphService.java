@@ -77,17 +77,16 @@ public class GraphService {
         }
     }
 
-    public void addTrackToAlbum(UUID albumId, UUID trackId, int trackNumber, String trackRole) {
+    public void addTrackToAlbum(UUID albumId, UUID trackId, int trackNumber) {
         write("add CONTAINS album=" + albumId + " track=" + trackId, () ->
             neo4jClient.query("""
                     MATCH (al:Album {id: $albumId}), (tr:Track {id: $trackId})
                     MERGE (al)-[c:CONTAINS]->(tr)
-                    SET c.trackNumber = $trackNumber, c.trackRole = $trackRole
+                    SET c.trackNumber = $trackNumber
                     """)
                 .bind(albumId.toString()).to("albumId")
                 .bind(trackId.toString()).to("trackId")
                 .bind(trackNumber).to("trackNumber")
-                .bind(trackRole).to("trackRole")
                 .run());
     }
 
@@ -435,7 +434,7 @@ public class GraphService {
         return read("read track placements for album=" + albumId, () ->
             neo4jClient.query("""
                     MATCH (:Album {id: $albumId})-[c:CONTAINS]->(tr:Track)
-                    RETURN tr.id AS trackId, c.trackNumber AS trackNumber, c.trackRole AS trackRole
+                    RETURN tr.id AS trackId, c.trackNumber AS trackNumber
                     """)
                 .bind(albumId.toString()).to("albumId")
                 .fetch()
@@ -443,8 +442,7 @@ public class GraphService {
                 .stream()
                 .map(row -> new TrackPlacement(
                     UUID.fromString((String) row.get("trackId")),
-                    row.get("trackNumber") == null ? null : ((Number) row.get("trackNumber")).intValue(),
-                    (String) row.get("trackRole")
+                    row.get("trackNumber") == null ? null : ((Number) row.get("trackNumber")).intValue()
                 ))
                 .toList());
     }
@@ -454,17 +452,16 @@ public class GraphService {
         return read("read placement for track=" + trackId, () ->
             neo4jClient.query("""
                     MATCH (:Album)-[c:CONTAINS]->(tr:Track {id: $trackId})
-                    RETURN c.trackNumber AS trackNumber, c.trackRole AS trackRole
+                    RETURN c.trackNumber AS trackNumber
                     """)
                 .bind(trackId.toString()).to("trackId")
                 .fetch()
                 .one()
                 .map(row -> new TrackPlacement(
                     trackId,
-                    row.get("trackNumber") == null ? null : ((Number) row.get("trackNumber")).intValue(),
-                    (String) row.get("trackRole")
+                    row.get("trackNumber") == null ? null : ((Number) row.get("trackNumber")).intValue()
                 ))
-                .orElse(new TrackPlacement(trackId, null, null)));
+                .orElse(new TrackPlacement(trackId, null)));
     }
 
     // --- Artist relationships ---

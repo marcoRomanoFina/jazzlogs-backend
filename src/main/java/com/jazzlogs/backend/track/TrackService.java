@@ -77,8 +77,7 @@ public class TrackService {
         Track saved = trackRepository.save(track);
 
         graphService.syncTrackNode(saved.getId(), saved.getName());
-        String trackRole = request.trackRole() == null ? "MAIN" : request.trackRole();
-        graphService.addTrackToAlbum(saved.getAlbum().getId(), saved.getId(), data.trackNumber(), trackRole);
+        graphService.addTrackToAlbum(saved.getAlbum().getId(), saved.getId(), data.trackNumber());
 
         return saved;
     }
@@ -161,7 +160,6 @@ public class TrackService {
         return new TrackDto(
             trackId,
             placement == null ? null : placement.trackNumber(),
-            placement == null ? null : placement.trackRole(),
             track.getSpotifyTrackId(),
             track.getName(),
             track.getDurationMs(),

@@ -15,7 +15,6 @@ import com.jazzlogs.backend.track.TempoFeel;
 public record TrackDto(
     UUID id,
     Integer trackNumber,
-    String trackRole,
     String spotifyTrackId,
     String name,
     Integer durationMs,

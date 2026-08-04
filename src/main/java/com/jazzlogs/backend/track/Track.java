@@ -27,8 +27,8 @@ import com.jazzlogs.backend.album.VocalProfile;
 import com.jazzlogs.backend.editorial.TrackEditorial;
 
 /**
- * Track placement within an album (trackNumber/trackRole) is NOT stored here —
- * it lives only on the CONTAINS relationship in Neo4j (see GraphService).
+ * Track placement within an album (trackNumber) is NOT stored here — it
+ * lives only on the CONTAINS relationship in Neo4j (see GraphService).
  */
 @Entity
 @Table(name = "tracks")
