@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 import org.springframework.data.neo4j.core.Neo4jClient;
 import org.springframework.stereotype.Service;
@@ -90,14 +91,16 @@ public class GraphService {
                 .run());
     }
 
-    public void setAlbumLeader(UUID artistId, UUID albumId) {
+    public void setAlbumLeader(UUID artistId, UUID albumId, List<String> instruments) {
         write("set LEADER_OF artist=" + artistId + " album=" + albumId, () ->
             neo4jClient.query("""
                     MATCH (ar:Artist {id: $artistId}), (al:Album {id: $albumId})
-                    MERGE (ar)-[:LEADER_OF]->(al)
+                    MERGE (ar)-[l:LEADER_OF]->(al)
+                    SET l.instruments = $instruments
                     """)
                 .bind(artistId.toString()).to("artistId")
                 .bind(albumId.toString()).to("albumId")
+                .bind(instruments).to("instruments")
                 .run());
     }
 
@@ -202,37 +205,16 @@ public class GraphService {
                 .run());
     }
 
-    public void addStyle(UUID albumId, String styleCode) {
-        write("add BELONGS_TO album=" + albumId + " style=" + styleCode, () ->
-            neo4jClient.query("""
-                    MATCH (al:Album {id: $albumId}), (s:Style {code: $styleCode})
-                    MERGE (al)-[:BELONGS_TO]->(s)
-                    """)
-                .bind(albumId.toString()).to("albumId")
-                .bind(styleCode).to("styleCode")
-                .run());
+    public void replaceStyles(UUID albumId, List<String> styleCodes) {
+        replaceTags("Album", albumId, "BELONGS_TO", "Style", styleCodes);
     }
 
-    public void addMood(UUID albumId, String moodCode) {
-        write("add EVOKES_MOOD album=" + albumId + " mood=" + moodCode, () ->
-            neo4jClient.query("""
-                    MATCH (al:Album {id: $albumId}), (m:Mood {code: $moodCode})
-                    MERGE (al)-[:EVOKES_MOOD]->(m)
-                    """)
-                .bind(albumId.toString()).to("albumId")
-                .bind(moodCode).to("moodCode")
-                .run());
+    public void replaceMoods(UUID albumId, List<String> moodCodes) {
+        replaceTags("Album", albumId, "EVOKES_MOOD", "Mood", moodCodes);
     }
 
-    public void addContext(UUID albumId, String contextCode) {
-        write("add PERFECT_FOR album=" + albumId + " context=" + contextCode, () ->
-            neo4jClient.query("""
-                    MATCH (al:Album {id: $albumId}), (c:Context {code: $contextCode})
-                    MERGE (al)-[:PERFECT_FOR]->(c)
-                    """)
-                .bind(albumId.toString()).to("albumId")
-                .bind(contextCode).to("contextCode")
-                .run());
+    public void replaceContexts(UUID albumId, List<String> contextCodes) {
+        replaceTags("Album", albumId, "PERFECT_FOR", "Context", contextCodes);
     }
 
     public List<VocabularyTag> getStyles(UUID albumId) {
@@ -287,48 +269,20 @@ public class GraphService {
                 .run());
     }
 
-    public void addTrackMood(UUID trackId, String moodCode) {
-        write("add EVOKES_MOOD track=" + trackId + " mood=" + moodCode, () ->
-            neo4jClient.query("""
-                    MATCH (tr:Track {id: $trackId}), (m:Mood {code: $moodCode})
-                    MERGE (tr)-[:EVOKES_MOOD]->(m)
-                    """)
-                .bind(trackId.toString()).to("trackId")
-                .bind(moodCode).to("moodCode")
-                .run());
+    public void replaceTrackMoods(UUID trackId, List<String> moodCodes) {
+        replaceTags("Track", trackId, "EVOKES_MOOD", "Mood", moodCodes);
     }
 
-    public void addTrackContext(UUID trackId, String contextCode) {
-        write("add PERFECT_FOR track=" + trackId + " context=" + contextCode, () ->
-            neo4jClient.query("""
-                    MATCH (tr:Track {id: $trackId}), (c:Context {code: $contextCode})
-                    MERGE (tr)-[:PERFECT_FOR]->(c)
-                    """)
-                .bind(trackId.toString()).to("trackId")
-                .bind(contextCode).to("contextCode")
-                .run());
+    public void replaceTrackContexts(UUID trackId, List<String> contextCodes) {
+        replaceTags("Track", trackId, "PERFECT_FOR", "Context", contextCodes);
     }
 
-    public void addRhythm(UUID trackId, String rhythmCode) {
-        write("add HAS_RHYTHM track=" + trackId + " rhythm=" + rhythmCode, () ->
-            neo4jClient.query("""
-                    MATCH (tr:Track {id: $trackId}), (r:Rhythm {code: $rhythmCode})
-                    MERGE (tr)-[:HAS_RHYTHM]->(r)
-                    """)
-                .bind(trackId.toString()).to("trackId")
-                .bind(rhythmCode).to("rhythmCode")
-                .run());
+    public void replaceRhythms(UUID trackId, List<String> rhythmCodes) {
+        replaceTags("Track", trackId, "HAS_RHYTHM", "Rhythm", rhythmCodes);
     }
 
-    public void addFeaturedInstrument(UUID trackId, String instrumentCode) {
-        write("add FEATURES_INSTRUMENT track=" + trackId + " instrument=" + instrumentCode, () ->
-            neo4jClient.query("""
-                    MATCH (tr:Track {id: $trackId}), (i:Instrument {code: $instrumentCode})
-                    MERGE (tr)-[:FEATURES_INSTRUMENT]->(i)
-                    """)
-                .bind(trackId.toString()).to("trackId")
-                .bind(instrumentCode).to("instrumentCode")
-                .run());
+    public void replaceFeaturedInstruments(UUID trackId, List<String> instrumentCodes) {
+        replaceTags("Track", trackId, "FEATURES_INSTRUMENT", "Instrument", instrumentCodes);
     }
 
     public void markTrackAsEntryPoint(UUID trackId, UUID artistId) {
@@ -427,6 +381,73 @@ public class GraphService {
     }
 
     /**
+     * Every track's moods/contexts/rhythms/featured-instruments/performers
+     * across a whole album, keyed by trackId — one query each instead of
+     * five queries per track (see AlbumService.getAlbumDetail, which used to
+     * call getTrackMoods/getTrackContexts/getTrackRhythms/
+     * getTrackFeaturedInstruments/getTrackPerformers once per track).
+     */
+    public Map<UUID, List<VocabularyTag>> getTrackMoodsForAlbum(UUID albumId) {
+        return getTagsForAlbum(albumId, "EVOKES_MOOD", "Mood");
+    }
+
+    public Map<UUID, List<VocabularyTag>> getTrackContextsForAlbum(UUID albumId) {
+        return getTagsForAlbum(albumId, "PERFECT_FOR", "Context");
+    }
+
+    public Map<UUID, List<VocabularyTag>> getTrackRhythmsForAlbum(UUID albumId) {
+        return getTagsForAlbum(albumId, "HAS_RHYTHM", "Rhythm");
+    }
+
+    public Map<UUID, List<VocabularyTag>> getTrackFeaturedInstrumentsForAlbum(UUID albumId) {
+        return getTagsForAlbum(albumId, "FEATURES_INSTRUMENT", "Instrument");
+    }
+
+    private Map<UUID, List<VocabularyTag>> getTagsForAlbum(UUID albumId, String relationshipType, String targetLabel) {
+        return read("read " + relationshipType + " for album=" + albumId, () ->
+            neo4jClient.query(
+                    "MATCH (:Album {id: $albumId})-[:CONTAINS]->(tr:Track)-[:" + relationshipType + "]->(n:" + targetLabel + ") "
+                        + "RETURN tr.id AS trackId, n.code AS code, n.label AS label")
+                .bind(albumId.toString()).to("albumId")
+                .fetch()
+                .all()
+                .stream()
+                .collect(Collectors.groupingBy(
+                    row -> UUID.fromString((String) row.get("trackId")),
+                    Collectors.mapping(
+                        row -> new VocabularyTag((String) row.get("code"), (String) row.get("label")),
+                        Collectors.toList()
+                    )
+                )));
+    }
+
+    public Map<UUID, List<TrackPerformerEntry>> getTrackPerformersForAlbum(UUID albumId) {
+        return read("read performers for album=" + albumId, () ->
+            neo4jClient.query("""
+                    MATCH (:Album {id: $albumId})-[:CONTAINS]->(tr:Track)<-[p:PERFORMED_ON]-(ar:Artist)
+                    RETURN tr.id AS trackId, ar.id AS artistId, ar.name AS artistName, p.role AS role,
+                           p.instrument AS instrument, p.primaryCredit AS primaryCredit
+                    """)
+                .bind(albumId.toString()).to("albumId")
+                .fetch()
+                .all()
+                .stream()
+                .collect(Collectors.groupingBy(
+                    row -> UUID.fromString((String) row.get("trackId")),
+                    Collectors.mapping(
+                        row -> new TrackPerformerEntry(
+                            UUID.fromString((String) row.get("artistId")),
+                            (String) row.get("artistName"),
+                            (String) row.get("role"),
+                            (String) row.get("instrument"),
+                            Boolean.TRUE.equals(row.get("primaryCredit"))
+                        ),
+                        Collectors.toList()
+                    )
+                )));
+    }
+
+    /**
      * Every track's placement within its album, keyed by trackId — one query for
      * the whole album instead of one per track (see AlbumService.getAlbumDetail).
      */
@@ -477,26 +498,12 @@ public class GraphService {
                 .run());
     }
 
-    public void addArtistStyle(UUID artistId, String styleCode) {
-        write("add HAS_STYLE artist=" + artistId + " style=" + styleCode, () ->
-            neo4jClient.query("""
-                    MATCH (ar:Artist {id: $artistId}), (s:Style {code: $styleCode})
-                    MERGE (ar)-[:HAS_STYLE]->(s)
-                    """)
-                .bind(artistId.toString()).to("artistId")
-                .bind(styleCode).to("styleCode")
-                .run());
+    public void replaceArtistStyles(UUID artistId, List<String> styleCodes) {
+        replaceTags("Artist", artistId, "HAS_STYLE", "Style", styleCodes);
     }
 
-    public void addArtistContext(UUID artistId, String contextCode) {
-        write("add PERFECT_FOR artist=" + artistId + " context=" + contextCode, () ->
-            neo4jClient.query("""
-                    MATCH (ar:Artist {id: $artistId}), (c:Context {code: $contextCode})
-                    MERGE (ar)-[:PERFECT_FOR]->(c)
-                    """)
-                .bind(artistId.toString()).to("artistId")
-                .bind(contextCode).to("contextCode")
-                .run());
+    public void replaceArtistContexts(UUID artistId, List<String> contextCodes) {
+        replaceTags("Artist", artistId, "PERFECT_FOR", "Context", contextCodes);
     }
 
     /** Unidirectional by default (a1 -> a2 only); pass bidirectional=true to also create a2 -> a1. */
@@ -743,6 +750,34 @@ public class GraphService {
                 .stream()
                 .map(row -> UUID.fromString((String) row.get("id")))
                 .toList());
+    }
+
+    // Full replace, not add: clears every existing relationship of this type
+    // from the entity first, then recreates one per code — same "DELETE then
+    // conditionally UNWIND+MERGE" shape as setHighlightedTracks. Labels/
+    // relationshipType are always hardcoded call-site constants (see the
+    // replace* methods above), never user input, so string-building the
+    // query text is safe — Cypher has no way to parameterize a label or
+    // relationship type as a bind variable.
+    private void replaceTags(String entityLabel, UUID entityId, String relationshipType, String targetLabel, List<String> codes) {
+        write("replace " + relationshipType + " " + entityLabel + "=" + entityId, () -> {
+            neo4jClient.query(
+                    "MATCH (e:" + entityLabel + " {id: $entityId})-[r:" + relationshipType + "]->(:" + targetLabel + ") "
+                        + "DELETE r")
+                .bind(entityId.toString()).to("entityId")
+                .run();
+
+            if (!codes.isEmpty()) {
+                neo4jClient.query(
+                        "MATCH (e:" + entityLabel + " {id: $entityId}) "
+                            + "UNWIND $codes AS code "
+                            + "MATCH (t:" + targetLabel + " {code: code}) "
+                            + "MERGE (e)-[:" + relationshipType + "]->(t)")
+                    .bind(entityId.toString()).to("entityId")
+                    .bind(codes).to("codes")
+                    .run();
+            }
+        });
     }
 
     private void write(String description, Runnable action) {
