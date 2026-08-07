@@ -38,7 +38,7 @@ class EditorialServiceTest {
             VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
         ));
 
-        AlbumEditorialRequest request = new AlbumEditorialRequest("A Title", "A dek", "A byline", 5, List.of());
+        AlbumEditorialRequest request = new AlbumEditorialRequest("A Title", "A dek", "A byline", List.of());
 
         AlbumEditorial saved = editorialService.upsertAlbumEditorial(album.getId(), request);
 

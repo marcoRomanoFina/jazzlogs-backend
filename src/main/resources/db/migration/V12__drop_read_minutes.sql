@@ -1,7 +1,12 @@
 -- read_minutes is unused and being dropped entirely — redefine the view
 -- without it first (it still references editorials.read_minutes), then drop
--- the underlying column.
-CREATE OR REPLACE VIEW editorial_summaries AS
+-- the underlying column. DROP + CREATE, not CREATE OR REPLACE: Postgres only
+-- allows CREATE OR REPLACE VIEW to append columns at the end, never remove
+-- one from the middle of the output list (errors "cannot drop columns from
+-- view") — read_minutes sits in the middle of this view's column order.
+DROP VIEW editorial_summaries;
+
+CREATE VIEW editorial_summaries AS
 SELECT
     e.id AS id,
     'ALBUM' AS owner_type,
