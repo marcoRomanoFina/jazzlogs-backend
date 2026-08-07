@@ -1,9 +1,11 @@
 package com.jazzlogs.backend.album;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -13,26 +15,37 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.album.dto.AlbumDetailDto;
+import com.jazzlogs.backend.album.dto.AlbumSpotlightDto;
 import com.jazzlogs.backend.album.dto.ContextTagRequest;
 import com.jazzlogs.backend.album.dto.CreateAlbumRequest;
 import com.jazzlogs.backend.album.dto.MoodTagRequest;
 import com.jazzlogs.backend.album.dto.PersonnelRequest;
+import com.jazzlogs.backend.album.dto.SpotlightTrackDto;
 import com.jazzlogs.backend.album.dto.StyleTagRequest;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
+import com.jazzlogs.backend.editorial.AlbumEditorialRepository;
 import com.jazzlogs.backend.editorial.EditorialService;
+import com.jazzlogs.backend.editorial.TrackEditorialRepository;
 import com.jazzlogs.backend.editorial.dto.AlbumEditorialDto;
+import com.jazzlogs.backend.editorial.dto.TrackEditorialDto;
 import com.jazzlogs.backend.graph.GraphService;
+import com.jazzlogs.backend.graph.TrackPerformerEntry;
 import com.jazzlogs.backend.graph.TrackPlacement;
+import com.jazzlogs.backend.graph.VocabularyTag;
+import com.jazzlogs.backend.like.LikeService;
+import com.jazzlogs.backend.like.LikeableEntityType;
 import com.jazzlogs.backend.note.NoteService;
 import com.jazzlogs.backend.note.dto.NoteDto;
 import com.jazzlogs.backend.review.ReviewService;
 import com.jazzlogs.backend.review.dto.AlbumRatingStats;
 import com.jazzlogs.backend.spotify.SpotifyAlbumData;
 import com.jazzlogs.backend.spotify.SpotifyCatalogService;
+import com.jazzlogs.backend.track.TrackBatchContext;
 import com.jazzlogs.backend.track.TrackService;
 import com.jazzlogs.backend.track.dto.TrackDto;
 import com.jazzlogs.backend.vocabulary.ContextVocabulary;
+import com.jazzlogs.backend.vocabulary.InstrumentVocabulary;
 import com.jazzlogs.backend.vocabulary.MoodVocabulary;
 import com.jazzlogs.backend.vocabulary.StyleVocabulary;
 import com.jazzlogs.backend.vocabulary.VocabularyCodes;
@@ -51,6 +64,9 @@ public class AlbumService {
     private final EditorialService editorialService;
     private final NoteService noteService;
     private final ReviewService reviewService;
+    private final AlbumEditorialRepository albumEditorialRepository;
+    private final TrackEditorialRepository trackEditorialRepository;
+    private final LikeService likeService;
 
     // Upsert on spotifyAlbumId: re-posting an album that's already in the
     // catalog updates it in place (fresh Spotify data + the editable fields
@@ -72,6 +88,7 @@ public class AlbumService {
                 data.releaseYear(),
                 data.totalTracks(),
                 request.logNumber(),
+                request.label(),
                 request.vocalProfile(),
                 request.energy(),
                 request.moodIntensity(),
@@ -96,6 +113,7 @@ public class AlbumService {
         album.setReleaseYear(data.releaseYear());
         album.setTotalTracks(data.totalTracks());
         album.setLogNumber(request.logNumber());
+        album.setLabel(request.label());
         album.setVocalProfile(request.vocalProfile());
         album.setEnergy(request.energy());
         album.setMoodIntensity(request.moodIntensity());
@@ -108,10 +126,12 @@ public class AlbumService {
         getAlbumOrThrow(albumId);
         getArtistOrThrow(request.artistId());
 
+        List<String> instruments = request.instruments() == null ? List.of() : request.instruments();
+        instruments.forEach(code -> VocabularyCodes.validate(InstrumentVocabulary.class, code, "instrument"));
+
         if (request.role() == PersonnelRole.LEADER) {
-            graphService.setAlbumLeader(request.artistId(), albumId);
+            graphService.setAlbumLeader(request.artistId(), albumId, instruments);
         } else {
-            List<String> instruments = request.instruments() == null ? List.of() : request.instruments();
             graphService.addSideman(request.artistId(), albumId, instruments);
         }
     }
@@ -122,22 +142,22 @@ public class AlbumService {
         graphService.markAsEntryPoint(albumId, artistId);
     }
 
-    public void addStyle(UUID albumId, StyleTagRequest request) {
+    public void replaceStyles(UUID albumId, StyleTagRequest request) {
         getAlbumOrThrow(albumId);
-        VocabularyCodes.validate(StyleVocabulary.class, request.styleCode(), "style");
-        graphService.addStyle(albumId, request.styleCode());
+        request.styleCodes().forEach(code -> VocabularyCodes.validate(StyleVocabulary.class, code, "style"));
+        graphService.replaceStyles(albumId, request.styleCodes());
     }
 
-    public void addMood(UUID albumId, MoodTagRequest request) {
+    public void replaceMoods(UUID albumId, MoodTagRequest request) {
         getAlbumOrThrow(albumId);
-        VocabularyCodes.validate(MoodVocabulary.class, request.moodCode(), "mood");
-        graphService.addMood(albumId, request.moodCode());
+        request.moodCodes().forEach(code -> VocabularyCodes.validate(MoodVocabulary.class, code, "mood"));
+        graphService.replaceMoods(albumId, request.moodCodes());
     }
 
-    public void addContext(UUID albumId, ContextTagRequest request) {
+    public void replaceContexts(UUID albumId, ContextTagRequest request) {
         getAlbumOrThrow(albumId);
-        VocabularyCodes.validate(ContextVocabulary.class, request.contextCode(), "context");
-        graphService.addContext(albumId, request.contextCode());
+        request.contextCodes().forEach(code -> VocabularyCodes.validate(ContextVocabulary.class, code, "context"));
+        graphService.replaceContexts(albumId, request.contextCodes());
     }
 
     @Transactional(readOnly = true)
@@ -154,14 +174,35 @@ public class AlbumService {
         // this album, instead of one per track.
         Map<UUID, List<NoteDto>> notesByTrack = noteService.getMyNotesForAlbum(albumId, currentUserId);
 
+        // And again for every track's own editorial, instead of one per track.
+        Map<UUID, TrackEditorialDto> editorialsByTrack = editorialService.getTrackEditorialDtosByAlbumId(albumId);
+
+        // Same idea again, this time for the five Neo4j lookups toDto used to
+        // run once per track (performers, moods, contexts, rhythms, featured
+        // instruments) — this was the real N+1: 5 graph round-trips per
+        // track, not just the one editorial query above.
+        Map<UUID, List<TrackPerformerEntry>> performersByTrack = graphService.getTrackPerformersForAlbum(albumId);
+        Map<UUID, List<VocabularyTag>> moodsByTrack = graphService.getTrackMoodsForAlbum(albumId);
+        Map<UUID, List<VocabularyTag>> contextsByTrack = graphService.getTrackContextsForAlbum(albumId);
+        Map<UUID, List<VocabularyTag>> rhythmsByTrack = graphService.getTrackRhythmsForAlbum(albumId);
+        Map<UUID, List<VocabularyTag>> instrumentsByTrack = graphService.getTrackFeaturedInstrumentsForAlbum(albumId);
+
         AlbumRatingStats ratingStats = reviewService.getAlbumRatingStats(albumId);
 
         List<TrackDto> trackDtos = album.getTracks().stream()
-            .map(track -> trackService.toDto(
-                track,
-                placements.get(track.getId()),
-                notesByTrack.getOrDefault(track.getId(), List.of())
-            ))
+            .map(track -> {
+                UUID trackId = track.getId();
+                return trackService.toDto(track, new TrackBatchContext(
+                    placements.get(trackId),
+                    notesByTrack.getOrDefault(trackId, List.of()),
+                    editorialsByTrack.get(trackId),
+                    performersByTrack.getOrDefault(trackId, List.of()),
+                    moodsByTrack.getOrDefault(trackId, List.of()),
+                    contextsByTrack.getOrDefault(trackId, List.of()),
+                    rhythmsByTrack.getOrDefault(trackId, List.of()),
+                    instrumentsByTrack.getOrDefault(trackId, List.of())
+                ));
+            })
             .sorted(Comparator.comparing(TrackDto::trackNumber, Comparator.nullsLast(Comparator.naturalOrder())))
             .toList();
 
@@ -176,6 +217,7 @@ public class AlbumService {
             album.getReleaseYear(),
             album.getTotalTracks(),
             album.getLogNumber(),
+            album.getLabel(),
             album.getVocalProfile(),
             album.getEnergy(),
             album.getMoodIntensity(),
@@ -190,6 +232,70 @@ public class AlbumService {
             graphService.getPersonnel(albumId),
             ratingStats.avgRating(),
             ratingStats.count()
+        );
+    }
+
+    // Lean cousin of getAlbumDetail, purpose-built for the archive page's
+    // spotlight: no personnel/tags/ratings/notes, and the one Neo4j call it
+    // does make (track placements, for ordering) is a single query rather
+    // than the five per-track ones getAlbumDetail needs for its fuller view.
+    @Transactional(readOnly = true)
+    public AlbumSpotlightDto getAlbumSpotlight(UUID albumId, UUID currentUserId) {
+        Album album = getAlbumOrThrow(albumId);
+
+        AlbumEditorialRepository.EditorialTeaserRow editorialTeaser =
+            albumEditorialRepository.findTeaserByAlbumId(albumId).orElse(null);
+
+        Map<UUID, TrackPlacement> placements = graphService.getTrackPlacements(albumId).stream()
+            .collect(Collectors.toMap(TrackPlacement::trackId, placement -> placement));
+
+        List<TrackEditorialRepository.TrackTeaserRow> trackTeaserRows =
+            trackEditorialRepository.findTeasersByAlbumId(albumId);
+        Map<UUID, TrackEditorialRepository.TrackTeaserRow> trackTeasers = trackTeaserRows.stream()
+            .collect(Collectors.toMap(TrackEditorialRepository.TrackTeaserRow::getTrackId, row -> row));
+
+        // One query for whether the current user liked ANY of these
+        // editorials (the album's plus every track's), instead of one per
+        // editorial.
+        List<UUID> editorialIds = new ArrayList<>(trackTeaserRows.stream()
+            .map(TrackEditorialRepository.TrackTeaserRow::getEditorialId)
+            .toList());
+        if (editorialTeaser != null) {
+            editorialIds.add(editorialTeaser.getId());
+        }
+        Set<UUID> likedEditorialIds = likeService.hasUserLikedBatch(currentUserId, LikeableEntityType.EDITORIAL, editorialIds);
+
+        List<SpotlightTrackDto> tracks = album.getTracks().stream()
+            .filter(track -> trackTeasers.containsKey(track.getId()))
+            .map(track -> {
+                TrackEditorialRepository.TrackTeaserRow teaser = trackTeasers.get(track.getId());
+                TrackPlacement placement = placements.get(track.getId());
+                return new SpotlightTrackDto(
+                    track.getId(),
+                    placement == null ? null : placement.trackNumber(),
+                    track.getName(),
+                    teaser.getTitle(),
+                    teaser.getDek(),
+                    teaser.getLikeCount(),
+                    likedEditorialIds.contains(teaser.getEditorialId())
+                );
+            })
+            .sorted(Comparator.comparing(SpotlightTrackDto::trackNumber, Comparator.nullsLast(Comparator.naturalOrder())))
+            .toList();
+
+        return new AlbumSpotlightDto(
+            album.getId(),
+            album.getArtist().getName(),
+            album.getName(),
+            album.getImageUrl(),
+            album.getReleaseYear(),
+            album.getPostedAt(),
+            editorialTeaser == null ? null : editorialTeaser.getTitle(),
+            editorialTeaser == null ? null : editorialTeaser.getDek(),
+            editorialTeaser == null ? null : editorialTeaser.getByline(),
+            editorialTeaser == null ? 0 : editorialTeaser.getLikeCount(),
+            editorialTeaser != null && likedEditorialIds.contains(editorialTeaser.getId()),
+            tracks
         );
     }
 

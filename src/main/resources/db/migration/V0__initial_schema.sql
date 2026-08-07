@@ -25,6 +25,7 @@ CREATE TABLE albums (
     energy character varying(255) NOT NULL,
     image_url character varying(255),
     instagram_permalink character varying(255),
+    label character varying(255) NOT NULL,
     log_number character varying(255) NOT NULL,
     mood_intensity character varying(255) NOT NULL,
     name character varying(255) NOT NULL,

@@ -23,6 +23,7 @@ public record AlbumDetailDto(
     Integer releaseYear,
     Integer totalTracks,
     String logNumber,
+    String label,
     VocalProfile vocalProfile,
     Level energy,
     Level moodIntensity,

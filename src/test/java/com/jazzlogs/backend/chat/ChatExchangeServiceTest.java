@@ -77,7 +77,7 @@ class ChatExchangeServiceTest {
     @Test
     void resolvesRealAlbumId_andDropsHallucinatedOne() {
         Artist artist = new Artist("Miles Davis", null, null, null);
-        Album album = new Album(artist, "Kind of Blue", null, null, null, 1959, 5, null, null, null, null, null, null, null);
+        Album album = new Album(artist, "Kind of Blue", null, null, null, 1959, 5, null, null, null, null, null, null, null, null);
         UUID albumId = UUID.randomUUID();
         ReflectionTestUtils.setField(album, "id", albumId);
 
@@ -101,7 +101,7 @@ class ChatExchangeServiceTest {
     @Test
     void resolvesRealTrackId_primaryArtistComesFromItsAlbum() {
         Artist artist = new Artist("John Coltrane", null, null, null);
-        Album album = new Album(artist, "A Love Supreme", null, null, null, 1965, 4, null, null, null, null, null, null, null);
+        Album album = new Album(artist, "A Love Supreme", null, null, null, 1965, 4, null, null, null, null, null, null, null, null);
         Track track = new Track(album, null, "Acknowledgement", null, null, null, false, null, null, null, null, null, null);
         UUID trackId = UUID.randomUUID();
         ReflectionTestUtils.setField(track, "id", trackId);
