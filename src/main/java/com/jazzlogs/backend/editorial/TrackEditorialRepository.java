@@ -12,6 +12,39 @@ public interface TrackEditorialRepository extends JpaRepository<TrackEditorial, 
 
     Optional<TrackEditorial> findByTrackId(UUID trackId);
 
+    // One query for every track editorial on this album (title/dek/byline +
+    // blocks), instead of one per track — see AlbumService.getAlbumDetail,
+    // which used to call getTrackEditorialDto(trackId) once per track.
+    // DISTINCT is needed because the blocks fetch join otherwise duplicates
+    // each TrackEditorial row once per block.
+    @Query("""
+        SELECT DISTINCT te FROM TrackEditorial te
+        JOIN FETCH te.track t
+        LEFT JOIN FETCH te.blocks
+        WHERE t.album.id = :albumId
+        """)
+    List<TrackEditorial> findByTrackAlbumId(@Param("albumId") UUID albumId);
+
+    // For the archive page's spotlight — title/dek/likeCount only, keyed by
+    // trackId, no blocks/embeddings (same reasoning as
+    // AlbumEditorialRepository's teaser query). editorialId is needed to
+    // look up likedByCurrentUser via LikeService (it's a different id than
+    // trackId — the editorial's own PK).
+    @Query("SELECT te.id AS editorialId, t.id AS trackId, te.title AS title, te.dek AS dek, te.likeCount AS likeCount FROM TrackEditorial te JOIN te.track t WHERE t.album.id = :albumId")
+    List<TrackTeaserRow> findTeasersByAlbumId(@Param("albumId") UUID albumId);
+
+    interface TrackTeaserRow {
+        UUID getEditorialId();
+
+        UUID getTrackId();
+
+        String getTitle();
+
+        String getDek();
+
+        int getLikeCount();
+    }
+
     // Fallback for EditorialSearchTool: embedding_metadata never carries a
     // track's own name (see EditorialService.buildBaseMetadata, which only
     // populates albumName/artistName for Album/ArtistEditorial, nothing for

@@ -27,4 +27,16 @@ public interface EditorialRepository extends LikeableRepository<Editorial> {
 
     @Query("SELECT e.likeCount FROM Editorial e WHERE e.id = :id")
     Optional<Integer> findLikeCount(@Param("id") UUID entityId);
+
+    // At most one editorial is featurated at a time, across every subtype
+    // (Album/Track/ArtistEditorial alike) — clear whichever one currently is
+    // before marking the new one, both as atomic UPDATEs rather than
+    // read-modify-save.
+    @Modifying
+    @Query("UPDATE Editorial e SET e.featurated = false WHERE e.featurated = true")
+    void clearFeaturated();
+
+    @Modifying
+    @Query("UPDATE Editorial e SET e.featurated = true WHERE e.id = :id")
+    void markFeaturated(@Param("id") UUID id);
 }
