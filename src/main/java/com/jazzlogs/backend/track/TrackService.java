@@ -23,10 +23,11 @@ import com.jazzlogs.backend.note.dto.NoteDto;
 import com.jazzlogs.backend.spotify.SpotifyCatalogService;
 import com.jazzlogs.backend.spotify.SpotifyTrackData;
 import com.jazzlogs.backend.track.dto.CreateTrackRequest;
-import com.jazzlogs.backend.track.dto.InstrumentTagRequest;
+import com.jazzlogs.backend.track.dto.FeaturedInstrumentsRequest;
 import com.jazzlogs.backend.track.dto.PerformerRequest;
 import com.jazzlogs.backend.track.dto.RhythmTagRequest;
 import com.jazzlogs.backend.track.dto.TrackDto;
+import com.jazzlogs.backend.track.dto.TrackTagsDto;
 import com.jazzlogs.backend.vocabulary.ContextVocabulary;
 import com.jazzlogs.backend.vocabulary.InstrumentVocabulary;
 import com.jazzlogs.backend.vocabulary.MoodVocabulary;
@@ -114,28 +115,39 @@ public class TrackService {
         );
     }
 
-    public void addMood(UUID trackId, MoodTagRequest request) {
+    public void replaceMoods(UUID trackId, MoodTagRequest request) {
         getTrackOrThrow(trackId);
-        VocabularyCodes.validate(MoodVocabulary.class, request.moodCode(), "mood");
-        graphService.addTrackMood(trackId, request.moodCode());
+        request.moodCodes().forEach(code -> VocabularyCodes.validate(MoodVocabulary.class, code, "mood"));
+        graphService.replaceTrackMoods(trackId, request.moodCodes());
     }
 
-    public void addContext(UUID trackId, ContextTagRequest request) {
+    public void replaceContexts(UUID trackId, ContextTagRequest request) {
         getTrackOrThrow(trackId);
-        VocabularyCodes.validate(ContextVocabulary.class, request.contextCode(), "context");
-        graphService.addTrackContext(trackId, request.contextCode());
+        request.contextCodes().forEach(code -> VocabularyCodes.validate(ContextVocabulary.class, code, "context"));
+        graphService.replaceTrackContexts(trackId, request.contextCodes());
     }
 
-    public void addRhythm(UUID trackId, RhythmTagRequest request) {
+    public void replaceRhythms(UUID trackId, RhythmTagRequest request) {
         getTrackOrThrow(trackId);
-        VocabularyCodes.validate(RhythmVocabulary.class, request.rhythmCode(), "rhythm");
-        graphService.addRhythm(trackId, request.rhythmCode());
+        request.rhythmCodes().forEach(code -> VocabularyCodes.validate(RhythmVocabulary.class, code, "rhythm"));
+        graphService.replaceRhythms(trackId, request.rhythmCodes());
     }
 
-    public void addInstrument(UUID trackId, InstrumentTagRequest request) {
+    public void replaceFeaturedInstruments(UUID trackId, FeaturedInstrumentsRequest request) {
         getTrackOrThrow(trackId);
-        VocabularyCodes.validate(InstrumentVocabulary.class, request.instrumentCode(), "instrument");
-        graphService.addFeaturedInstrument(trackId, request.instrumentCode());
+        request.instrumentCodes().forEach(code -> VocabularyCodes.validate(InstrumentVocabulary.class, code, "instrument"));
+        graphService.replaceFeaturedInstruments(trackId, request.instrumentCodes());
+    }
+
+    @Transactional(readOnly = true)
+    public TrackTagsDto getTrackTags(UUID trackId) {
+        getTrackOrThrow(trackId);
+        return new TrackTagsDto(
+            graphService.getTrackMoods(trackId),
+            graphService.getTrackContexts(trackId),
+            graphService.getTrackRhythms(trackId),
+            graphService.getTrackFeaturedInstruments(trackId)
+        );
     }
 
     public void markEntryPoint(UUID trackId, UUID artistId) {
@@ -154,8 +166,32 @@ public class TrackService {
 
     /** myNotes comes pre-fetched (see AlbumService.getAlbumDetail) — no query in here. */
     public TrackDto toDto(Track track, TrackPlacement placement, List<NoteDto> myNotes) {
+        return toDto(track, placement, myNotes, editorialService.getTrackEditorialDto(track.getId()));
+    }
+
+    /** editorialDto comes pre-fetched too (see AlbumService.getAlbumDetail) — everything else is still one query per track. */
+    public TrackDto toDto(Track track, TrackPlacement placement, List<NoteDto> myNotes, TrackEditorialDto editorialDto) {
         UUID trackId = track.getId();
-        TrackEditorialDto editorialDto = editorialService.getTrackEditorialDto(trackId);
+        return toDto(track, new TrackBatchContext(
+            placement,
+            myNotes,
+            editorialDto,
+            graphService.getTrackPerformers(trackId),
+            graphService.getTrackMoods(trackId),
+            graphService.getTrackContexts(trackId),
+            graphService.getTrackRhythms(trackId),
+            graphService.getTrackFeaturedInstruments(trackId)
+        ));
+    }
+
+    /**
+     * Everything pre-fetched in bulk for a whole album (see
+     * AlbumService.getAlbumDetail) — no queries of any kind in here, unlike
+     * the overloads above.
+     */
+    public TrackDto toDto(Track track, TrackBatchContext ctx) {
+        UUID trackId = track.getId();
+        TrackPlacement placement = ctx.placement();
 
         return new TrackDto(
             trackId,
@@ -172,13 +208,13 @@ public class TrackService {
             track.getMoodIntensity(),
             track.getTempoFeel(),
             track.getCompositionType(),
-            editorialDto,
-            graphService.getTrackPerformers(trackId),
-            graphService.getTrackMoods(trackId),
-            graphService.getTrackContexts(trackId),
-            graphService.getTrackRhythms(trackId),
-            graphService.getTrackFeaturedInstruments(trackId),
-            myNotes
+            ctx.editorial(),
+            ctx.performers(),
+            ctx.moods(),
+            ctx.contexts(),
+            ctx.rhythms(),
+            ctx.featuredInstruments(),
+            ctx.myNotes()
         );
     }
 

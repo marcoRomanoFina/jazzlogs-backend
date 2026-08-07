@@ -13,6 +13,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -27,9 +28,10 @@ import com.jazzlogs.backend.listen.ListenService;
 import com.jazzlogs.backend.note.NoteService;
 import com.jazzlogs.backend.note.dto.CreateNoteRequest;
 import com.jazzlogs.backend.note.dto.NoteDto;
-import com.jazzlogs.backend.track.dto.InstrumentTagRequest;
+import com.jazzlogs.backend.track.dto.FeaturedInstrumentsRequest;
 import com.jazzlogs.backend.track.dto.PerformerRequest;
 import com.jazzlogs.backend.track.dto.RhythmTagRequest;
+import com.jazzlogs.backend.track.dto.TrackTagsDto;
 import com.jazzlogs.backend.trackrating.TrackRatingService;
 import com.jazzlogs.backend.trackrating.dto.CreateTrackRatingRequest;
 import com.jazzlogs.backend.trackrating.dto.TrackRatingDto;
@@ -63,32 +65,40 @@ public class TrackController {
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping("/{id}/tags/mood")
+    // Full replace, not add-one — see StyleTagRequest's comment.
+    @PutMapping("/{id}/tags/mood")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> addMood(@PathVariable UUID id, @RequestBody MoodTagRequest request) {
-        trackService.addMood(id, request);
+    public ResponseEntity<Void> replaceMoods(@PathVariable UUID id, @RequestBody MoodTagRequest request) {
+        trackService.replaceMoods(id, request);
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping("/{id}/tags/context")
+    @PutMapping("/{id}/tags/context")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> addContext(@PathVariable UUID id, @RequestBody ContextTagRequest request) {
-        trackService.addContext(id, request);
+    public ResponseEntity<Void> replaceContexts(@PathVariable UUID id, @RequestBody ContextTagRequest request) {
+        trackService.replaceContexts(id, request);
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping("/{id}/tags/rhythm")
+    @PutMapping("/{id}/tags/rhythm")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> addRhythm(@PathVariable UUID id, @RequestBody RhythmTagRequest request) {
-        trackService.addRhythm(id, request);
+    public ResponseEntity<Void> replaceRhythms(@PathVariable UUID id, @RequestBody RhythmTagRequest request) {
+        trackService.replaceRhythms(id, request);
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping("/{id}/tags/instrument")
+    @PutMapping("/{id}/tags/instrument")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> addInstrument(@PathVariable UUID id, @RequestBody InstrumentTagRequest request) {
-        trackService.addInstrument(id, request);
+    public ResponseEntity<Void> replaceFeaturedInstruments(@PathVariable UUID id, @RequestBody FeaturedInstrumentsRequest request) {
+        trackService.replaceFeaturedInstruments(id, request);
         return ResponseEntity.noContent().build();
+    }
+
+    // Lets the admin tags tool preload what's already tagged before a PUT
+    // (full replace) overwrites it — see TrackService.getTrackTags.
+    @GetMapping("/{id}/tags")
+    public TrackTagsDto getTags(@PathVariable UUID id) {
+        return trackService.getTrackTags(id);
     }
 
     @PostMapping("/{id}/entry-point/{artistId}")
