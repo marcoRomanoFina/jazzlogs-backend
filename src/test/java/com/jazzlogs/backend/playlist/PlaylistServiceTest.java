@@ -215,7 +215,7 @@ class PlaylistServiceTest {
 
     private Album persistAlbum(Artist artist) {
         return albumRepository.save(new Album(
-            artist, "Test Album", null, null, null, 2024, 1, "LOG-1",
+            artist, "Test Album", null, null, null, 2024, 1, "LOG-1", "LABEL-1",
             VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
         ));
     }

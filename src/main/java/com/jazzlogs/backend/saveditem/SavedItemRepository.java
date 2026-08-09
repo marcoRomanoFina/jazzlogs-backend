@@ -1,5 +1,6 @@
 package com.jazzlogs.backend.saveditem;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -16,6 +17,15 @@ public interface SavedItemRepository extends JpaRepository<SavedItem, SavedItemI
         @Param("userId") UUID userId,
         @Param("entityType") SaveableEntityType entityType,
         Pageable pageable
+    );
+
+    // Batch — AlbumService.getAlbumDetail needs "is this track saved" for
+    // every track on the album at once, not one existsById per track.
+    @Query("SELECT s.id.entityId FROM SavedItem s WHERE s.id.userId = :userId AND s.id.entityType = :entityType AND s.id.entityId IN :entityIds")
+    List<UUID> findSavedEntityIds(
+        @Param("userId") UUID userId,
+        @Param("entityType") SaveableEntityType entityType,
+        @Param("entityIds") List<UUID> entityIds
     );
 
     // Returns rows deleted (0 or 1, since the composite id is unique) — used by

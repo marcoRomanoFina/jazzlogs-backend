@@ -10,6 +10,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -40,8 +41,10 @@ public class ArtistController {
         return artistService.getArtistDetail(id);
     }
 
-    // Upserts by spotifyArtistId — posting the same artist again updates it in
-    // place instead of creating a duplicate. See ArtistService.createOrUpdateArtist.
+    // Upserts by spotifyArtistId when given — posting the same artist again
+    // updates it in place instead of creating a duplicate. Without one, name
+    // is required instead: manual entry for artists with no Spotify presence
+    // (mostly older sidemen). See ArtistService.createOrUpdateArtist.
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ArtistDetailDto> createOrUpdateArtist(@Valid @RequestBody CreateArtistRequest request) {
@@ -56,17 +59,18 @@ public class ArtistController {
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping("/{id}/styles")
+    // Full replace, not add-one — see StyleTagRequest's comment.
+    @PutMapping("/{id}/styles")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> addStyle(@PathVariable UUID id, @RequestBody StyleTagRequest request) {
-        artistService.addStyle(id, request);
+    public ResponseEntity<Void> replaceStyles(@PathVariable UUID id, @RequestBody StyleTagRequest request) {
+        artistService.replaceStyles(id, request);
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping("/{id}/contexts")
+    @PutMapping("/{id}/contexts")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> addContext(@PathVariable UUID id, @RequestBody ContextTagRequest request) {
-        artistService.addContext(id, request);
+    public ResponseEntity<Void> replaceContexts(@PathVariable UUID id, @RequestBody ContextTagRequest request) {
+        artistService.replaceContexts(id, request);
         return ResponseEntity.noContent().build();
     }
 

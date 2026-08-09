@@ -42,7 +42,7 @@ public class NoteService {
         }
 
         Note saved = noteRepository.save(new Note(user, track, text, timestampSeconds));
-        return toDto(saved, false); // brand new, can't have any likes yet
+        return toDto(saved, false, user.getDisplayName()); // brand new, can't have any likes yet
     }
 
     @Transactional
@@ -71,18 +71,20 @@ public class NoteService {
     public Map<UUID, List<NoteDto>> getMyNotesForAlbum(UUID albumId, UUID currentUserId) {
         List<Note> notes = noteRepository.findByUserAndAlbum(currentUserId, albumId);
         Set<UUID> liked = likedIds(notes, currentUserId);
+        Map<UUID, String> names = namesByUserId(notes);
 
         return notes.stream()
             .collect(Collectors.groupingBy(
                 note -> note.getTrack().getId(),
-                Collectors.mapping(note -> toDto(note, liked.contains(note.getId())), Collectors.toList())
+                Collectors.mapping(note -> toDto(note, liked.contains(note.getId()), names.get(note.getUserId())), Collectors.toList())
             ));
     }
 
-    /** Batch — one hasUserLikedBatch call for the whole list, not one per note. */
+    /** Batch — one hasUserLikedBatch call and one user lookup for the whole list, not one per note. */
     private List<NoteDto> toDtos(List<Note> notes, UUID currentUserId) {
         Set<UUID> liked = likedIds(notes, currentUserId);
-        return notes.stream().map(note -> toDto(note, liked.contains(note.getId()))).toList();
+        Map<UUID, String> names = namesByUserId(notes);
+        return notes.stream().map(note -> toDto(note, liked.contains(note.getId()), names.get(note.getUserId()))).toList();
     }
 
     private Set<UUID> likedIds(List<Note> notes, UUID currentUserId) {
@@ -90,11 +92,18 @@ public class NoteService {
         return likeService.hasUserLikedBatch(currentUserId, LikeableEntityType.NOTE, noteIds);
     }
 
-    private NoteDto toDto(Note note, boolean likedByCurrentUser) {
+    private Map<UUID, String> namesByUserId(List<Note> notes) {
+        List<UUID> userIds = notes.stream().map(Note::getUserId).distinct().toList();
+        return userRepository.findAllById(userIds).stream()
+            .collect(Collectors.toMap(User::getId, User::getDisplayName));
+    }
+
+    private NoteDto toDto(Note note, boolean likedByCurrentUser, String userName) {
         return new NoteDto(
             note.getId(),
             note.getTrack().getId(),
             note.getUserId(),
+            userName,
             note.getText(),
             note.getTimestampSeconds(),
             note.getLikeCount(),

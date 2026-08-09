@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.jazzlogs.backend.saveditem.dto.SaveItemRequest;
 import com.jazzlogs.backend.saveditem.dto.SavedItemSummary;
+import com.jazzlogs.backend.saveditem.dto.SavedResponse;
 import com.jazzlogs.backend.user.UserService;
 
 import lombok.AllArgsConstructor;
@@ -65,6 +66,15 @@ public class SavedItemController {
         @AuthenticationPrincipal Jwt jwt
     ) {
         return savedItemService.list(currentUserId(jwt), type, pageable);
+    }
+
+    @GetMapping("/me")
+    public SavedResponse isSaved(
+        @RequestParam SaveableEntityType entityType,
+        @RequestParam UUID entityId,
+        @AuthenticationPrincipal Jwt jwt
+    ) {
+        return new SavedResponse(savedItemService.isSaved(currentUserId(jwt), entityType, entityId));
     }
 
     private UUID currentUserId(Jwt jwt) {

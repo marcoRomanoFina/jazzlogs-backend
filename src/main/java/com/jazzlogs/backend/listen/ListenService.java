@@ -1,7 +1,10 @@
 package com.jazzlogs.backend.listen;
 
 import java.time.Instant;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
@@ -144,9 +147,23 @@ public class ListenService {
         return listenRepository.existsById(new ListenId(userId, ListenableEntityType.ALBUM, albumId));
     }
 
+    // Total plays across every user — the album editorial page's "LISTENINGS"
+    // stat, not a per-user check.
+    @Transactional(readOnly = true)
+    public long countAlbumListens(UUID albumId) {
+        return listenRepository.countByEntityTypeAndEntityIdIn(ListenableEntityType.ALBUM, List.of(albumId));
+    }
+
     @Transactional(readOnly = true)
     public boolean hasListenedToTrack(UUID userId, UUID trackId) {
         return listenRepository.existsById(new ListenId(userId, ListenableEntityType.TRACK, trackId));
+    }
+
+    // Batch — AlbumService.getAlbumDetail needs this for every track on the
+    // album at once, not one existsById per track.
+    @Transactional(readOnly = true)
+    public Set<UUID> getListenedTrackIds(UUID userId, List<UUID> trackIds) {
+        return new HashSet<>(listenRepository.findListenedEntityIds(userId, ListenableEntityType.TRACK, trackIds));
     }
 
     @Transactional

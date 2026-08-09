@@ -1,4 +1,7 @@
 package com.jazzlogs.backend.track.dto;
 
-public record RhythmTagRequest(String rhythmCode) {
+import java.util.List;
+
+// Full replace, not add-one — see StyleTagRequest's comment.
+public record RhythmTagRequest(List<String> rhythmCodes) {
 }

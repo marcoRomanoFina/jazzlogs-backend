@@ -20,6 +20,7 @@ import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 /**
  * Class-table inheritance base for AlbumEditorial/TrackEditorial (and later
@@ -40,14 +41,10 @@ public abstract class Editorial {
     @Column(nullable = false)
     private String title;
 
-    @Column(columnDefinition = "TEXT", nullable = false)
+    @Column(columnDefinition = "TEXT")
     private String dek;
 
-    @Column(nullable = false)
     private String byline;
-
-    @Column(nullable = false)
-    private Integer readMinutes;
 
     @OneToMany(mappedBy = "editorial", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("position ASC")
@@ -65,11 +62,14 @@ public abstract class Editorial {
     @Column(nullable = false)
     private Instant updatedAt;
 
-    public void update(String title, String dek, String byline, Integer readMinutes) {
+    @Setter
+    @Column(nullable = false)
+    private boolean featurated;
+
+    public void update(String title, String dek, String byline) {
         this.title = title;
         this.dek = dek;
         this.byline = byline;
-        this.readMinutes = readMinutes;
     }
 
     @PrePersist

@@ -50,7 +50,8 @@ public enum ContextVocabulary implements EditorialVocabularyValue {
     VINYL_SESSION("Vinyl Session"),
     STUDYING_THE_GREATS("Studying the Greats"),
     WRITING_JOURNAL("Writing Journal"),
-    DATE_NIGHT_AT_HOME("Date Night at Home");
+    DATE_NIGHT_AT_HOME("Date Night at Home"),
+    NIGHT_OUT_JAZZ_CLUB("Night Out at a Jazz Club");
 
     private final String label;
 

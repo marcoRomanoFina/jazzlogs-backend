@@ -72,6 +72,10 @@ public class Album {
     private String logNumber;
 
     @Setter
+    @Column(nullable = false)
+    private String label;
+
+    @Setter
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private VocalProfile vocalProfile;
@@ -121,6 +125,7 @@ public class Album {
         Integer releaseYear,
         Integer totalTracks,
         String logNumber,
+        String label,
         VocalProfile vocalProfile,
         Level energy,
         Level moodIntensity,
@@ -137,6 +142,7 @@ public class Album {
         this.releaseYear = releaseYear;
         this.totalTracks = totalTracks;
         this.logNumber = logNumber;
+        this.label = label;
         this.vocalProfile = vocalProfile;
         this.energy = energy;
         this.moodIntensity = moodIntensity;

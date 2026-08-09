@@ -34,11 +34,11 @@ class EditorialServiceTest {
     void upsertAlbumEditorial_persistsAcrossJoinedInheritanceTables() {
         Artist artist = artistRepository.save(new Artist("Test Artist", null, null, null));
         Album album = albumRepository.save(new Album(
-            artist, "Test Album", null, null, null, 2024, 1, "LOG-1",
+            artist, "Test Album", null, null, null, 2024, 1, "LOG-1", "LABEL-1",
             VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
         ));
 
-        AlbumEditorialRequest request = new AlbumEditorialRequest("A Title", "A dek", "A byline", 5, List.of());
+        AlbumEditorialRequest request = new AlbumEditorialRequest("A Title", "A dek", "A byline", List.of());
 
         AlbumEditorial saved = editorialService.upsertAlbumEditorial(album.getId(), request);
 

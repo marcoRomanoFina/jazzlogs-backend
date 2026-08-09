@@ -117,6 +117,15 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-flyway</artifactId>
 		</dependency>
+		<!-- OpenAPI spec generation (/v3/api-docs) + Swagger UI (/swagger-ui.html),
+		     built off the existing controllers/DTOs/Bean Validation annotations —
+		     no hand-written spec to keep in sync. The generated JSON is what gets
+		     imported into Postman. -->
+		<dependency>
+			<groupId>org.springdoc</groupId>
+			<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+			<version>3.1.0</version>
+		</dependency>
 		<dependency>
 			<groupId>org.projectlombok</groupId>
 			<artifactId>lombok</artifactId>

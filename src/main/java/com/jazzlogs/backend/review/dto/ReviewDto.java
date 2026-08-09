@@ -9,6 +9,7 @@ public record ReviewDto(
     UUID id,
     UUID albumId,
     UUID userId,
+    String userName,
     BigDecimal rating,
     String text,
     int likeCount,

@@ -7,6 +7,7 @@ public record NoteDto(
     UUID id,
     UUID trackId,
     UUID userId,
+    String userName,
     String text,
     Integer timestampSeconds,
     int likeCount,

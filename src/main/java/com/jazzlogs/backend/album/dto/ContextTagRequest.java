@@ -1,4 +1,7 @@
 package com.jazzlogs.backend.album.dto;
 
-public record ContextTagRequest(String contextCode) {
+import java.util.List;
+
+// Full replace, not add-one — see StyleTagRequest's comment.
+public record ContextTagRequest(List<String> contextCodes) {
 }

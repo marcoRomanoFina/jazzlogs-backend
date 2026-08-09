@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -74,7 +75,7 @@ public class ReviewService {
         syncRatingToGraph(userId, albumId, saved.getRating(), saved.getUpdatedAt());
         syncHighlightedTracksToGraph(userId, albumId, standoutTrackIdsForGraph);
 
-        return toDto(saved, likeService.hasUserLiked(userId, LikeableEntityType.REVIEW, saved.getId()));
+        return toDto(saved, likeService.hasUserLiked(userId, LikeableEntityType.REVIEW, saved.getId()), user.getDisplayName());
     }
 
     /**
@@ -135,14 +136,21 @@ public class ReviewService {
     public List<ReviewDto> getAlbumReviews(UUID albumId, UUID currentUserId) {
         List<Review> reviews = reviewRepository.findByAlbumIdWithStandoutTracks(albumId);
         Set<UUID> liked = likedIds(reviews, currentUserId);
-        return reviews.stream().map(review -> toDto(review, liked.contains(review.getId()))).toList();
+        Map<UUID, String> names = namesByUserId(reviews);
+        return reviews.stream().map(review -> toDto(review, liked.contains(review.getId()), names.get(review.getUserId()))).toList();
     }
 
     @Transactional(readOnly = true)
     public ReviewDto getMyReview(UUID albumId, UUID userId) {
         Review review = reviewRepository.findByUserIdAndAlbumId(userId, albumId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "You haven't reviewed this album"));
-        return toDto(review, likeService.hasUserLiked(userId, LikeableEntityType.REVIEW, review.getId()));
+        return toDto(review, likeService.hasUserLiked(userId, LikeableEntityType.REVIEW, review.getId()), getUserOrThrow(userId).getDisplayName());
+    }
+
+    private Map<UUID, String> namesByUserId(List<Review> reviews) {
+        List<UUID> userIds = reviews.stream().map(Review::getUserId).distinct().toList();
+        return userRepository.findAllById(userIds).stream()
+            .collect(Collectors.toMap(User::getId, User::getDisplayName));
     }
 
     /** Every id must exist AND belong to this exact album — a track from another album can't be a standout here. */
@@ -183,7 +191,7 @@ public class ReviewService {
         return likeService.hasUserLikedBatch(currentUserId, LikeableEntityType.REVIEW, reviewIds);
     }
 
-    private ReviewDto toDto(Review review, boolean likedByCurrentUser) {
+    private ReviewDto toDto(Review review, boolean likedByCurrentUser, String userName) {
         List<StandoutTrackDto> standoutTracks = review.getStandoutTracks().stream()
             .map(track -> new StandoutTrackDto(track.getId(), track.getName()))
             .toList();
@@ -192,6 +200,7 @@ public class ReviewService {
             review.getId(),
             review.getAlbum().getId(),
             review.getUserId(),
+            userName,
             review.getRating(),
             review.getText(),
             review.getLikeCount(),

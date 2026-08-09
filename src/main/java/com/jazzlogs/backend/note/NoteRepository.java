@@ -26,7 +26,14 @@ public interface NoteRepository extends LikeableRepository<Note> {
 
     List<Note> findByTrackIdOrderByCreatedAtAsc(UUID trackId);
 
-    List<Note> findByTrackIdAndUserIdOrderByCreatedAtAsc(UUID trackId, UUID userId);
+    // Explicit JPQL, not a derived findByTrackIdAndUserId... — Note also has a
+    // convenience getUserId() (delegating to user.getId()), and Spring Data's
+    // property-path resolver picks that plain method up as if "userId" were
+    // its own mapped attribute, generating invalid JPQL ("Could not resolve
+    // attribute 'userId' of Note") instead of drilling into the user
+    // association. Spelling out user.id sidesteps the ambiguity entirely.
+    @Query("SELECT n FROM Note n WHERE n.track.id = :trackId AND n.user.id = :userId ORDER BY n.createdAt ASC")
+    List<Note> findByTrackIdAndUserIdOrderByCreatedAtAsc(@Param("trackId") UUID trackId, @Param("userId") UUID userId);
 
     // For AlbumService.getAlbumDetail — one query for every note the current
     // user left on any track of this album, instead of one per track.

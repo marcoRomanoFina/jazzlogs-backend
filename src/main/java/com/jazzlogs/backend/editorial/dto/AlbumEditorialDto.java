@@ -8,7 +8,6 @@ public record AlbumEditorialDto(
     String title,
     String dek,
     String byline,
-    Integer readMinutes,
     List<EditorialBlockDto> blocks,
     int likeCount,
     boolean likedByCurrentUser

@@ -7,5 +7,6 @@ public enum BlockContentCategory {
     MOOD_AND_ATMOSPHERE,
     PERSONAL_TAKE,
     ANECDOTE,
-    RECOMMENDATION
+    RECOMMENDATION,
+    JAZZLOGS_JOURNEY
 }

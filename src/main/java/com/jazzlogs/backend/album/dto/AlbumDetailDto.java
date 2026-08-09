@@ -23,6 +23,7 @@ public record AlbumDetailDto(
     Integer releaseYear,
     Integer totalTracks,
     String logNumber,
+    String label,
     VocalProfile vocalProfile,
     Level energy,
     Level moodIntensity,
@@ -36,6 +37,9 @@ public record AlbumDetailDto(
     List<VocabularyTag> contexts,
     List<AlbumPersonnelEntry> personnel,
     BigDecimal avgRating,
-    long reviewCount
+    long reviewCount,
+    boolean hasListened,
+    long listenCount,
+    boolean isSaved
 ) {
 }

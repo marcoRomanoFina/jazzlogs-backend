@@ -25,7 +25,14 @@ public interface ReviewRepository extends LikeableRepository<Review> {
     @Query("SELECT r.likeCount FROM Review r WHERE r.id = :id")
     Optional<Integer> findLikeCount(@Param("id") UUID entityId);
 
-    Optional<Review> findByUserIdAndAlbumId(UUID userId, UUID albumId);
+    // Explicit JPQL, not a derived findByUserIdAndAlbumId — Review also has a
+    // convenience getUserId() (delegating to user.getId()), and Spring Data's
+    // property-path resolver picks that plain method up as if "userId" were
+    // its own mapped attribute, generating invalid JPQL ("Could not resolve
+    // attribute 'userId' of Review") instead of drilling into the user
+    // association. Spelling out user.id sidesteps the ambiguity entirely.
+    @Query("SELECT r FROM Review r WHERE r.user.id = :userId AND r.album.id = :albumId")
+    Optional<Review> findByUserIdAndAlbumId(@Param("userId") UUID userId, @Param("albumId") UUID albumId);
 
     // DISTINCT + JOIN FETCH: one query for the whole album's reviews AND their
     // standout tracks, instead of one lazy standoutTracks load per review.

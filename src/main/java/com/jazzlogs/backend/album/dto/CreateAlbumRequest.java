@@ -18,6 +18,7 @@ public record CreateAlbumRequest(
     @NotNull UUID artistId,
     @NotBlank String spotifyAlbumId,
     @NotBlank String logNumber,
+    @NotBlank String label,
     @NotNull VocalProfile vocalProfile,
     @NotNull Level energy,
     @NotNull Level moodIntensity,

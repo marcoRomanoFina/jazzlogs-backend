@@ -8,7 +8,6 @@ public record ArtistEditorialRequest(
     @NotBlank String title,
     String dek,
     String byline,
-    Integer readMinutes,
     List<BlockRequest> blocks
 ) {
 }
