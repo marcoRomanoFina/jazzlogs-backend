@@ -1,5 +1,6 @@
 package com.jazzlogs.backend.album;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -35,15 +36,21 @@ import com.jazzlogs.backend.graph.TrackPlacement;
 import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.like.LikeService;
 import com.jazzlogs.backend.like.LikeableEntityType;
+import com.jazzlogs.backend.listen.ListenService;
 import com.jazzlogs.backend.note.NoteService;
 import com.jazzlogs.backend.note.dto.NoteDto;
 import com.jazzlogs.backend.review.ReviewService;
 import com.jazzlogs.backend.review.dto.AlbumRatingStats;
+import com.jazzlogs.backend.saveditem.SavedItemService;
+import com.jazzlogs.backend.saveditem.SaveableEntityType;
 import com.jazzlogs.backend.spotify.SpotifyAlbumData;
 import com.jazzlogs.backend.spotify.SpotifyCatalogService;
+import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackBatchContext;
 import com.jazzlogs.backend.track.TrackService;
 import com.jazzlogs.backend.track.dto.TrackDto;
+import com.jazzlogs.backend.trackrating.TrackRating;
+import com.jazzlogs.backend.trackrating.TrackRatingRepository;
 import com.jazzlogs.backend.vocabulary.ContextVocabulary;
 import com.jazzlogs.backend.vocabulary.InstrumentVocabulary;
 import com.jazzlogs.backend.vocabulary.MoodVocabulary;
@@ -67,6 +74,9 @@ public class AlbumService {
     private final AlbumEditorialRepository albumEditorialRepository;
     private final TrackEditorialRepository trackEditorialRepository;
     private final LikeService likeService;
+    private final ListenService listenService;
+    private final SavedItemService savedItemService;
+    private final TrackRatingRepository trackRatingRepository;
 
     // Upsert on spotifyAlbumId: re-posting an album that's already in the
     // catalog updates it in place (fresh Spotify data + the editable fields
@@ -189,9 +199,27 @@ public class AlbumService {
 
         AlbumRatingStats ratingStats = reviewService.getAlbumRatingStats(albumId);
 
+        List<UUID> trackIds = album.getTracks().stream().map(Track::getId).toList();
+
+        // One query for every track's avg/count, instead of one per track —
+        // same batching principle as everything else in this method.
+        Map<UUID, TrackRatingRepository.TrackRatingStats> ratingStatsByTrack = trackRatingRepository
+            .getRatingStatsForTracks(trackIds).stream()
+            .collect(Collectors.toMap(TrackRatingRepository.TrackRatingStats::getTrackId, s -> s));
+
+        // And the current user's own rating on each of those tracks, batched
+        // the same way.
+        Map<UUID, BigDecimal> myRatingByTrack = trackRatingRepository
+            .findByUserIdAndTrackIdIn(currentUserId, trackIds).stream()
+            .collect(Collectors.toMap(tr -> tr.getTrack().getId(), TrackRating::getRating));
+
+        Set<UUID> listenedTrackIds = listenService.getListenedTrackIds(currentUserId, trackIds);
+        Set<UUID> savedTrackIds = savedItemService.getSavedEntityIds(currentUserId, SaveableEntityType.TRACK, trackIds);
+
         List<TrackDto> trackDtos = album.getTracks().stream()
             .map(track -> {
                 UUID trackId = track.getId();
+                TrackRatingRepository.TrackRatingStats stats = ratingStatsByTrack.get(trackId);
                 return trackService.toDto(track, new TrackBatchContext(
                     placements.get(trackId),
                     notesByTrack.getOrDefault(trackId, List.of()),
@@ -200,7 +228,12 @@ public class AlbumService {
                     moodsByTrack.getOrDefault(trackId, List.of()),
                     contextsByTrack.getOrDefault(trackId, List.of()),
                     rhythmsByTrack.getOrDefault(trackId, List.of()),
-                    instrumentsByTrack.getOrDefault(trackId, List.of())
+                    instrumentsByTrack.getOrDefault(trackId, List.of()),
+                    stats == null ? null : stats.getAvgRating(),
+                    stats == null ? 0 : stats.getCount(),
+                    myRatingByTrack.get(trackId),
+                    listenedTrackIds.contains(trackId),
+                    savedTrackIds.contains(trackId)
                 ));
             })
             .sorted(Comparator.comparing(TrackDto::trackNumber, Comparator.nullsLast(Comparator.naturalOrder())))
@@ -231,7 +264,10 @@ public class AlbumService {
             graphService.getContexts(albumId),
             graphService.getPersonnel(albumId),
             ratingStats.avgRating(),
-            ratingStats.count()
+            ratingStats.count(),
+            listenService.hasListenedToAlbum(currentUserId, albumId),
+            listenService.countAlbumListens(albumId),
+            savedItemService.isSaved(currentUserId, SaveableEntityType.ALBUM, albumId)
         );
     }
 

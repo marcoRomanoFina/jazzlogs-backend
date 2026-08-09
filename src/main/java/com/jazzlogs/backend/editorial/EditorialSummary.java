@@ -69,4 +69,10 @@ public class EditorialSummary {
     // no embedding, no other block metadata (see V11's LATERAL join).
     @Column(name = "preview_text")
     private String previewText;
+
+    // Artist id for an album, album id for a track — null for an artist. Lets
+    // the archive deep-link a track editorial straight into its album's
+    // editorial page instead of nowhere (see V13).
+    @Column(name = "context_id")
+    private UUID contextId;
 }

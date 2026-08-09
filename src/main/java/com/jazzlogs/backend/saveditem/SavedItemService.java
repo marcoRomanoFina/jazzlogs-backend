@@ -1,7 +1,9 @@
 package com.jazzlogs.backend.saveditem;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.dao.DataIntegrityViolationException;
@@ -66,6 +68,16 @@ public class SavedItemService {
     @Transactional
     public void remove(UUID userId, SaveableEntityType entityType, UUID entityId) {
         savedItemRepository.deleteByUserIdAndEntityTypeAndEntityId(userId, entityType, entityId);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean isSaved(UUID userId, SaveableEntityType entityType, UUID entityId) {
+        return savedItemRepository.existsById(new SavedItemId(userId, entityType, entityId));
+    }
+
+    @Transactional(readOnly = true)
+    public Set<UUID> getSavedEntityIds(UUID userId, SaveableEntityType entityType, List<UUID> entityIds) {
+        return new HashSet<>(savedItemRepository.findSavedEntityIds(userId, entityType, entityIds));
     }
 
     /**

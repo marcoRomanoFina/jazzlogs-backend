@@ -180,7 +180,12 @@ public class TrackService {
             graphService.getTrackMoods(trackId),
             graphService.getTrackContexts(trackId),
             graphService.getTrackRhythms(trackId),
-            graphService.getTrackFeaturedInstruments(trackId)
+            graphService.getTrackFeaturedInstruments(trackId),
+            null,
+            0,
+            null,
+            false,
+            false
         ));
     }
 
@@ -214,7 +219,12 @@ public class TrackService {
             ctx.contexts(),
             ctx.rhythms(),
             ctx.featuredInstruments(),
-            ctx.myNotes()
+            ctx.myNotes(),
+            ctx.avgRating(),
+            ctx.ratingCount(),
+            ctx.myRating(),
+            ctx.hasListened(),
+            ctx.isSaved()
         );
     }
 

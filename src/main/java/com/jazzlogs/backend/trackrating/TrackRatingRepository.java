@@ -11,7 +11,21 @@ import org.springframework.data.repository.query.Param;
 
 public interface TrackRatingRepository extends JpaRepository<TrackRating, UUID> {
 
-    Optional<TrackRating> findByUserIdAndTrackId(UUID userId, UUID trackId);
+    // Explicit JPQL, not a derived findByUserIdAndTrackId(In) — TrackRating
+    // also has a convenience getUserId() (delegating to user.getId()), and
+    // Spring Data's property-path resolver picks that plain method up as if
+    // "userId" were its own mapped attribute, generating invalid JPQL
+    // ("Could not resolve attribute 'userId' of TrackRating") instead of
+    // drilling into the user association. Spelling out user.id sidesteps the
+    // ambiguity entirely.
+    @Query("SELECT tr FROM TrackRating tr WHERE tr.user.id = :userId AND tr.track.id = :trackId")
+    Optional<TrackRating> findByUserIdAndTrackId(@Param("userId") UUID userId, @Param("trackId") UUID trackId);
+
+    // One query for the current user's rating on every track of an album at
+    // once — AlbumService.getAlbumDetail needs this batched, not one
+    // findByUserIdAndTrackId per track.
+    @Query("SELECT tr FROM TrackRating tr WHERE tr.user.id = :userId AND tr.track.id IN :trackIds")
+    List<TrackRating> findByUserIdAndTrackIdIn(@Param("userId") UUID userId, @Param("trackIds") List<UUID> trackIds);
 
     // One query for every track's stats at once — PlaylistService.getPlaylistDetail
     // needs this per track in the list, not one AVG/COUNT query per track.

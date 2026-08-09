@@ -1,5 +1,6 @@
 package com.jazzlogs.backend.track.dto;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
@@ -33,6 +34,11 @@ public record TrackDto(
     List<VocabularyTag> contexts,
     List<VocabularyTag> rhythms,
     List<VocabularyTag> featuredInstruments,
-    List<NoteDto> myNotes
+    List<NoteDto> myNotes,
+    BigDecimal avgRating,
+    long ratingCount,
+    BigDecimal myRating,
+    boolean hasListened,
+    boolean isSaved
 ) {
 }

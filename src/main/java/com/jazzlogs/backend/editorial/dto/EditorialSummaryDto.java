@@ -20,6 +20,7 @@ public record EditorialSummaryDto(
     boolean featurated,
     String contextName,
     Integer releaseYear,
-    String previewText
+    String previewText,
+    UUID contextId
 ) {
 }

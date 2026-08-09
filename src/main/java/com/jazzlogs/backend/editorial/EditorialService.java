@@ -104,7 +104,8 @@ public class EditorialService {
             summary.isFeaturated(),
             summary.getContextName(),
             summary.getReleaseYear(),
-            summary.getPreviewText()
+            summary.getPreviewText(),
+            summary.getContextId()
         );
     }
 
