@@ -75,7 +75,7 @@ public class ResolveJazzlogsEntityTool extends JazzTool {
     }
 
     @Override
-    public ToolExecutionResult execute(ToolCallRequest call) {
+    public ToolExecutionResult execute(ToolCallRequest call, UUID userId) {
         Args args = parseArgs(call.argumentsJson());
         CatalogItemType entityType = parseEntityType(args.entityType());
         String query = requireQuery(args.query());

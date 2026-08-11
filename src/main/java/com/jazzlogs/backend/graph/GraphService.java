@@ -3,6 +3,7 @@ package com.jazzlogs.backend.graph;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -12,6 +13,8 @@ import java.util.stream.Collectors;
 
 import org.springframework.data.neo4j.core.Neo4jClient;
 import org.springframework.stereotype.Service;
+
+import com.jazzlogs.backend.chat.CatalogItemType;
 
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -733,25 +736,6 @@ public class GraphService {
                 .toList());
     }
 
-    // Reverse of getTags: given a vocabulary tag, which entities point at it —
-    // for EDITORIAL_SEARCH's vocabularyFilter (see
-    // com.jazzlogs.backend.agent.tools.VocabularyEditorialResolver), which
-    // supplies sourceLabel/relationshipType/targetLabel per (vocabulary type,
-    // entity type) combination, since neither is uniform across entity types
-    // (e.g. Style is BELONGS_TO for Album but HAS_STYLE for Artist).
-    public List<UUID> findEntityIdsByVocabulary(String sourceLabel, String relationshipType, String targetLabel, String code) {
-        return read("find " + sourceLabel + " via " + relationshipType + " " + targetLabel + "=" + code, () ->
-            neo4jClient.query(
-                    "MATCH (src:" + sourceLabel + ")-[:" + relationshipType + "]->(:" + targetLabel + " {code: $code}) "
-                        + "RETURN src.id AS id")
-                .bind(code).to("code")
-                .fetch()
-                .all()
-                .stream()
-                .map(row -> UUID.fromString((String) row.get("id")))
-                .toList());
-    }
-
     // Full replace, not add: clears every existing relationship of this type
     // from the entity first, then recreates one per code — same "DELETE then
     // conditionally UNWIND+MERGE" shape as setHighlightedTracks. Labels/
@@ -778,6 +762,184 @@ public class GraphService {
                     .run();
             }
         });
+    }
+
+    // --- graphFilter (agent tool) ---
+    //
+    // One query per entity type, not one query with label branching — Album/
+    // Track/Artist each connect to a different subset of vocabulary
+    // dimensions (see the individual methods below), so a single combined
+    // query would need per-label conditionals throughout; three separate,
+    // readable queries are more maintainable.
+    //
+    // Matching is permissive by design (OR, not AND): a candidate doesn't
+    // need to match every requested dimension, matching at least one is
+    // enough — that's what "WHERE matchCount > 0" enforces below, nothing
+    // stronger. Ranking (by matchedDimensions.size(), done in
+    // GraphFilterService once all labels' results are merged) is a separate
+    // concern from eligibility.
+    //
+    // Each dimension is a pattern comprehension — e.g.
+    // "[(al)-[:BELONGS_TO]->(s:Style) WHERE s.code IN $styleCodes | s.code]"
+    // — collecting the actual codes that matched, not just a 0/1 flag: the
+    // LLM gets to see e.g. "matched Mood=RELAXED" instead of a bare count.
+    // An empty codes list for a dimension naturally yields an empty match
+    // list here (s.code IN [] is never true), so "not requested" and
+    // "requested but nothing matched" both fall out without a separate
+    // guard.
+
+    public List<GraphCandidate> findAlbumCandidates(
+        List<String> styleCodes, List<String> moodCodes, List<String> contextCodes,
+        UUID userId, boolean excludeListened, boolean excludeAlreadyRated, int limit
+    ) {
+        return read("find Album candidates for graphFilter", () ->
+            neo4jClient.query("""
+                    MATCH (al:Album)
+                    WHERE ($excludeListened = false OR NOT EXISTS { (u:User {id: $userId})-[:LISTENED]->(al) })
+                      AND ($excludeRated = false OR NOT EXISTS { (u:User {id: $userId})-[:RATED]->(al) })
+                    WITH al,
+                        [(al)-[:BELONGS_TO]->(s:Style) WHERE s.code IN $styleCodes | s.code] AS styleMatches,
+                        [(al)-[:EVOKES_MOOD]->(m:Mood) WHERE m.code IN $moodCodes | m.code] AS moodMatches,
+                        [(al)-[:PERFECT_FOR]->(c:Context) WHERE c.code IN $contextCodes | c.code] AS contextMatches
+                    WITH al, styleMatches, moodMatches, contextMatches,
+                        (size(styleMatches) + size(moodMatches) + size(contextMatches)) AS matchCount
+                    WHERE matchCount > 0
+                    RETURN al.id AS entityId, styleMatches, moodMatches, contextMatches
+                    ORDER BY matchCount DESC
+                    LIMIT $limit
+                    """)
+                .bind(userId.toString()).to("userId")
+                .bind(excludeListened).to("excludeListened")
+                .bind(excludeAlreadyRated).to("excludeRated")
+                .bind(styleCodes).to("styleCodes")
+                .bind(moodCodes).to("moodCodes")
+                .bind(contextCodes).to("contextCodes")
+                .bind(limit).to("limit")
+                .fetch()
+                .all()
+                .stream()
+                .map(row -> new GraphCandidate(
+                    CatalogItemType.ALBUM,
+                    UUID.fromString((String) row.get("entityId")),
+                    concatMatches(List.of(
+                        dimensionMatches(VocabularyDimension.STYLE, row.get("styleMatches")),
+                        dimensionMatches(VocabularyDimension.MOOD, row.get("moodMatches")),
+                        dimensionMatches(VocabularyDimension.CONTEXT, row.get("contextMatches"))
+                    ))
+                ))
+                .toList());
+    }
+
+    // excludeAlreadyRated checks RATED_TRACK, not RATED — that's the
+    // Track-level rating relationship (see rateTrack), kept under its own
+    // name to avoid ambiguity with rateAlbum's Album-level RATED.
+    public List<GraphCandidate> findTrackCandidates(
+        List<String> moodCodes, List<String> contextCodes, List<String> rhythmCodes, List<String> instrumentCodes,
+        UUID userId, boolean excludeListened, boolean excludeAlreadyRated, int limit
+    ) {
+        return read("find Track candidates for graphFilter", () ->
+            neo4jClient.query("""
+                    MATCH (tr:Track)
+                    WHERE ($excludeListened = false OR NOT EXISTS { (u:User {id: $userId})-[:LISTENED]->(tr) })
+                      AND ($excludeRated = false OR NOT EXISTS { (u:User {id: $userId})-[:RATED_TRACK]->(tr) })
+                    WITH tr,
+                        [(tr)-[:EVOKES_MOOD]->(m:Mood) WHERE m.code IN $moodCodes | m.code] AS moodMatches,
+                        [(tr)-[:PERFECT_FOR]->(c:Context) WHERE c.code IN $contextCodes | c.code] AS contextMatches,
+                        [(tr)-[:HAS_RHYTHM]->(r:Rhythm) WHERE r.code IN $rhythmCodes | r.code] AS rhythmMatches,
+                        [(tr)-[:FEATURES_INSTRUMENT]->(i:Instrument) WHERE i.code IN $instrumentCodes | i.code] AS instrumentMatches
+                    WITH tr, moodMatches, contextMatches, rhythmMatches, instrumentMatches,
+                        (size(moodMatches) + size(contextMatches) + size(rhythmMatches) + size(instrumentMatches)) AS matchCount
+                    WHERE matchCount > 0
+                    RETURN tr.id AS entityId, moodMatches, contextMatches, rhythmMatches, instrumentMatches
+                    ORDER BY matchCount DESC
+                    LIMIT $limit
+                    """)
+                .bind(userId.toString()).to("userId")
+                .bind(excludeListened).to("excludeListened")
+                .bind(excludeAlreadyRated).to("excludeRated")
+                .bind(moodCodes).to("moodCodes")
+                .bind(contextCodes).to("contextCodes")
+                .bind(rhythmCodes).to("rhythmCodes")
+                .bind(instrumentCodes).to("instrumentCodes")
+                .bind(limit).to("limit")
+                .fetch()
+                .all()
+                .stream()
+                .map(row -> new GraphCandidate(
+                    CatalogItemType.TRACK,
+                    UUID.fromString((String) row.get("entityId")),
+                    concatMatches(List.of(
+                        dimensionMatches(VocabularyDimension.MOOD, row.get("moodMatches")),
+                        dimensionMatches(VocabularyDimension.CONTEXT, row.get("contextMatches")),
+                        dimensionMatches(VocabularyDimension.RHYTHM, row.get("rhythmMatches")),
+                        dimensionMatches(VocabularyDimension.INSTRUMENT, row.get("instrumentMatches"))
+                    ))
+                ))
+                .toList());
+    }
+
+    // No userId/excludeListened/excludeAlreadyRated — Artist has neither a
+    // LISTENED nor a RATED relationship in the graph today.
+    public List<GraphCandidate> findArtistCandidates(
+        List<String> styleCodes, List<String> contextCodes, List<String> instrumentCodes, int limit
+    ) {
+        return read("find Artist candidates for graphFilter", () ->
+            neo4jClient.query("""
+                    MATCH (ar:Artist)
+                    WITH ar,
+                        [(ar)-[:HAS_STYLE]->(s:Style) WHERE s.code IN $styleCodes | s.code] AS styleMatches,
+                        [(ar)-[:PERFECT_FOR]->(c:Context) WHERE c.code IN $contextCodes | c.code] AS contextMatches,
+                        [(ar)-[:PLAYS_INSTRUMENT]->(i:Instrument) WHERE i.code IN $instrumentCodes | i.code] AS instrumentMatches
+                    WITH ar, styleMatches, contextMatches, instrumentMatches,
+                        (size(styleMatches) + size(contextMatches) + size(instrumentMatches)) AS matchCount
+                    WHERE matchCount > 0
+                    RETURN ar.id AS entityId, styleMatches, contextMatches, instrumentMatches
+                    ORDER BY matchCount DESC
+                    LIMIT $limit
+                    """)
+                .bind(styleCodes).to("styleCodes")
+                .bind(contextCodes).to("contextCodes")
+                .bind(instrumentCodes).to("instrumentCodes")
+                .bind(limit).to("limit")
+                .fetch()
+                .all()
+                .stream()
+                .map(row -> new GraphCandidate(
+                    CatalogItemType.ARTIST,
+                    UUID.fromString((String) row.get("entityId")),
+                    concatMatches(List.of(
+                        dimensionMatches(VocabularyDimension.STYLE, row.get("styleMatches")),
+                        dimensionMatches(VocabularyDimension.CONTEXT, row.get("contextMatches")),
+                        dimensionMatches(VocabularyDimension.INSTRUMENT, row.get("instrumentMatches"))
+                    ))
+                ))
+                .toList());
+    }
+
+    // One dimension's raw match-code list off a candidate row, already cast
+    // and paired with which dimension it came from — the only place the
+    // unchecked Object -> List<String> cast happens, so concatMatches below
+    // stays fully typed. rawCodes is always a List<String> in practice: it
+    // comes straight off a Neo4jClient row column bound from a Cypher
+    // list-comprehension (see e.g. findAlbumCandidates' styleMatches).
+    @SuppressWarnings("unchecked")
+    private static DimensionMatches dimensionMatches(VocabularyDimension dimension, Object rawCodes) {
+        return new DimensionMatches(dimension, (List<String>) rawCodes);
+    }
+
+    private record DimensionMatches(VocabularyDimension dimension, List<String> codes) {
+    }
+
+    // Flattens however many dimensions a candidate row has into one
+    // matchedDimensions list — a plain List rather than varargs so each
+    // finder above can pass exactly the dimensions that apply to its label
+    // (3 for Album/Artist, 4 for Track) without a shared column count.
+    private static List<MatchedDimension> concatMatches(List<DimensionMatches> perDimension) {
+        List<MatchedDimension> matches = new ArrayList<>();
+        for (DimensionMatches entry : perDimension) {
+            entry.codes().forEach(code -> matches.add(new MatchedDimension(entry.dimension(), code)));
+        }
+        return matches;
     }
 
     private void write(String description, Runnable action) {
