@@ -30,6 +30,9 @@ class EditorialContentToolTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
+    // EditorialContentTool never reads userId — any fixed value works here.
+    private static final UUID USER_ID = UUID.randomUUID();
+
     @Mock
     private EditorialBlockRepository editorialBlockRepository;
 
@@ -44,14 +47,14 @@ class EditorialContentToolTest {
     void blankEditorialId_throws() {
         ToolCallRequest call = callWith("{\"editorialId\":\"\"}");
 
-        assertThatThrownBy(() -> tool.execute(call)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> tool.execute(call, USER_ID)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void malformedEditorialId_throws() {
         ToolCallRequest call = callWith("{\"editorialId\":\"not-a-uuid\"}");
 
-        assertThatThrownBy(() -> tool.execute(call)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> tool.execute(call, USER_ID)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -59,7 +62,7 @@ class EditorialContentToolTest {
         UUID editorialId = UUID.randomUUID();
         ToolCallRequest call = callWith("{\"editorialId\":\"" + editorialId + "\",\"categories\":[\"NOT_REAL\"]}");
 
-        assertThatThrownBy(() -> tool.execute(call)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> tool.execute(call, USER_ID)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -68,7 +71,7 @@ class EditorialContentToolTest {
         EditorialBlock block = block(0, "text 1", BlockContentCategory.HISTORICAL_CONTEXT);
         when(editorialBlockRepository.findByEditorialIdOrderByPositionAsc(editorialId)).thenReturn(List.of(block));
 
-        ToolExecutionResult result = tool.execute(callWith("{\"editorialId\":\"" + editorialId + "\"}"));
+        ToolExecutionResult result = tool.execute(callWith("{\"editorialId\":\"" + editorialId + "\"}"), USER_ID);
 
         JsonNode metadata = JSON.readTree(result.payload()).get("metadata");
         assertThat(metadata.get("editorialId").asText()).isEqualTo(editorialId.toString());
@@ -85,7 +88,7 @@ class EditorialContentToolTest {
 
         ToolExecutionResult result = tool.execute(callWith(
             "{\"editorialId\":\"" + editorialId + "\",\"categories\":[\"ANECDOTE\"]}"
-        ));
+        ), USER_ID);
 
         JsonNode metadata = JSON.readTree(result.payload()).get("metadata");
         assertThat(metadata.get("blocks")).hasSize(1);
@@ -97,7 +100,7 @@ class EditorialContentToolTest {
         UUID editorialId = UUID.randomUUID();
         when(editorialBlockRepository.findByEditorialIdOrderByPositionAsc(editorialId)).thenReturn(List.of());
 
-        ToolExecutionResult result = tool.execute(callWith("{\"editorialId\":\"" + editorialId + "\"}"));
+        ToolExecutionResult result = tool.execute(callWith("{\"editorialId\":\"" + editorialId + "\"}"), USER_ID);
 
         JsonNode json = JSON.readTree(result.payload());
         assertThat(json.get("content").asText()).contains("No blocks found");

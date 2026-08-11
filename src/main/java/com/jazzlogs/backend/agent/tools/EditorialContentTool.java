@@ -60,7 +60,7 @@ public class EditorialContentTool extends JazzTool {
     }
 
     @Override
-    public ToolExecutionResult execute(ToolCallRequest call) {
+    public ToolExecutionResult execute(ToolCallRequest call, UUID userId) {
         Args args = parseArgs(call.argumentsJson());
         UUID editorialId = requireEditorialId(args.editorialId());
         List<BlockContentCategory> categories = parseCategories(args.categories());

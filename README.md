@@ -88,6 +88,17 @@ All routes except `/public/**` require a `Authorization: Bearer <supabase-jwt>` 
 | GET | `/me` | current user, resolved from the JWT |
 
 
+## Agent tools
+
+The recommendation chat (`POST /chats/{chatId}/messages`) is backed by a plain LLM tool-calling loop against the OpenAI Responses API (`AgentOrchestrator`) — no agent framework, just iterate-until-`submit_final_answer`. Each tool is a `JazzTool` subclass owning both its JSON schema and its execution logic; adding a new one is a new `@Component`, no separate registration step.
+
+| Tool | What it does |
+|---|---|
+| `RESOLVE_JAZZLOGS_ENTITY` | Free-text album/track/artist name → ranked catalog id candidates, via Postgres `pg_trgm` fuzzy search |
+| `EDITORIAL_CONTENT` | Full or filtered text of an editorial's blocks, given an id already resolved |
+| `GRAPH_FILTER` | Ranks Album/Track/Artist candidates by Neo4j graph-topology overlap with style/rhythm/mood/context/instrument filters. Returns which specific dimensions matched per candidate (not just a score) and excludes items the user already listened to or rated by default. Runs one query per requested entity type, dispatched concurrently |
+| `submit_final_answer` | Not dispatched like the others — intercepted by the orchestrator to close a turn; carries the structured recommendation metadata alongside the model's plain-text answer |
+
 ## Running locally
 
 Requirements: Java 21, Maven, a Postgres instance with the `pg_trgm` and

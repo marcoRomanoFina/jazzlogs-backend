@@ -37,6 +37,9 @@ class ResolveJazzlogsEntityToolTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
+    // ResolveJazzlogsEntityTool never reads userId — any fixed value works here.
+    private static final UUID USER_ID = UUID.randomUUID();
+
     @Mock
     private AlbumRepository albumRepository;
 
@@ -57,21 +60,21 @@ class ResolveJazzlogsEntityToolTest {
     void invalidEntityType_throws() {
         ToolCallRequest call = callWith("{\"entityType\":\"PLAYLIST\",\"query\":\"Kind of Blue\"}");
 
-        assertThatThrownBy(() -> tool.execute(call)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> tool.execute(call, USER_ID)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void blankQuery_throws() {
         ToolCallRequest call = callWith("{\"entityType\":\"ALBUM\",\"query\":\"   \"}");
 
-        assertThatThrownBy(() -> tool.execute(call)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> tool.execute(call, USER_ID)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void missingQuery_throws() {
         ToolCallRequest call = callWith("{\"entityType\":\"ALBUM\"}");
 
-        assertThatThrownBy(() -> tool.execute(call)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> tool.execute(call, USER_ID)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -85,7 +88,7 @@ class ResolveJazzlogsEntityToolTest {
         }
         when(albumRepository.search("kind of blue")).thenReturn(rows);
 
-        ToolExecutionResult result = tool.execute(callWith("{\"entityType\":\"ALBUM\",\"query\":\"Kind of Blue\"}"));
+        ToolExecutionResult result = tool.execute(callWith("{\"entityType\":\"ALBUM\",\"query\":\"Kind of Blue\"}"), USER_ID);
 
         // 12 rows in, 1 is a duplicate id (11 distinct) — asserting "fewer
         // than 11 came back" (not a hardcoded exact count) proves truncation
@@ -103,7 +106,7 @@ class ResolveJazzlogsEntityToolTest {
         CatalogEntityResolver.CandidateRow fuzzy = row(UUID.randomUUID(), "Kinda Bluesy", "Someone Else", 0.35, "FUZZY");
         when(albumRepository.search("kind of blue")).thenReturn(List.of(exact, prefix, fuzzy));
 
-        ToolExecutionResult result = tool.execute(callWith("{\"entityType\":\"ALBUM\",\"query\":\"Kind of Blue\"}"));
+        ToolExecutionResult result = tool.execute(callWith("{\"entityType\":\"ALBUM\",\"query\":\"Kind of Blue\"}"), USER_ID);
 
         JsonNode candidates = JSON.readTree(result.payload()).get("metadata").get("candidates");
         assertThat(candidates.get(0).get("matchType").asText()).isEqualTo("EXACT");
@@ -121,7 +124,7 @@ class ResolveJazzlogsEntityToolTest {
         CatalogEntityResolver.CandidateRow candidate = trackRow(UUID.randomUUID(), "Acknowledgement", "John Coltrane", "A Love Supreme", 1.0, "EXACT");
         when(trackRepository.search("acknowledgement")).thenReturn(List.of(candidate));
 
-        ToolExecutionResult result = tool.execute(callWith("{\"entityType\":\"TRACK\",\"query\":\"Acknowledgement\"}"));
+        ToolExecutionResult result = tool.execute(callWith("{\"entityType\":\"TRACK\",\"query\":\"Acknowledgement\"}"), USER_ID);
 
         JsonNode candidateJson = JSON.readTree(result.payload()).get("metadata").get("candidates").get(0);
         assertThat(candidateJson.get("album").asText()).isEqualTo("A Love Supreme");
@@ -134,7 +137,7 @@ class ResolveJazzlogsEntityToolTest {
         CatalogEntityResolver.CandidateRow row = row(UUID.randomUUID(), "Kind of Blue", "Miles Davis", 1.0, "EXACT");
         when(albumRepository.search("kind of blue")).thenReturn(List.of(row));
 
-        ToolExecutionResult result = tool.execute(callWith("{\"entityType\":\"ALBUM\",\"query\":\"Kind of Blue\"}"));
+        ToolExecutionResult result = tool.execute(callWith("{\"entityType\":\"ALBUM\",\"query\":\"Kind of Blue\"}"), USER_ID);
 
         JsonNode candidate = JSON.readTree(result.payload()).get("metadata").get("candidates").get(0);
         assertThat(candidate.get("album").isNull()).isTrue();
@@ -147,7 +150,7 @@ class ResolveJazzlogsEntityToolTest {
         when(row.getEditorialId()).thenReturn(editorialId);
         when(albumRepository.search("kind of blue")).thenReturn(List.of(row));
 
-        ToolExecutionResult result = tool.execute(callWith("{\"entityType\":\"ALBUM\",\"query\":\"Kind of Blue\"}"));
+        ToolExecutionResult result = tool.execute(callWith("{\"entityType\":\"ALBUM\",\"query\":\"Kind of Blue\"}"), USER_ID);
 
         JsonNode candidate = JSON.readTree(result.payload()).get("metadata").get("candidates").get(0);
         assertThat(candidate.get("editorialId").asText()).isEqualTo(editorialId.toString());
@@ -157,7 +160,7 @@ class ResolveJazzlogsEntityToolTest {
     void noMatches_hasFoundFalse_andPlainTextContent() throws Exception {
         when(artistRepository.search("nonexistent")).thenReturn(List.of());
 
-        ToolExecutionResult result = tool.execute(callWith("{\"entityType\":\"ARTIST\",\"query\":\"nonexistent\"}"));
+        ToolExecutionResult result = tool.execute(callWith("{\"entityType\":\"ARTIST\",\"query\":\"nonexistent\"}"), USER_ID);
 
         JsonNode json = JSON.readTree(result.payload());
         assertThat(json.get("metadata").get("found").asBoolean()).isFalse();

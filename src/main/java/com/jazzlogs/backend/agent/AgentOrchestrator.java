@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -20,8 +21,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openai.models.responses.ResponseInputItem;
 
 import com.jazzlogs.backend.agent.tools.EditorialContentTool;
-import com.jazzlogs.backend.agent.tools.EditorialSearchTool;
+import com.jazzlogs.backend.agent.tools.GraphFilterTool;
 import com.jazzlogs.backend.agent.tools.JazzTool;
+import com.jazzlogs.backend.agent.tools.ResolveJazzlogsEntityTool;
 import com.jazzlogs.backend.agent.tools.SubmitFinalAnswerTool;
 import com.jazzlogs.backend.chat.CatalogRef;
 import com.jazzlogs.backend.chat.Chat;
@@ -66,15 +68,12 @@ public class AgentOrchestrator {
     @Value("${agent.max-tool-calls-per-turn:4}")
     private int maxToolCallsPerTurn;
 
+    // One entry per JazzTool that actually exists today — add the new
+    // label here when a new tool is added, not before.
     private static final Map<String, String> TOOL_DISPLAY_LABELS = Map.of(
-        "SEMANTIC_CATALOG_SEARCH", "Buscando en el catálogo",
-        "FILTER_CATALOG", "Filtrando por estilo y clima",
-        "RESOLVE_JAZZLOGS_ENTITY", "Identificando el álbum/artista",
-        "CATALOG_CONTEXT", "Reuniendo contexto",
-        "ALBUM_TRACKS", "Revisando el tracklist",
-        "KNOWLEDGE_GRAPH_FEEDBACK", "Guardando tu feedback",
+        ResolveJazzlogsEntityTool.NAME, "Identificando el álbum/artista",
         EditorialContentTool.NAME, "Leyendo la editorial",
-        EditorialSearchTool.NAME, "Buscando en las notas editoriales",
+        GraphFilterTool.NAME, "Filtrando por estilo y clima",
         SubmitFinalAnswerTool.NAME, "Armando la recomendación"
     );
     private static final String DEFAULT_TOOL_LABEL = "Trabajando en tu pedido";
@@ -158,7 +157,7 @@ public class AgentOrchestrator {
                 return;
             }
 
-            nextInput = executeToolCalls(sink, turn, iteration);
+            nextInput = executeToolCalls(sink, turn, iteration, chat.getUserId());
         }
 
         throw new IllegalStateException("Agent did not converge to submit_final_answer within max iterations");
@@ -172,7 +171,7 @@ public class AgentOrchestrator {
     // no ordering dependency between them) — every call still gets a
     // tool_call_started/finished pair and a function_call_output, whether it
     // actually ran or was rejected for being over maxToolCallsPerTurn.
-    private List<ResponseInputItem> executeToolCalls(EventSink sink, StreamedTurn turn, int iteration) throws IOException {
+    private List<ResponseInputItem> executeToolCalls(EventSink sink, StreamedTurn turn, int iteration, UUID userId) throws IOException {
         List<ToolCallRequest> calls = turn.otherToolCalls();
         List<ToolCallRequest> accepted = calls.size() > maxToolCallsPerTurn ? calls.subList(0, maxToolCallsPerTurn) : calls;
         List<ToolCallRequest> rejected = calls.size() > maxToolCallsPerTurn ? calls.subList(maxToolCallsPerTurn, calls.size()) : List.of();
@@ -182,7 +181,7 @@ public class AgentOrchestrator {
         }
 
         List<CompletableFuture<ToolExecutionResult>> futures = accepted.stream()
-            .map(call -> CompletableFuture.supplyAsync(() -> dispatch(call), VIRTUAL_THREADS))
+            .map(call -> CompletableFuture.supplyAsync(() -> dispatch(call, userId), VIRTUAL_THREADS))
             .toList();
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
@@ -207,13 +206,13 @@ public class AgentOrchestrator {
         return TOOL_DISPLAY_LABELS.getOrDefault(call.name(), DEFAULT_TOOL_LABEL);
     }
 
-    private ToolExecutionResult dispatch(ToolCallRequest call) {
+    private ToolExecutionResult dispatch(ToolCallRequest call, UUID userId) {
         JazzTool tool = toolsByName.get(call.name());
         if (tool == null) {
             log.warn("No JazzTool registered for {}", call.name());
             return new ToolExecutionResult("{\"error\":\"Unknown tool: " + call.name() + "\"}", false);
         }
-        return tool.execute(call);
+        return tool.execute(call, userId);
     }
 
     private ResponseInputItem toFunctionCallOutput(ToolCallRequest call, ToolExecutionResult result) {

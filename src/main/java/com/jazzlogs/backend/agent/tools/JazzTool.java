@@ -1,6 +1,7 @@
 package com.jazzlogs.backend.agent.tools;
 
 import java.util.Map;
+import java.util.UUID;
 
 import com.openai.core.JsonValue;
 import com.openai.models.responses.FunctionTool;
@@ -47,5 +48,11 @@ public abstract class JazzTool {
         return FunctionTool.builder().name(name).description(description).parameters(builder.build()).strict(false).build();
     }
 
-    public abstract ToolExecutionResult execute(ToolCallRequest call);
+    // userId is the authenticated user driving this chat exchange (see
+    // AgentOrchestrator.runLoop, which threads chat.getUserId() through) —
+    // not something the model supplies or controls. Most tools ignore it;
+    // tools that need per-user context (e.g. graphFilter's excludeListened/
+    // excludeAlreadyRated) read it here instead of it living anywhere in
+    // ToolCallRequest, which represents only what the model asked for.
+    public abstract ToolExecutionResult execute(ToolCallRequest call, UUID userId);
 }

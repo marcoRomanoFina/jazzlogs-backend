@@ -86,7 +86,7 @@ class AgentOrchestratorTest {
 
         when(streamClient.streamTurn(any(), isNull(), anyBoolean())).thenReturn(toolTurn);
         when(streamClient.streamTurn(any(), eq("resp_1"), anyBoolean())).thenReturn(finalTurn);
-        when(searchTool.execute(eq(searchCall))).thenReturn(new ToolExecutionResult("{}", true));
+        when(searchTool.execute(eq(searchCall), any())).thenReturn(new ToolExecutionResult("{}", true));
         when(chatExchangeService.persist(eq(chat), eq("recommend something mellow"), any(), isNull(), isNull(), isNull()))
             .thenReturn(stubDto());
 
@@ -134,12 +134,12 @@ class AgentOrchestratorTest {
 
         when(streamClient.streamTurn(any(), isNull(), anyBoolean())).thenReturn(toolTurn);
         when(streamClient.streamTurn(any(), eq("resp_1"), anyBoolean())).thenReturn(finalTurn);
-        when(searchTool.execute(any())).thenReturn(new ToolExecutionResult("{}", true));
+        when(searchTool.execute(any(), any())).thenReturn(new ToolExecutionResult("{}", true));
         when(chatExchangeService.persist(any(), any(), any(), any(), any(), any())).thenReturn(stubDto());
 
         orchestrator.runLoop(sink, chat, "find me something", null);
 
-        verify(searchTool, times(2)).execute(any());
+        verify(searchTool, times(2)).execute(any(), any());
         assertThat(sink.eventNames()).containsExactly(
             "iteration_started",
             "tool_call_started", "tool_call_started",
@@ -166,7 +166,7 @@ class AgentOrchestratorTest {
 
         when(streamClient.streamTurn(any(), isNull(), anyBoolean())).thenReturn(toolTurn);
         when(streamClient.streamTurn(any(), eq("resp_1"), anyBoolean())).thenReturn(finalTurn);
-        when(searchTool.execute(any())).thenReturn(new ToolExecutionResult("{}", true));
+        when(searchTool.execute(any(), any())).thenReturn(new ToolExecutionResult("{}", true));
         when(chatExchangeService.persist(any(), any(), any(), any(), any(), any())).thenReturn(stubDto());
 
         orchestrator.runLoop(sink, chat, "find me something", null);
@@ -176,7 +176,7 @@ class AgentOrchestratorTest {
         // function_call it made) but never touches searchTool.execute. Plus
         // one more started/finished pair for submit_final_answer itself in
         // the next iteration: 3 + 1 = 4.
-        verify(searchTool, times(2)).execute(any());
+        verify(searchTool, times(2)).execute(any(), any());
         assertThat(sink.eventNames().stream().filter("tool_call_started"::equals).count()).isEqualTo(4);
         assertThat(sink.eventNames().stream().filter("tool_call_finished"::equals).count()).isEqualTo(4);
     }
@@ -195,7 +195,7 @@ class AgentOrchestratorTest {
 
         when(streamClient.streamTurn(any(), isNull(), eq(false))).thenReturn(nonConvergingTurn);
         when(streamClient.streamTurn(any(), eq("resp_1"), eq(true))).thenReturn(forcedFinalTurn);
-        when(searchTool.execute(any())).thenReturn(new ToolExecutionResult("{}", true));
+        when(searchTool.execute(any(), any())).thenReturn(new ToolExecutionResult("{}", true));
         when(chatExchangeService.persist(any(), any(), any(), any(), any(), any())).thenReturn(stubDto());
 
         orchestrator.runLoop(sink, chat, "find me something", null);

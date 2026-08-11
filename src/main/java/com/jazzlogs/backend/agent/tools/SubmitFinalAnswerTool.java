@@ -2,6 +2,7 @@ package com.jazzlogs.backend.agent.tools;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import org.springframework.stereotype.Component;
 
@@ -57,7 +58,7 @@ public class SubmitFinalAnswerTool extends JazzTool {
     }
 
     @Override
-    public ToolExecutionResult execute(ToolCallRequest call) {
+    public ToolExecutionResult execute(ToolCallRequest call, UUID userId) {
         throw new UnsupportedOperationException(
             NAME + " is intercepted by AgentOrchestrator before dispatch and is never executed directly"
         );
