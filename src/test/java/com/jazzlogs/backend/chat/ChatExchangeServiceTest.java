@@ -36,6 +36,9 @@ import com.jazzlogs.backend.user.User;
 class ChatExchangeServiceTest {
 
     @Mock
+    private ChatService chatService;
+
+    @Mock
     private ChatRepository chatRepository;
 
     @Mock
@@ -59,7 +62,7 @@ class ChatExchangeServiceTest {
     @BeforeEach
     void setUp() {
         service = new ChatExchangeService(
-            chatRepository, chatExchangeRepository, chatRecommendationMemoryService,
+            chatService, chatRepository, chatExchangeRepository, chatRecommendationMemoryService,
             albumRepository, trackRepository, artistRepository
         );
 

@@ -36,6 +36,7 @@ import lombok.AllArgsConstructor;
 public class ChatController {
 
     private final ChatService chatService;
+    private final ChatExchangeService chatExchangeService;
     private final UserService userService;
     private final AgentOrchestrator agentOrchestrator;
 
@@ -70,7 +71,7 @@ public class ChatController {
         @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
         @AuthenticationPrincipal Jwt jwt
     ) {
-        return chatService.getChatExchanges(chatId, currentUserId(jwt), pageable);
+        return chatExchangeService.getChatExchanges(chatId, currentUserId(jwt), pageable);
     }
 
     // First message of a brand-new chat — creates it, then runs the agent

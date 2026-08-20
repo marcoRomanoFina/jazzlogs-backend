@@ -6,6 +6,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,15 +23,14 @@ import lombok.AllArgsConstructor;
 
 // The only place a chat_exchange ever gets created — called once by
 // AgentOrchestrator right after the model closes a turn with
-// submit_final_answer. There's no other writer and no public API for it:
-// exchanges are an internal detail of running the agent, not something a
-// caller creates directly (see ChatController, which never mentions
-// "exchange" — POST /chats and POST /chats/{chatId}/messages both just run
-// the agent and let this service record the result).
+// submit_final_answer. There's no other writer, but reads (getChatExchanges,
+// for GET /chats/{chatId}/exchanges) live here too — exchanges are always a
+// ChatExchangeRepository concern, whether being written or listed.
 @Service
 @AllArgsConstructor
 public class ChatExchangeService {
 
+    private final ChatService chatService;
     private final ChatRepository chatRepository;
     private final ChatExchangeRepository chatExchangeRepository;
     private final ChatRecommendationMemoryService chatRecommendationMemoryService;
@@ -60,13 +61,36 @@ public class ChatExchangeService {
             chatRecommendationMemoryService.syncMemoryUpdate(chat.getId(), winners, updatedSessionSummary);
         }
 
+        return toChatExchangeDto(saved);
+    }
+
+    /**
+     * Lists the exchanges of a chat the requesting user owns, most recent
+     * first by default.
+     * <p>
+     * Paginated — sort direction/field can be overridden by the client via
+     * {@link Pageable}, though the Frontend currently relies on the default
+     * ({@code createdAt} DESC).
+     *
+     * @param chatId           the chat whose exchanges are being listed
+     * @param requestingUserId the caller — must own the chat
+     * @param pageable         page/size/sort requested by the client
+     * @return a page of the chat's exchanges
+     */
+    @Transactional(readOnly = true)
+    public Page<ChatExchangeDto> getChatExchanges(UUID chatId, UUID requestingUserId, Pageable pageable) {
+        Chat chat = chatService.getOwnedChat(chatId, requestingUserId);
+        return chatExchangeRepository.findByChatId(chat.getId(), pageable).map(this::toChatExchangeDto);
+    }
+
+    private ChatExchangeDto toChatExchangeDto(ChatExchange exchange) {
         return new ChatExchangeDto(
-            saved.getId(),
-            saved.getChatId(),
-            saved.getUserMessage(),
-            saved.getFinalResponse(),
-            saved.getWinners(),
-            saved.getCreatedAt()
+            exchange.getId(),
+            exchange.getChatId(),
+            exchange.getUserMessage(),
+            exchange.getFinalResponse(),
+            exchange.getWinners(),
+            exchange.getCreatedAt()
         );
     }
 

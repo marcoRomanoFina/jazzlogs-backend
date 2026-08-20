@@ -10,7 +10,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.chat.dto.ChatDto;
-import com.jazzlogs.backend.chat.dto.ChatExchangeDto;
 import com.jazzlogs.backend.user.User;
 import com.jazzlogs.backend.user.UserRepository;
 
@@ -27,7 +26,6 @@ import lombok.AllArgsConstructor;
 public class ChatService {
 
     private final ChatRepository chatRepository;
-    private final ChatExchangeRepository chatExchangeRepository;
     private final UserRepository userRepository;
 
     /**
@@ -46,26 +44,6 @@ public class ChatService {
         return chatRepository.findByUserId(userId, pageable).map(this::toChatDto);
     }
 
-    /**
-     * Lists the exchanges of a chat the requesting user owns, most recent
-     * first by default.
-     * <p>
-     * Paginated — sort direction/field can be overridden by the client via
-     * {@link Pageable}, though the Frontend currently relies on the default
-     * ({@code createdAt} DESC).
-     *
-     * @param chatId           the chat whose exchanges are being listed
-     * @param requestingUserId the caller — must own the chat
-     * @param pageable         page/size/sort requested by the client
-     * @return a page of the chat's exchanges
-     */
-    @Transactional(readOnly = true)
-    public Page<ChatExchangeDto> getChatExchanges(UUID chatId, UUID requestingUserId, Pageable pageable) {
-        Chat chat = getChatOrThrow(chatId);
-        assertOwner(chat, requestingUserId);
-        return chatExchangeRepository.findByChatId(chatId, pageable).map(this::toDto);
-    }
-
     // user is a freshly-fetched entity here, not a lazy proxy — safe to read
     // from AgentOrchestrator's async loop with no extra fetch needed.
     @Transactional
@@ -74,7 +52,7 @@ public class ChatService {
         return chatRepository.save(new Chat(user, null));
     }
 
-    // findByIdWithUser (not getChatOrThrow/findById) — this Chat is handed to
+    // findByIdWithUser (not plain findById) — this Chat is handed to
     // AgentOrchestrator's async loop, which needs chat.getUser() to already
     // be initialized; see ChatRepository.findByIdWithUser.
     @Transactional(readOnly = true)
@@ -95,24 +73,8 @@ public class ChatService {
         return new ChatDto(chat.getId(), chat.getTitle(), chat.getCreatedAt(), chat.getUpdatedAt(), chat.getLastMessageAt());
     }
 
-    private ChatExchangeDto toDto(ChatExchange exchange) {
-        return new ChatExchangeDto(
-            exchange.getId(),
-            exchange.getChatId(),
-            exchange.getUserMessage(),
-            exchange.getFinalResponse(),
-            exchange.getWinners(),
-            exchange.getCreatedAt()
-        );
-    }
-
     private User getUserOrThrow(UUID userId) {
         return userRepository.findById(userId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found: " + userId));
-    }
-
-    private Chat getChatOrThrow(UUID chatId) {
-        return chatRepository.findById(chatId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chat not found: " + chatId));
     }
 }
