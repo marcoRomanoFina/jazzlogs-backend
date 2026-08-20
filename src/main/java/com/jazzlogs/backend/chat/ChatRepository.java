@@ -10,7 +10,13 @@ import org.springframework.data.repository.query.Param;
 
 public interface ChatRepository extends JpaRepository<Chat, UUID> {
 
-    List<Chat> findByUserIdOrderByLastMessageAtDesc(UUID userId);
+    // Explicit JPQL, not a derived findByUserIdOrderByLastMessageAtDesc —
+    // Chat also has a convenience getUserId() (delegating to user.getId()),
+    // which trips up Spring Data's property-path resolver the same way it
+    // does for Note/TrackRating/Review/ChatExchange's equivalent id clashes
+    // (see ChatExchangeRepository). Spelling out user.id sidesteps it.
+    @Query("SELECT c FROM Chat c WHERE c.user.id = :userId ORDER BY c.lastMessageAt DESC")
+    List<Chat> findByUserIdOrderByLastMessageAtDesc(@Param("userId") UUID userId);
 
     // JOIN FETCH, not plain findById: the Chat this returns gets handed to
     // AgentOrchestrator, which reads it back on a different thread

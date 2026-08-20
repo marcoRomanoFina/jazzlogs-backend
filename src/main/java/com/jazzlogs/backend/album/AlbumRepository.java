@@ -34,6 +34,13 @@ public interface AlbumRepository extends JpaRepository<Album, UUID>, SavedItemRe
         return new Resolved(album.getName(), album.getImageUrl(), album.getSpotifyUrl());
     }
 
+    // JOIN FETCH, not the default findAllById — ChatExchangeService.resolveWinners
+    // needs each album's artist (album.artist is FetchType.LAZY); without this,
+    // resolving N recommended albums means N extra per-row SELECTs (one per
+    // artist) instead of one batched query.
+    @Query("SELECT a FROM Album a JOIN FETCH a.artist WHERE a.id IN :ids")
+    List<Album> findAllByIdWithArtist(@Param("ids") List<UUID> ids);
+
     // Same matchType/ordering shape as ArtistRepository.search — see its
     // comment. artistFullName comes from the joined artists row (an album's
     // artist is just its direct artist_id, no sideman/graph resolution here).

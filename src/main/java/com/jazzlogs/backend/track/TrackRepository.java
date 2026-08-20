@@ -20,6 +20,11 @@ public interface TrackRepository extends JpaRepository<Track, UUID>, SavedItemRe
     // "create a duplicate".
     Optional<Track> findBySpotifyTrackId(String spotifyTrackId);
 
+    // For ListenService.syncAlbumCompletionState — needs every track id on
+    // the album to check whether the user has now listened to all of them.
+    @Query("SELECT t.id FROM Track t WHERE t.album.id = :albumId")
+    List<UUID> findIdsByAlbumId(@Param("albumId") UUID albumId);
+
     @Override
     default Optional<Resolved> resolve(UUID entityId) {
         return findById(entityId).map(TrackRepository::toResolved);
@@ -34,6 +39,14 @@ public interface TrackRepository extends JpaRepository<Track, UUID>, SavedItemRe
     private static Resolved toResolved(Track track) {
         return new Resolved(track.getName(), track.getImageUrl(), track.getSpotifyUrl());
     }
+
+    // JOIN FETCH, not the default findAllById — ChatExchangeService.resolveWinners
+    // needs each track's album AND that album's artist (track.album and
+    // album.artist are both FetchType.LAZY); without this, resolving N
+    // recommended tracks means up to 2N extra per-row SELECTs (one for the
+    // album, one for the artist) instead of one batched query.
+    @Query("SELECT t FROM Track t JOIN FETCH t.album al JOIN FETCH al.artist WHERE t.id IN :ids")
+    List<Track> findAllByIdWithAlbumAndArtist(@Param("ids") List<UUID> ids);
 
     // Same matchType/ordering shape as ArtistRepository.search — see its
     // comment. Two-hop join (track -> album -> artist): a track's artist is

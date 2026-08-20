@@ -39,6 +39,9 @@ public class Note {
     @JoinColumn(name = "track_id", nullable = false)
     private Track track;
 
+    @Column(nullable = false)
+    private String title;
+
     @Column(nullable = false, columnDefinition = "TEXT")
     private String text;
 
@@ -54,9 +57,10 @@ public class Note {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
-    public Note(User user, Track track, String text, Integer timestampSeconds) {
+    public Note(User user, Track track, String title, String text, Integer timestampSeconds) {
         this.user = user;
         this.track = track;
+        this.title = title;
         this.text = text;
         this.timestampSeconds = timestampSeconds;
     }

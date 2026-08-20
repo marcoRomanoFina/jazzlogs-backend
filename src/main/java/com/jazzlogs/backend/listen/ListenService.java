@@ -12,8 +12,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import com.jazzlogs.backend.album.Album;
-import com.jazzlogs.backend.album.AlbumRepository;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.playlist.Playlist;
 import com.jazzlogs.backend.playlist.PlaylistRepository;
@@ -56,38 +54,12 @@ import lombok.AllArgsConstructor;
 public class ListenService {
 
     private final ListenRepository listenRepository;
-    private final AlbumRepository albumRepository;
     private final TrackRepository trackRepository;
     private final PlaylistRepository playlistRepository;
     private final SeriesChapterRepository seriesChapterRepository;
     private final SavedItemRepository savedItemRepository;
     private final GraphService graphService;
     private final Neo4jAsyncSyncExecutor syncExecutor;
-
-    /**
-     * Also marks every track on the album as listened — same idempotent,
-     * per-track dual write as markTrackListened, just driven from here instead
-     * of a separate call per track. Tracks already marked (or added to the
-     * album after a previous listen) are handled the same way either way:
-     * insertIfNotExists no-ops for the ones that already exist.
-     */
-    @Transactional
-    public void markAlbumListened(UUID userId, UUID albumId) {
-        Album album = getAlbumOrThrow(albumId);
-
-        boolean isNew = listenRepository.insertIfNotExists(userId, ListenableEntityType.ALBUM, albumId);
-        savedItemRepository.deleteByUserIdAndEntityTypeAndEntityId(userId, SaveableEntityType.ALBUM, albumId);
-        if (isNew) {
-            syncAlbumListenedToGraph(userId, albumId);
-        }
-
-        for (Track track : album.getTracks()) {
-            // Track existence is already guaranteed here (it came straight off
-            // the loaded Album), so skip straight to the core logic instead of
-            // re-running markTrackListened's own getTrackOrThrow per track.
-            markTrackListenedCore(userId, track.getId());
-        }
-    }
 
     private void syncAlbumListenedToGraph(UUID userId, UUID albumId) {
         // Today: sync always, for every user — there's no subscription/plan model
@@ -101,10 +73,17 @@ public class ListenService {
         );
     }
 
+    /**
+     * The album itself is no longer something a user marks directly —
+     * AlbumController's old POST/DELETE /albums/{id}/listen are gone. Its
+     * "listened" state is purely a consequence of every one of its tracks
+     * being listened, reconciled here after every mark/unmark.
+     */
     @Transactional
     public void markTrackListened(UUID userId, UUID trackId) {
-        getTrackOrThrow(trackId);
+        Track track = getTrackOrThrow(trackId);
         markTrackListenedCore(userId, trackId);
+        syncAlbumCompletionState(userId, track.getAlbum().getId());
     }
 
     private void markTrackListenedCore(UUID userId, UUID trackId) {
@@ -112,6 +91,42 @@ public class ListenService {
         savedItemRepository.deleteByUserIdAndEntityTypeAndEntityId(userId, SaveableEntityType.TRACK, trackId);
         if (isNew) {
             syncTrackListenedToGraph(userId, trackId);
+        }
+    }
+
+    /** Same completion reconciliation as the mark side — see markTrackListened. */
+    @Transactional
+    public void unmarkTrackListened(UUID userId, UUID trackId) {
+        Track track = getTrackOrThrow(trackId);
+        listenRepository.deleteByUserIdAndEntityTypeAndEntityId(userId, ListenableEntityType.TRACK, trackId);
+        syncAlbumCompletionState(userId, track.getAlbum().getId());
+    }
+
+    /**
+     * Reconciles the album-level listens row (used for countAlbumListens'
+     * stat and the Neo4j mirror — AlbumService.getAlbumDetail computes the
+     * user-facing "hasListened" flag itself, live, from track completion,
+     * precisely so it can't go stale relative to this) to whether every
+     * track on the album is currently listened by this user: inserts +
+     * syncs it (same side effects the old manual markAlbumListened had) if
+     * completion was just reached, removes it if just broken. No-ops for an
+     * album with no tracks at all.
+     */
+    private void syncAlbumCompletionState(UUID userId, UUID albumId) {
+        List<UUID> trackIds = trackRepository.findIdsByAlbumId(albumId);
+        if (trackIds.isEmpty()) return;
+
+        boolean complete = getListenedTrackIds(userId, trackIds).size() == trackIds.size();
+        boolean alreadyRecorded = listenRepository.existsById(
+            new ListenId(userId, ListenableEntityType.ALBUM, albumId)
+        );
+
+        if (complete && !alreadyRecorded) {
+            listenRepository.insertIfNotExists(userId, ListenableEntityType.ALBUM, albumId);
+            savedItemRepository.deleteByUserIdAndEntityTypeAndEntityId(userId, SaveableEntityType.ALBUM, albumId);
+            syncAlbumListenedToGraph(userId, albumId);
+        } else if (!complete && alreadyRecorded) {
+            listenRepository.deleteByUserIdAndEntityTypeAndEntityId(userId, ListenableEntityType.ALBUM, albumId);
         }
     }
 
@@ -137,26 +152,11 @@ public class ListenService {
         );
     }
 
-    /**
-     * The Review creation gate calls this — Postgres only, never Neo4j. That's
-     * the whole point of the dual write: the gate must work even with the graph
-     * database down.
-     */
-    @Transactional(readOnly = true)
-    public boolean hasListenedToAlbum(UUID userId, UUID albumId) {
-        return listenRepository.existsById(new ListenId(userId, ListenableEntityType.ALBUM, albumId));
-    }
-
     // Total plays across every user — the album editorial page's "LISTENINGS"
     // stat, not a per-user check.
     @Transactional(readOnly = true)
     public long countAlbumListens(UUID albumId) {
         return listenRepository.countByEntityTypeAndEntityIdIn(ListenableEntityType.ALBUM, List.of(albumId));
-    }
-
-    @Transactional(readOnly = true)
-    public boolean hasListenedToTrack(UUID userId, UUID trackId) {
-        return listenRepository.existsById(new ListenId(userId, ListenableEntityType.TRACK, trackId));
     }
 
     // Batch — AlbumService.getAlbumDetail needs this for every track on the
@@ -214,11 +214,6 @@ public class ListenService {
     @Transactional(readOnly = true)
     public boolean hasListenedToSeriesChapter(UUID userId, UUID chapterId) {
         return listenRepository.existsById(new ListenId(userId, ListenableEntityType.SERIES_CHAPTER, chapterId));
-    }
-
-    private Album getAlbumOrThrow(UUID albumId) {
-        return albumRepository.findById(albumId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Album not found: " + albumId));
     }
 
     private Track getTrackOrThrow(UUID trackId) {
