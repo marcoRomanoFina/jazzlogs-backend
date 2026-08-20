@@ -9,17 +9,24 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+/**
+ * Data access for {@link ChatExchange} — a chat's individual turns
+ * (user message + agent response).
+ */
 public interface ChatExchangeRepository extends JpaRepository<ChatExchange, UUID> {
 
-    // Explicit JPQL, not a derived findByChatId — ChatExchange also has a
-    // convenience getChatId() (delegating to chat.getId()), and Spring
-    // Data's property-path resolver picks that plain method up as if
-    // "chatId" were its own mapped attribute, generating invalid JPQL
-    // ("Could not resolve attribute 'chatId' of ChatExchange") instead of
-    // drilling into the chat association. Spelling out chat.id sidesteps the
-    // ambiguity entirely — same fix already applied to Note/TrackRating/
-    // Review's equivalent userId clash. Ordering comes from the Pageable's
-    // Sort (see ChatService.getChatExchanges), not hardcoded here.
+    /**
+     * Pages a chat's exchanges. Explicit JPQL, not a derived
+     * {@code findByChatId} — ChatExchange's convenience {@code getChatId()}
+     * trips Spring Data's property-path resolver into treating "chatId" as
+     * its own attribute instead of drilling into the {@code chat}
+     * association. Ordering comes from the Pageable's Sort (see
+     * {@link ChatExchangeService#getChatExchanges}), not hardcoded here.
+     *
+     * @param chatId   the chat whose exchanges are being listed
+     * @param pageable page/size/sort requested by the caller
+     * @return a page of the chat's exchanges
+     */
     @Query("SELECT ce FROM ChatExchange ce WHERE ce.chat.id = :chatId")
     Page<ChatExchange> findByChatId(@Param("chatId") UUID chatId, Pageable pageable);
 

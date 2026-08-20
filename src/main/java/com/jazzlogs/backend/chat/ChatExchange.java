@@ -22,10 +22,13 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 
-// The @Index below is documentation only — ddl-auto is "none", so Hibernate
-// never applies it. The real DDL is V17__chat_exchanges_chat_id_created_at_
-// index.sql; this just tells anyone reading the entity that GET /chats/
-// {chatId}/exchanges' WHERE chat_id + ORDER BY created_at is index-backed.
+/**
+ * One user message / agent response pair within a {@link Chat} — a single
+ * turn of the conversation, immutable once persisted (no updated_at, no
+ * setters). {@code winners} records what the agent recommended in this
+ * exchange, if anything; {@link ChatRecommendationMemory} separately tracks
+ * everything recommended across the whole chat, to avoid repeating it.
+ */
 @Entity
 @Table(name = "chat_exchanges", indexes = @Index(name = "idx_chat_exchanges_chat_id_created_at", columnList = "chat_id, created_at"))
 @Getter
