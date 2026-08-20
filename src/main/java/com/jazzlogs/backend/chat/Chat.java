@@ -8,6 +8,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
@@ -19,10 +20,8 @@ import lombok.NoArgsConstructor;
 
 import com.jazzlogs.backend.user.User;
 
-// title has no autogeneration logic yet — stays null until that's built.
-// last_message_at is null until the chat's first exchange (see recordExchangeAt).
 @Entity
-@Table(name = "chats")
+@Table(name = "chats", indexes = @Index(name = "idx_chats_user_id_last_message_at", columnList = "user_id, last_message_at"))
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Chat {
