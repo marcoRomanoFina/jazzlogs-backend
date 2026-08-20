@@ -12,6 +12,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
@@ -21,8 +22,12 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 
+// The @Index below is documentation only — ddl-auto is "none", so Hibernate
+// never applies it. The real DDL is V17__chat_exchanges_chat_id_created_at_
+// index.sql; this just tells anyone reading the entity that GET /chats/
+// {chatId}/exchanges' WHERE chat_id + ORDER BY created_at is index-backed.
 @Entity
-@Table(name = "chat_exchanges")
+@Table(name = "chat_exchanges", indexes = @Index(name = "idx_chat_exchanges_chat_id_created_at", columnList = "chat_id, created_at"))
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ChatExchange {
