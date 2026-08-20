@@ -21,7 +21,6 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-
 /**
  * One user message / agent response pair within a {@link Chat} — a single
  * turn of the conversation, immutable once persisted (no updated_at, no

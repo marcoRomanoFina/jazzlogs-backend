@@ -22,7 +22,9 @@ import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.album.AlbumRepository;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
+import com.jazzlogs.backend.chat.dto.AlbumWinnerCard;
 import com.jazzlogs.backend.chat.dto.ChatExchangeDto;
+import com.jazzlogs.backend.chat.dto.TrackWinnerCard;
 import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackRepository;
 import com.jazzlogs.backend.user.User;
@@ -96,9 +98,11 @@ class ChatExchangeServiceTest {
         );
 
         assertThat(result.winners()).hasSize(1);
-        assertThat(result.winners().get(0).id()).isEqualTo(albumId);
-        assertThat(result.winners().get(0).name()).isEqualTo("Kind of Blue");
-        assertThat(result.winners().get(0).primaryArtist()).isEqualTo("Miles Davis");
+        assertThat(result.winners().get(0)).isInstanceOf(AlbumWinnerCard.class);
+        AlbumWinnerCard card = (AlbumWinnerCard) result.winners().get(0);
+        assertThat(card.id()).isEqualTo(albumId);
+        assertThat(card.name()).isEqualTo("Kind of Blue");
+        assertThat(card.primaryArtist()).isEqualTo("Miles Davis");
     }
 
     @Test
@@ -118,7 +122,8 @@ class ChatExchangeServiceTest {
         );
 
         assertThat(result.winners()).hasSize(1);
-        assertThat(result.winners().get(0).primaryArtist()).isEqualTo("John Coltrane");
+        assertThat(result.winners().get(0)).isInstanceOf(TrackWinnerCard.class);
+        assertThat(((TrackWinnerCard) result.winners().get(0)).primaryArtist()).isEqualTo("John Coltrane");
     }
 
     @Test
