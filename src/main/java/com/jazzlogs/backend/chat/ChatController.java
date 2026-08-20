@@ -1,6 +1,5 @@
 package com.jazzlogs.backend.chat;
 
-import java.util.List;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
@@ -20,9 +19,12 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import com.jazzlogs.backend.agent.AgentOrchestrator;
-import com.jazzlogs.backend.chat.dto.ChatDto;
-import com.jazzlogs.backend.chat.dto.ChatExchangeDto;
-import com.jazzlogs.backend.chat.dto.SendMessageRequest;
+import com.jazzlogs.backend.chat.chat.Chat;
+import com.jazzlogs.backend.chat.chat.ChatService;
+import com.jazzlogs.backend.chat.chat.dto.ChatDto;
+import com.jazzlogs.backend.chat.chatexchange.ChatExchangeService;
+import com.jazzlogs.backend.chat.chatexchange.dto.ChatExchangeDto;
+import com.jazzlogs.backend.chat.chatexchange.dto.SendMessageRequest;
 import com.jazzlogs.backend.user.UserService;
 
 import lombok.AllArgsConstructor;
@@ -37,6 +39,7 @@ import lombok.AllArgsConstructor;
 public class ChatController {
 
     private final ChatService chatService;
+    private final ChatExchangeService chatExchangeService;
     private final UserService userService;
     private final AgentOrchestrator agentOrchestrator;
 
@@ -55,10 +58,23 @@ public class ChatController {
     ) {
         return chatService.getUserChats(currentUserId(jwt), pageable);
     }
+    
 
+    /**
+     * Lists a chat's exchanges, paged and ordered most-recent-first by default.
+     * @param chatId   the chat whose exchanges are being listed
+     * @param pageable page number/size, defaulting to 10 per page sorted by
+     *                 {@code createdAt} DESC
+     * @param jwt the authenticated user's token
+     * @return a page of the chat's exchanges
+     */
     @GetMapping("/{chatId}/exchanges")
-    public List<ChatExchangeDto> listExchanges(@PathVariable UUID chatId, @AuthenticationPrincipal Jwt jwt) {
-        return chatService.getChatExchanges(chatId, currentUserId(jwt));
+    public Page<ChatExchangeDto> listExchanges(
+        @PathVariable UUID chatId,
+        @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
+        @AuthenticationPrincipal Jwt jwt
+    ) {
+        return chatExchangeService.getChatExchanges(chatId, currentUserId(jwt), pageable);
     }
 
     // First message of a brand-new chat — creates it, then runs the agent

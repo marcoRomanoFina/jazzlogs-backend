@@ -6,8 +6,8 @@ import java.util.UUID;
 
 import org.springframework.stereotype.Component;
 
-import com.jazzlogs.backend.chat.ChatRecommendationMemoryService;
-import com.jazzlogs.backend.chat.WinnerRef;
+import com.jazzlogs.backend.chat.chatexchange.ChatRecommendationMemoryService;
+import com.jazzlogs.backend.chat.chatexchange.WinnerRef;
 
 import lombok.AllArgsConstructor;
 

@@ -1,4 +1,4 @@
-package com.jazzlogs.backend.chat.dto;
+package com.jazzlogs.backend.chat.chat.dto;
 
 import java.time.Instant;
 import java.util.UUID;

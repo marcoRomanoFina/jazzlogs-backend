@@ -1,4 +1,4 @@
-package com.jazzlogs.backend.chat;
+package com.jazzlogs.backend.chat.chatexchange;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -9,6 +9,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.jazzlogs.backend.chat.CatalogItemType;
 import com.jazzlogs.backend.syncfailure.SyncFailure;
 import com.jazzlogs.backend.syncfailure.SyncFailureEntityType;
 import com.jazzlogs.backend.syncfailure.SyncFailureRepository;
