@@ -1,4 +1,4 @@
-package com.jazzlogs.backend.chat;
+package com.jazzlogs.backend.chat.chatexchange;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -22,9 +22,13 @@ import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.album.AlbumRepository;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
-import com.jazzlogs.backend.chat.dto.AlbumWinnerCard;
-import com.jazzlogs.backend.chat.dto.ChatExchangeDto;
-import com.jazzlogs.backend.chat.dto.TrackWinnerCard;
+import com.jazzlogs.backend.chat.CatalogItemType;
+import com.jazzlogs.backend.chat.chat.Chat;
+import com.jazzlogs.backend.chat.chat.ChatRepository;
+import com.jazzlogs.backend.chat.chat.ChatService;
+import com.jazzlogs.backend.chat.chatexchange.dto.AlbumWinnerCard;
+import com.jazzlogs.backend.chat.chatexchange.dto.ChatExchangeDto;
+import com.jazzlogs.backend.chat.chatexchange.dto.TrackWinnerCard;
 import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackRepository;
 import com.jazzlogs.backend.user.User;

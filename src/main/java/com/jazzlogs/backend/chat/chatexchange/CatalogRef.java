@@ -1,4 +1,6 @@
-package com.jazzlogs.backend.chat;
+package com.jazzlogs.backend.chat.chatexchange;
+
+import com.jazzlogs.backend.chat.CatalogItemType;
 
 // Unresolved pointer into the catalog — the shape a caller of
 // ChatExchangeService.persist works with before it's checked against the

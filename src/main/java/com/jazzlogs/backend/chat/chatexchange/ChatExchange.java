@@ -1,4 +1,4 @@
-package com.jazzlogs.backend.chat;
+package com.jazzlogs.backend.chat.chatexchange;
 
 import java.time.Instant;
 import java.util.List;
@@ -17,6 +17,9 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
+
+import com.jazzlogs.backend.chat.chat.Chat;
+
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;

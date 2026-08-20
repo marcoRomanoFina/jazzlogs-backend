@@ -1,4 +1,4 @@
-package com.jazzlogs.backend.chat.dto;
+package com.jazzlogs.backend.chat.chatexchange.dto;
 
 import java.util.UUID;
 

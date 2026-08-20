@@ -1,6 +1,8 @@
-package com.jazzlogs.backend.chat;
+package com.jazzlogs.backend.chat.chatexchange;
 
 import java.util.UUID;
+
+import com.jazzlogs.backend.chat.CatalogItemType;
 
 /**
  * Lightweight pointer into the catalog — what a chat recommended, one per

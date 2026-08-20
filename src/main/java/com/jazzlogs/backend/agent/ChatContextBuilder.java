@@ -17,12 +17,12 @@ import org.springframework.transaction.annotation.Transactional;
 import com.openai.models.responses.EasyInputMessage;
 import com.openai.models.responses.ResponseInputItem;
 
-import com.jazzlogs.backend.chat.Chat;
-import com.jazzlogs.backend.chat.ChatExchange;
-import com.jazzlogs.backend.chat.ChatExchangeRepository;
-import com.jazzlogs.backend.chat.ChatRecommendationMemory;
-import com.jazzlogs.backend.chat.ChatRecommendationMemoryRepository;
-import com.jazzlogs.backend.chat.WinnerRef;
+import com.jazzlogs.backend.chat.chat.Chat;
+import com.jazzlogs.backend.chat.chatexchange.ChatExchange;
+import com.jazzlogs.backend.chat.chatexchange.ChatExchangeRepository;
+import com.jazzlogs.backend.chat.chatexchange.ChatRecommendationMemory;
+import com.jazzlogs.backend.chat.chatexchange.ChatRecommendationMemoryRepository;
+import com.jazzlogs.backend.chat.chatexchange.WinnerRef;
 
 import lombok.AllArgsConstructor;
 

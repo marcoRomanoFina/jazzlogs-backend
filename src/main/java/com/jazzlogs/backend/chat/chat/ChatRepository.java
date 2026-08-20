@@ -1,4 +1,4 @@
-package com.jazzlogs.backend.chat;
+package com.jazzlogs.backend.chat.chat;
 
 import java.util.Optional;
 import java.util.UUID;

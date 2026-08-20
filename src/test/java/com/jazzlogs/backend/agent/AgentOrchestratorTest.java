@@ -26,9 +26,9 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import com.jazzlogs.backend.agent.tools.JazzTool;
 import com.jazzlogs.backend.agent.tools.SubmitFinalAnswerTool;
-import com.jazzlogs.backend.chat.Chat;
-import com.jazzlogs.backend.chat.ChatExchangeService;
-import com.jazzlogs.backend.chat.dto.ChatExchangeDto;
+import com.jazzlogs.backend.chat.chat.Chat;
+import com.jazzlogs.backend.chat.chatexchange.ChatExchangeService;
+import com.jazzlogs.backend.chat.chatexchange.dto.ChatExchangeDto;
 import com.jazzlogs.backend.user.User;
 
 // Pure Mockito unit tests, no Spring context and no SseEmitter attached to a

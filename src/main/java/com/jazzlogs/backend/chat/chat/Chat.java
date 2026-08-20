@@ -1,4 +1,4 @@
-package com.jazzlogs.backend.chat;
+package com.jazzlogs.backend.chat.chat;
 
 import java.time.Instant;
 import java.util.UUID;

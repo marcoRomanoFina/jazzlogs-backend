@@ -19,9 +19,12 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import com.jazzlogs.backend.agent.AgentOrchestrator;
-import com.jazzlogs.backend.chat.dto.ChatDto;
-import com.jazzlogs.backend.chat.dto.ChatExchangeDto;
-import com.jazzlogs.backend.chat.dto.SendMessageRequest;
+import com.jazzlogs.backend.chat.chat.Chat;
+import com.jazzlogs.backend.chat.chat.ChatService;
+import com.jazzlogs.backend.chat.chat.dto.ChatDto;
+import com.jazzlogs.backend.chat.chatexchange.ChatExchangeService;
+import com.jazzlogs.backend.chat.chatexchange.dto.ChatExchangeDto;
+import com.jazzlogs.backend.chat.chatexchange.dto.SendMessageRequest;
 import com.jazzlogs.backend.user.UserService;
 
 import lombok.AllArgsConstructor;

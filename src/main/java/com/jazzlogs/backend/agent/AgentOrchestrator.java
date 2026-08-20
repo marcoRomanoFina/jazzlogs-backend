@@ -26,10 +26,10 @@ import com.jazzlogs.backend.agent.tools.JazzTool;
 import com.jazzlogs.backend.agent.tools.ResolveJazzlogsEntityTool;
 import com.jazzlogs.backend.agent.tools.SemanticSearchTool;
 import com.jazzlogs.backend.agent.tools.SubmitFinalAnswerTool;
-import com.jazzlogs.backend.chat.CatalogRef;
-import com.jazzlogs.backend.chat.Chat;
-import com.jazzlogs.backend.chat.ChatExchangeService;
-import com.jazzlogs.backend.chat.dto.ChatExchangeDto;
+import com.jazzlogs.backend.chat.chat.Chat;
+import com.jazzlogs.backend.chat.chatexchange.CatalogRef;
+import com.jazzlogs.backend.chat.chatexchange.ChatExchangeService;
+import com.jazzlogs.backend.chat.chatexchange.dto.ChatExchangeDto;
 
 import lombok.extern.slf4j.Slf4j;
 

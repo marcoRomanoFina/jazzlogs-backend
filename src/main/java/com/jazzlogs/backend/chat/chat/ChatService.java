@@ -1,4 +1,4 @@
-package com.jazzlogs.backend.chat;
+package com.jazzlogs.backend.chat.chat;
 
 import java.util.UUID;
 
@@ -9,7 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import com.jazzlogs.backend.chat.dto.ChatDto;
+import com.jazzlogs.backend.chat.chat.dto.ChatDto;
 import com.jazzlogs.backend.user.User;
 import com.jazzlogs.backend.user.UserRepository;
 
