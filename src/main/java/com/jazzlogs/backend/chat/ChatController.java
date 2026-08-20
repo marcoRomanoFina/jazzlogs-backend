@@ -1,6 +1,5 @@
 package com.jazzlogs.backend.chat;
 
-import java.util.List;
 import java.util.UUID;
 
 import jakarta.validation.Valid;
@@ -55,10 +54,23 @@ public class ChatController {
     ) {
         return chatService.getUserChats(currentUserId(jwt), pageable);
     }
+    
 
+    /**
+     * Lists a chat's exchanges, paged and ordered most-recent-first by default.
+     * @param chatId   the chat whose exchanges are being listed
+     * @param pageable page number/size, defaulting to 10 per page sorted by
+     *                 {@code createdAt} DESC
+     * @param jwt the authenticated user's token
+     * @return a page of the chat's exchanges
+     */
     @GetMapping("/{chatId}/exchanges")
-    public List<ChatExchangeDto> listExchanges(@PathVariable UUID chatId, @AuthenticationPrincipal Jwt jwt) {
-        return chatService.getChatExchanges(chatId, currentUserId(jwt));
+    public Page<ChatExchangeDto> listExchanges(
+        @PathVariable UUID chatId,
+        @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
+        @AuthenticationPrincipal Jwt jwt
+    ) {
+        return chatService.getChatExchanges(chatId, currentUserId(jwt), pageable);
     }
 
     // First message of a brand-new chat — creates it, then runs the agent

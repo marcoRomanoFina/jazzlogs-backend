@@ -1,6 +1,5 @@
 package com.jazzlogs.backend.chat;
 
-import java.util.List;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -47,11 +46,24 @@ public class ChatService {
         return chatRepository.findByUserId(userId, pageable).map(this::toChatDto);
     }
 
+    /**
+     * Lists the exchanges of a chat the requesting user owns, most recent
+     * first by default.
+     * <p>
+     * Paginated — sort direction/field can be overridden by the client via
+     * {@link Pageable}, though the Frontend currently relies on the default
+     * ({@code createdAt} DESC).
+     *
+     * @param chatId           the chat whose exchanges are being listed
+     * @param requestingUserId the caller — must own the chat
+     * @param pageable         page/size/sort requested by the client
+     * @return a page of the chat's exchanges
+     */
     @Transactional(readOnly = true)
-    public List<ChatExchangeDto> getChatExchanges(UUID chatId, UUID requestingUserId) {
+    public Page<ChatExchangeDto> getChatExchanges(UUID chatId, UUID requestingUserId, Pageable pageable) {
         Chat chat = getChatOrThrow(chatId);
         assertOwner(chat, requestingUserId);
-        return chatExchangeRepository.findByChatIdOrderByCreatedAtAsc(chatId).stream().map(this::toDto).toList();
+        return chatExchangeRepository.findByChatId(chatId, pageable).map(this::toDto);
     }
 
     // user is a freshly-fetched entity here, not a lazy proxy — safe to read

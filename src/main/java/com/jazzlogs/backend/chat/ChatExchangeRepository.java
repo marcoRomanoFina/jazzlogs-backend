@@ -3,22 +3,25 @@ package com.jazzlogs.backend.chat;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface ChatExchangeRepository extends JpaRepository<ChatExchange, UUID> {
 
-    // Explicit JPQL, not a derived findByChatIdOrderByCreatedAtAsc —
-    // ChatExchange also has a convenience getChatId() (delegating to
-    // chat.getId()), and Spring Data's property-path resolver picks that
-    // plain method up as if "chatId" were its own mapped attribute,
-    // generating invalid JPQL ("Could not resolve attribute 'chatId' of
-    // ChatExchange") instead of drilling into the chat association.
-    // Spelling out chat.id sidesteps the ambiguity entirely — same fix
-    // already applied to Note/TrackRating/Review's equivalent userId clash.
-    @Query("SELECT ce FROM ChatExchange ce WHERE ce.chat.id = :chatId ORDER BY ce.createdAt ASC")
-    List<ChatExchange> findByChatIdOrderByCreatedAtAsc(@Param("chatId") UUID chatId);
+    // Explicit JPQL, not a derived findByChatId — ChatExchange also has a
+    // convenience getChatId() (delegating to chat.getId()), and Spring
+    // Data's property-path resolver picks that plain method up as if
+    // "chatId" were its own mapped attribute, generating invalid JPQL
+    // ("Could not resolve attribute 'chatId' of ChatExchange") instead of
+    // drilling into the chat association. Spelling out chat.id sidesteps the
+    // ambiguity entirely — same fix already applied to Note/TrackRating/
+    // Review's equivalent userId clash. Ordering comes from the Pageable's
+    // Sort (see ChatService.getChatExchanges), not hardcoded here.
+    @Query("SELECT ce FROM ChatExchange ce WHERE ce.chat.id = :chatId")
+    Page<ChatExchange> findByChatId(@Param("chatId") UUID chatId, Pageable pageable);
 
     // Newest-first, capped — ChatContextBuilder reverses this to ascending
     // order before turning it into conversation turns. Same chatId
