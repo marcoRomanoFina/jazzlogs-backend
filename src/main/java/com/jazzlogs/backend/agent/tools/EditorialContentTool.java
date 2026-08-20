@@ -47,9 +47,13 @@ public class EditorialContentTool extends JazzTool {
     public EditorialContentTool(EditorialBlockRepository editorialBlockRepository) {
         super(
             NAME,
-            "Fetch the full or filtered text content of an editorial's blocks, given an editorialId "
-                + "already resolved (e.g. by RESOLVE_JAZZLOGS_ENTITY). Use this to get real substance to "
-                + "write from before answering — never invent editorial content."
+            "Fetch the full or filtered text content of an editorial's blocks, given an editorialId. "
+                + "editorialId is NOT the same id as the album/track/artist itself — an entityId from "
+                + "GRAPH_FILTER or SEMANTIC_SEARCH is never a valid editorialId, do not reuse one here. "
+                + "The only source for a real editorialId is RESOLVE_JAZZLOGS_ENTITY's editorialId field "
+                + "— call that tool with the entity's name if you don't already have one from earlier in "
+                + "this conversation. Use this to get real substance to write from before answering — "
+                + "never invent editorial content, and never guess or reuse an unrelated id here."
         );
         this.editorialBlockRepository = editorialBlockRepository;
     }

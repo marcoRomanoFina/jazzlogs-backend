@@ -766,18 +766,22 @@ public class GraphService {
 
     // --- graphFilter (agent tool) ---
     //
-    // One query per entity type, not one query with label branching — Album/
+    // One method per entity type, not one query with label branching — Album/
     // Track/Artist each connect to a different subset of vocabulary
     // dimensions (see the individual methods below), so a single combined
     // query would need per-label conditionals throughout; three separate,
-    // readable queries are more maintainable.
+    // readable queries are more maintainable. GraphFilterFilters.entityType
+    // is singular and required, so a given graphFilter call only ever
+    // invokes exactly one of these — GraphFilterService picks which one via
+    // a Map<CatalogItemType, ...> lookup, not an if/switch chain.
     //
     // Matching is permissive by design (OR, not AND): a candidate doesn't
     // need to match every requested dimension, matching at least one is
     // enough — that's what "WHERE matchCount > 0" enforces below, nothing
-    // stronger. Ranking (by matchedDimensions.size(), done in
-    // GraphFilterService once all labels' results are merged) is a separate
-    // concern from eligibility.
+    // stronger. Ranking (by matchCount, i.e. matchedDimensions.size()) is a
+    // separate concern from eligibility, done right here via "ORDER BY
+    // matchCount DESC LIMIT $limit" — GraphFilterService never re-sorts or
+    // re-clamps what comes back.
     //
     // Each dimension is a pattern comprehension — e.g.
     // "[(al)-[:BELONGS_TO]->(s:Style) WHERE s.code IN $styleCodes | s.code]"
@@ -804,7 +808,7 @@ public class GraphService {
                     WITH al, styleMatches, moodMatches, contextMatches,
                         (size(styleMatches) + size(moodMatches) + size(contextMatches)) AS matchCount
                     WHERE matchCount > 0
-                    RETURN al.id AS entityId, styleMatches, moodMatches, contextMatches
+                    RETURN al.id AS entityId, al.name AS entityName, styleMatches, moodMatches, contextMatches
                     ORDER BY matchCount DESC
                     LIMIT $limit
                     """)
@@ -821,6 +825,7 @@ public class GraphService {
                 .map(row -> new GraphCandidate(
                     CatalogItemType.ALBUM,
                     UUID.fromString((String) row.get("entityId")),
+                    (String) row.get("entityName"),
                     concatMatches(List.of(
                         dimensionMatches(VocabularyDimension.STYLE, row.get("styleMatches")),
                         dimensionMatches(VocabularyDimension.MOOD, row.get("moodMatches")),
@@ -850,7 +855,7 @@ public class GraphService {
                     WITH tr, moodMatches, contextMatches, rhythmMatches, instrumentMatches,
                         (size(moodMatches) + size(contextMatches) + size(rhythmMatches) + size(instrumentMatches)) AS matchCount
                     WHERE matchCount > 0
-                    RETURN tr.id AS entityId, moodMatches, contextMatches, rhythmMatches, instrumentMatches
+                    RETURN tr.id AS entityId, tr.name AS entityName, moodMatches, contextMatches, rhythmMatches, instrumentMatches
                     ORDER BY matchCount DESC
                     LIMIT $limit
                     """)
@@ -868,6 +873,7 @@ public class GraphService {
                 .map(row -> new GraphCandidate(
                     CatalogItemType.TRACK,
                     UUID.fromString((String) row.get("entityId")),
+                    (String) row.get("entityName"),
                     concatMatches(List.of(
                         dimensionMatches(VocabularyDimension.MOOD, row.get("moodMatches")),
                         dimensionMatches(VocabularyDimension.CONTEXT, row.get("contextMatches")),
@@ -893,7 +899,7 @@ public class GraphService {
                     WITH ar, styleMatches, contextMatches, instrumentMatches,
                         (size(styleMatches) + size(contextMatches) + size(instrumentMatches)) AS matchCount
                     WHERE matchCount > 0
-                    RETURN ar.id AS entityId, styleMatches, contextMatches, instrumentMatches
+                    RETURN ar.id AS entityId, ar.name AS entityName, styleMatches, contextMatches, instrumentMatches
                     ORDER BY matchCount DESC
                     LIMIT $limit
                     """)
@@ -907,6 +913,7 @@ public class GraphService {
                 .map(row -> new GraphCandidate(
                     CatalogItemType.ARTIST,
                     UUID.fromString((String) row.get("entityId")),
+                    (String) row.get("entityName"),
                     concatMatches(List.of(
                         dimensionMatches(VocabularyDimension.STYLE, row.get("styleMatches")),
                         dimensionMatches(VocabularyDimension.CONTEXT, row.get("contextMatches")),

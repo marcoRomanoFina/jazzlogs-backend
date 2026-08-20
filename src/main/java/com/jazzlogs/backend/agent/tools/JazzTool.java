@@ -55,4 +55,31 @@ public abstract class JazzTool {
     // excludeAlreadyRated) read it here instead of it living anywhere in
     // ToolCallRequest, which represents only what the model asked for.
     public abstract ToolExecutionResult execute(ToolCallRequest call, UUID userId);
+
+    // --- shared JSON-arg parsing helpers ---
+    //
+    // Every tool turns the model's raw string args into typed enums the same
+    // way; living here once a second tool (GraphFilterTool, SemanticSearchTool)
+    // needed the identical logic, instead of each subclass keeping its own copy.
+
+    // A concrete Class<E> literal is required at every call site (never a
+    // wildcard-typed variable) — Class<? extends Enum<?>> can't satisfy the
+    // <E extends Enum<E>> bound here due to Java's wildcard capture rules.
+    protected static <E extends Enum<E>> E parseEnumValue(String raw, Class<E> enumClass, String kind) {
+        try {
+            return Enum.valueOf(enumClass, raw);
+        } catch (IllegalArgumentException | NullPointerException e) {
+            throw new IllegalArgumentException("Unknown " + kind + " value: " + raw);
+        }
+    }
+
+    // For fields the schema marks "required" — rejects null/blank before
+    // even trying to resolve it against the enum, so the error names the
+    // missing field instead of reading "Unknown entityType value: null".
+    protected static <E extends Enum<E>> E parseRequiredEnum(String raw, Class<E> enumClass, String kind) {
+        if (raw == null || raw.isBlank()) {
+            throw new IllegalArgumentException(kind + " must not be blank");
+        }
+        return parseEnumValue(raw, enumClass, kind);
+    }
 }

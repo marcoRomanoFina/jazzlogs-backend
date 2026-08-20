@@ -24,19 +24,21 @@ import com.jazzlogs.backend.vocabulary.RhythmVocabulary;
 import com.jazzlogs.backend.vocabulary.StyleVocabulary;
 
 // Structural (graph-topology) prefilter: given vocabulary filters, ranks
-// Album/Track/Artist candidates by which of the requested dimensions they
-// match in Neo4j (matchedDimensions — the specific (dimension, code) pairs,
-// not just a count), excluding what the current user already listened to /
-// rated by default. Matching a single requested dimension is enough to be
-// eligible (OR, not AND) — candidates with no matches at all are already
-// excluded by GraphService's Cypher, never returned here. Standalone — the
-// model can synthesize an answer from matchedDimensions alone (e.g. "this
-// has the mood you wanted, though not the instrument"), or chain the
-// returned candidates into a later semanticSearch tool itself; this tool
-// holds no memory between calls. All the actual defaulting/short-circuit/
-// clamp/ranking logic lives in GraphFilterService — this class only
-// translates the model's JSON args into strongly-typed GraphFilterFilters
-// (and rejects invalid vocabulary codes) and serializes the result back out.
+// candidates of ONE entity type (Album, Track, or Artist — call this again
+// for another type, same rule already applied to semanticSearch's category)
+// by which of the requested dimensions they match in Neo4j
+// (matchedDimensions — the specific (dimension, code) pairs, not just a
+// count), excluding what the current user already listened to / rated by
+// default. Matching a single requested dimension is enough to be eligible
+// (OR, not AND) — candidates with no matches at all are already excluded by
+// GraphService's Cypher, never returned here. Standalone — the model can
+// synthesize an answer from matchedDimensions alone (e.g. "this has the
+// mood you wanted, though not the instrument"), or chain the returned
+// candidates into semanticSearch itself; this tool holds no memory between
+// calls. All the actual short-circuit/dispatch logic lives in
+// GraphFilterService — this class only translates the model's JSON args
+// into strongly-typed GraphFilterFilters (and rejects invalid codes) and
+// serializes the result back out.
 @Component
 public class GraphFilterTool extends JazzTool {
 
@@ -45,10 +47,7 @@ public class GraphFilterTool extends JazzTool {
     private static final Map<String, Object> SCHEMA = Map.of(
         "type", "object",
         "properties", Map.ofEntries(
-            Map.entry("entityTypes", Map.of(
-                "type", "array",
-                "items", Map.of("type", "string", "enum", List.of("ALBUM", "TRACK", "ARTIST"))
-            )),
+            Map.entry("entityType", Map.of("type", "string", "enum", List.of("ALBUM", "TRACK", "ARTIST"))),
             Map.entry("styles", Map.of(
                 "type", "array",
                 "items", Map.of("type", "string", "enum", namesOf(StyleVocabulary.class))
@@ -73,7 +72,7 @@ public class GraphFilterTool extends JazzTool {
             Map.entry("excludeAlreadyRated", Map.of("type", List.of("boolean", "null"))),
             Map.entry("topK", Map.of("type", List.of("integer", "null")))
         ),
-        "required", List.of()
+        "required", List.of("entityType")
     );
 
     // Not Spring-managed — same reasoning as AgentOrchestrator.OBJECT_MAPPER.
@@ -84,16 +83,25 @@ public class GraphFilterTool extends JazzTool {
     public GraphFilterTool(GraphFilterService graphFilterService) {
         super(
             NAME,
-            "Rank Album/Track/Artist candidates by graph-topology overlap with the given style/rhythm/"
-                + "mood/context/instrument vocabulary filters. Returns candidate ids and exactly which "
-                + "filters each one matched (matchedDimensions) — no descriptions or text. A candidate "
-                + "only needs to match one of the requested filters to be included; matchedDimensions "
-                + "tells you which ones so you can explain the recommendation with real specifics, not "
-                + "just a score. Use this to narrow down the catalog before writing an answer, or on its "
-                + "own when structural overlap alone is enough. By default excludes items the current "
-                + "user already listened to or rated. Omit every vocabulary filter and this returns no "
-                + "candidates — at least one of styles/rhythms/moods/contexts/instruments is required for "
-                + "a useful result."
+            "Rank candidates of ONE entity type (ALBUM, TRACK, or ARTIST) by graph-topology overlap with "
+                + "the given style/rhythm/mood/context/instrument vocabulary filters. Call this again with "
+                + "a different entityType to cover more than one. Not every filter applies to every "
+                + "entityType — an irrelevant one is silently ignored, not an error, so check first: ALBUM "
+                + "only connects to styles/moods/contexts (no rhythms/instruments); TRACK only to "
+                + "moods/contexts/rhythms/instruments (no styles); ARTIST only to styles/contexts/"
+                + "instruments (no moods/rhythms). Returns each candidate's id, name (entityName — use "
+                + "this, never the id, when referring to a candidate in your answer), and exactly which "
+                + "filters it matched (matchedDimensions) — no long-form description or editorial text "
+                + "(use SEMANTIC_SEARCH for that, required before recommending anything specific — see "
+                + "KNOWLEDGE SOURCE RULE). A candidate only needs to match one of the requested filters to "
+                + "be included, not all of them — matchedDimensions tells you which ones actually matched, "
+                + "so a candidate matching only 1 of 3 requested filters is not necessarily a strong fit, "
+                + "check before assuming it's central to the request. Use this to narrow down the catalog "
+                + "before writing an answer, or on its own when structural overlap alone is enough. By "
+                + "default excludes items the current user already listened to or rated. Omit every "
+                + "vocabulary filter and this returns no candidates — at least one of "
+                + "styles/rhythms/moods/contexts/instruments (whichever apply to the chosen entityType) is "
+                + "required for a useful result."
         );
         this.graphFilterService = graphFilterService;
     }
@@ -107,7 +115,7 @@ public class GraphFilterTool extends JazzTool {
     public ToolExecutionResult execute(ToolCallRequest call, UUID userId) {
         Args args = parseArgs(call.argumentsJson());
         GraphFilterFilters filters = new GraphFilterFilters(
-            parseEnumList(args.entityTypes(), CatalogItemType.class, "entityTypes"),
+            parseRequiredEnum(args.entityType(), CatalogItemType.class, "entityType"),
             parseEnumList(args.styles(), StyleVocabulary.class, "styles"),
             parseEnumList(args.rhythms(), RhythmVocabulary.class, "rhythms"),
             parseEnumList(args.moods(), MoodVocabulary.class, "moods"),
@@ -132,22 +140,13 @@ public class GraphFilterTool extends JazzTool {
         }
     }
 
-    // A concrete Class<E> literal is required at every call site (never a
-    // wildcard-typed variable) — Class<? extends Enum<?>> can't satisfy the
-    // <E extends Enum<E>> bound here due to Java's wildcard capture rules.
+    // parseEnumValue/parseRequiredEnum are inherited from JazzTool — shared
+    // with SemanticSearchTool, which needs the identical entityType parsing.
     private <E extends Enum<E>> List<E> parseEnumList(List<String> raw, Class<E> enumClass, String kind) {
         if (raw == null) {
             return List.of();
         }
         return raw.stream().map(code -> parseEnumValue(code, enumClass, kind)).toList();
-    }
-
-    private <E extends Enum<E>> E parseEnumValue(String raw, Class<E> enumClass, String kind) {
-        try {
-            return Enum.valueOf(enumClass, raw);
-        } catch (IllegalArgumentException | NullPointerException e) {
-            throw new IllegalArgumentException("Unknown " + kind + " value: " + raw);
-        }
     }
 
     private String buildContent(List<GraphCandidate> candidates) {
@@ -170,7 +169,7 @@ public class GraphFilterTool extends JazzTool {
     }
 
     private record Args(
-        List<String> entityTypes,
+        String entityType,
         List<String> styles,
         List<String> rhythms,
         List<String> moods,
