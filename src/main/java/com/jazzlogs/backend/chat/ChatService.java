@@ -3,6 +3,8 @@ package com.jazzlogs.backend.chat;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,7 +16,13 @@ import com.jazzlogs.backend.user.User;
 import com.jazzlogs.backend.user.UserRepository;
 
 import lombok.AllArgsConstructor;
-
+/**
+ * Handles the user´s chats logic
+ * <p>
+ * provides chat listing, 
+ * TODO: expand this Javadoc as each remaining flow gets reviewed
+ * (see the "Agent — final review & documentation" milestone).
+ */
 @Service
 @AllArgsConstructor
 public class ChatService {
@@ -23,9 +31,20 @@ public class ChatService {
     private final ChatExchangeRepository chatExchangeRepository;
     private final UserRepository userRepository;
 
-    @Transactional(readOnly = true)
-    public List<ChatDto> getUserChats(UUID userId) {
-        return chatRepository.findByUserIdOrderByLastMessageAtDesc(userId).stream().map(this::toDto).toList();
+    /**
+     * Lists chats belonging to the given user, most recently active first by default.
+     * <p>
+     * Paginated — sort direction/field can be overridden by the client via
+     * {@link Pageable}, though the Frontend currently relies on the default
+     * ({@code lastMessageAt} DESC).
+     *
+     * @param userId   the internal user id
+     * @param pageable page/size/sort requested by the client
+     * @return a page of the user's chats
+     */ 
+   @Transactional(readOnly = true)
+    public Page<ChatDto> getUserChats(UUID userId, Pageable pageable) {
+        return chatRepository.findByUserId(userId, pageable).map(this::toChatDto);
     }
 
     @Transactional(readOnly = true)
@@ -60,7 +79,7 @@ public class ChatService {
         }
     }
 
-    private ChatDto toDto(Chat chat) {
+    private ChatDto toChatDto(Chat chat) {
         return new ChatDto(chat.getId(), chat.getTitle(), chat.getCreatedAt(), chat.getUpdatedAt(), chat.getLastMessageAt());
     }
 

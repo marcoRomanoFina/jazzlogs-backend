@@ -5,6 +5,10 @@ import java.util.UUID;
 
 import jakarta.validation.Valid;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,6 +27,10 @@ import com.jazzlogs.backend.user.UserService;
 
 import lombok.AllArgsConstructor;
 
+
+/**
+ * REST endpoints for chat CRUD — creation, listing, history and sending messages.
+ */
 @RestController
 @RequestMapping("/chats")
 @AllArgsConstructor
@@ -32,9 +40,20 @@ public class ChatController {
     private final UserService userService;
     private final AgentOrchestrator agentOrchestrator;
 
+     /**
+     * Lists the authenticated user's chats, paged and ordered by most recent
+     * activity by default.
+     * @param pageable page number/size, defaulting to 20 per page sorted by
+     *                 {@code lastMessageAt} DESC
+     * @param jwt the authenticated user's token
+     * @return a page of chats belonging to the user
+     */
     @GetMapping
-    public List<ChatDto> listChats(@AuthenticationPrincipal Jwt jwt) {
-        return chatService.getUserChats(currentUserId(jwt));
+    public Page<ChatDto> listChats(
+        @PageableDefault(size = 20, sort = "lastMessageAt", direction = Sort.Direction.DESC) Pageable pageable,
+        @AuthenticationPrincipal Jwt jwt
+    ) {
+        return chatService.getUserChats(currentUserId(jwt), pageable);
     }
 
     @GetMapping("/{chatId}/exchanges")
@@ -61,6 +80,8 @@ public class ChatController {
         return agentOrchestrator.runExchange(chat, request.userMessage(), request.timezone());
     }
 
+    /** Resolves the internal domain user id (users.id), not the raw Supabase
+     subject — bridges Supabase identity to the app's own user record.**/
     private UUID currentUserId(Jwt jwt) {
         return userService.resolveFromJwt(jwt).getId();
     }
