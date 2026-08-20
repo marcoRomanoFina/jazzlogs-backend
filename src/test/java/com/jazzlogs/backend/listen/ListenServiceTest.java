@@ -53,12 +53,16 @@ class ListenServiceTest {
     @Autowired
     private PlaylistRepository playlistRepository;
 
+    // The album itself is never marked directly anymore — see
+    // ListenService.syncAlbumCompletionState. Marking its only track
+    // listened is what reconciles the album-level row.
     @Test
-    void markAlbumListened_succeedsEvenWithNeo4jUnavailable() {
+    void markingLastTrackListened_syncsAlbumCompletionEvenWithNeo4jUnavailable() {
         User user = persistUser();
         Album album = persistAlbum(persistArtist());
+        Track track = persistTrack(album);
 
-        listenService.markAlbumListened(user.getId(), album.getId());
+        listenService.markTrackListened(user.getId(), track.getId());
 
         assertThat(hasListened(user.getId(), ListenableEntityType.ALBUM, album.getId())).isTrue();
     }

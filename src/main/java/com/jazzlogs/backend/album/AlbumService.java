@@ -265,7 +265,10 @@ public class AlbumService {
             graphService.getPersonnel(albumId),
             ratingStats.avgRating(),
             ratingStats.count(),
-            listenService.hasListenedToAlbum(currentUserId, albumId),
+            // Derived live from the same listenedTrackIds used for the track
+            // rows above, not a separately-set flag — see AlbumDetailDto.
+            !trackIds.isEmpty() && listenedTrackIds.size() == trackIds.size(),
+            listenedTrackIds.size(),
             listenService.countAlbumListens(albumId),
             savedItemService.isSaved(currentUserId, SaveableEntityType.ALBUM, albumId)
         );

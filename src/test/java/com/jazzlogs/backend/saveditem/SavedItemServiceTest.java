@@ -95,13 +95,17 @@ class SavedItemServiceTest {
         assertThat(exists(user.getId(), SaveableEntityType.ALBUM, album.getId())).isFalse();
     }
 
+    // The album isn't marked directly anymore — completing its only track
+    // is what triggers ListenService.syncAlbumCompletionState, which removes
+    // the saved-album row the same way the old direct markAlbumListened did.
     @Test
-    void listeningToSavedAlbum_removesSavedItem() {
+    void completingAlbumViaItsTracks_removesSavedAlbumItem() {
         User user = persistUser();
         Album album = persistAlbum(persistArtist());
+        Track track = persistTrack(album);
         savedItemService.save(user.getId(), SaveableEntityType.ALBUM, album.getId());
 
-        listenService.markAlbumListened(user.getId(), album.getId());
+        listenService.markTrackListened(user.getId(), track.getId());
 
         assertThat(exists(user.getId(), SaveableEntityType.ALBUM, album.getId())).isFalse();
     }
@@ -114,19 +118,6 @@ class SavedItemServiceTest {
         savedItemService.save(user.getId(), SaveableEntityType.TRACK, track.getId());
 
         listenService.markTrackListened(user.getId(), track.getId());
-
-        assertThat(exists(user.getId(), SaveableEntityType.TRACK, track.getId())).isFalse();
-    }
-
-    /** Listening to the whole album also unsaves its individual saved tracks. */
-    @Test
-    void listeningToAlbum_removesSavedTracksToo() {
-        User user = persistUser();
-        Album album = persistAlbum(persistArtist());
-        Track track = persistTrack(album);
-        savedItemService.save(user.getId(), SaveableEntityType.TRACK, track.getId());
-
-        listenService.markAlbumListened(user.getId(), album.getId());
 
         assertThat(exists(user.getId(), SaveableEntityType.TRACK, track.getId())).isFalse();
     }
@@ -160,10 +151,8 @@ class SavedItemServiceTest {
         return playlist.getId();
     }
 
-    // Keeps both sides of the bidirectional Album<->Track association in sync in
-    // memory — album is already managed in this persistence context by the time
-    // this runs, so ListenService.markAlbumListened's album.getTracks() loop
-    // would otherwise still see the stale (empty) collection from construction.
+    // Keeps both sides of the bidirectional Album<->Track association in sync
+    // in memory, matching persistTrack in the other fixture-heavy tests.
     private Track persistTrack(Album album) {
         Track track = trackRepository.save(new Track(
             album, null, "Test Track", null, null, null, false,

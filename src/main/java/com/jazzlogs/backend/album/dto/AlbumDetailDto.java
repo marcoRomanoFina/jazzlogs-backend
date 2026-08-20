@@ -38,7 +38,10 @@ public record AlbumDetailDto(
     List<AlbumPersonnelEntry> personnel,
     BigDecimal avgRating,
     long reviewCount,
+    // hasListened is derived, live, from listenedTrackCount == tracks.size()
+    // — see AlbumService.getAlbumDetail — not a flag the user sets directly.
     boolean hasListened,
+    int listenedTrackCount,
     long listenCount,
     boolean isSaved
 ) {

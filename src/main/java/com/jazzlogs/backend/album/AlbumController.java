@@ -30,7 +30,6 @@ import com.jazzlogs.backend.editorial.AlbumEditorial;
 import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.editorial.dto.AlbumEditorialDto;
 import com.jazzlogs.backend.editorial.dto.AlbumEditorialRequest;
-import com.jazzlogs.backend.listen.ListenService;
 import com.jazzlogs.backend.review.ReviewService;
 import com.jazzlogs.backend.review.dto.AlbumRatingStats;
 import com.jazzlogs.backend.review.dto.CreateReviewRequest;
@@ -51,7 +50,6 @@ public class AlbumController {
     private final AlbumService albumService;
     private final TrackService trackService;
     private final EditorialService editorialService;
-    private final ListenService listenService;
     private final ReviewService reviewService;
     private final UserService userService;
 
@@ -128,11 +126,11 @@ public class AlbumController {
         return ResponseEntity.noContent().build();
     }
 
-    @PostMapping("/{id}/listen")
-    public ResponseEntity<Void> markListened(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
-        listenService.markAlbumListened(currentUserId(jwt), id);
-        return ResponseEntity.noContent().build();
-    }
+    // No POST/DELETE /{id}/listen anymore — an album's "listened" state
+    // isn't something a user sets directly, it's a consequence of listening
+    // to every one of its tracks (POST/DELETE /tracks/{id}/listen), computed
+    // in AlbumService.getAlbumDetail and reconciled by
+    // ListenService.syncAlbumCompletionState.
 
     @PostMapping("/{id}/reviews")
     public ReviewDto upsertReview(@PathVariable UUID id, @Valid @RequestBody CreateReviewRequest request, @AuthenticationPrincipal Jwt jwt) {

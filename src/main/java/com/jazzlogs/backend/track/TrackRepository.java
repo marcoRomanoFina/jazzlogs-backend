@@ -20,6 +20,11 @@ public interface TrackRepository extends JpaRepository<Track, UUID>, SavedItemRe
     // "create a duplicate".
     Optional<Track> findBySpotifyTrackId(String spotifyTrackId);
 
+    // For ListenService.syncAlbumCompletionState — needs every track id on
+    // the album to check whether the user has now listened to all of them.
+    @Query("SELECT t.id FROM Track t WHERE t.album.id = :albumId")
+    List<UUID> findIdsByAlbumId(@Param("albumId") UUID albumId);
+
     @Override
     default Optional<Resolved> resolve(UUID entityId) {
         return findById(entityId).map(TrackRepository::toResolved);
