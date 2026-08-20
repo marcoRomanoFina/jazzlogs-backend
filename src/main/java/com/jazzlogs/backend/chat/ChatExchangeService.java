@@ -85,10 +85,16 @@ public class ChatExchangeService {
             return List.of();
         }
 
+        // toWinnerRef(Album)/toWinnerRef(Track) below reach through a lazy
+        // artist association (Track also through a lazy album first) — the
+        // plain findAllById(...) these used to call would trigger up to 2
+        // extra per-row SELECTs per item instead of one batched query per
+        // type. See AlbumRepository.findAllByIdWithArtist/
+        // TrackRepository.findAllByIdWithAlbumAndArtist.
         Map<UUID, WinnerRef> resolved = new HashMap<>();
-        albumRepository.findAllById(idsOfType(refs, CatalogItemType.ALBUM))
+        albumRepository.findAllByIdWithArtist(idsOfType(refs, CatalogItemType.ALBUM))
             .forEach(album -> resolved.put(album.getId(), toWinnerRef(album)));
-        trackRepository.findAllById(idsOfType(refs, CatalogItemType.TRACK))
+        trackRepository.findAllByIdWithAlbumAndArtist(idsOfType(refs, CatalogItemType.TRACK))
             .forEach(track -> resolved.put(track.getId(), toWinnerRef(track)));
         artistRepository.findAllById(idsOfType(refs, CatalogItemType.ARTIST))
             .forEach(artist -> resolved.put(artist.getId(), toWinnerRef(artist)));

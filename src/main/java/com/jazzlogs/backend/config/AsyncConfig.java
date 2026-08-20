@@ -26,4 +26,22 @@ public class AsyncConfig {
         executor.initialize();
         return executor;
     }
+
+    // The default pool for any @Async method that doesn't name an executor
+    // (today: ChatRecommendationMemoryService.syncMemoryUpdate) — "taskExecutor"
+    // is Spring's own convention for this, resolved automatically without
+    // needing @Primary. Without this bean, Spring can't disambiguate between
+    // neo4jSyncExecutor and the auto-configured taskScheduler bean (which also
+    // implements Executor) and silently falls back to an unpooled
+    // SimpleAsyncTaskExecutor (a new thread per call, no queue/cap) instead.
+    @Bean(name = "taskExecutor")
+    public Executor taskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(8);
+        executor.setQueueCapacity(200);
+        executor.setThreadNamePrefix("async-");
+        executor.initialize();
+        return executor;
+    }
 }

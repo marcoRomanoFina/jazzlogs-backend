@@ -81,7 +81,7 @@ class ChatExchangeServiceTest {
         UUID albumId = UUID.randomUUID();
         ReflectionTestUtils.setField(album, "id", albumId);
 
-        when(albumRepository.findAllById(anyList())).thenReturn(List.of(album));
+        when(albumRepository.findAllByIdWithArtist(anyList())).thenReturn(List.of(album));
 
         ChatExchangeDto result = service.persist(
             chat, "recommend something mellow", "here you go",
@@ -106,7 +106,7 @@ class ChatExchangeServiceTest {
         UUID trackId = UUID.randomUUID();
         ReflectionTestUtils.setField(track, "id", trackId);
 
-        when(trackRepository.findAllById(anyList())).thenReturn(List.of(track));
+        when(trackRepository.findAllByIdWithAlbumAndArtist(anyList())).thenReturn(List.of(track));
 
         ChatExchangeDto result = service.persist(
             chat, "recommend a track", "here you go",
@@ -123,15 +123,15 @@ class ChatExchangeServiceTest {
         ChatExchangeDto result = service.persist(chat, "hi", "hey there", null, null, null);
 
         assertThat(result.winners()).isNull();
-        verify(albumRepository, never()).findAllById(any());
-        verify(trackRepository, never()).findAllById(any());
+        verify(albumRepository, never()).findAllByIdWithArtist(any());
+        verify(trackRepository, never()).findAllByIdWithAlbumAndArtist(any());
         verify(artistRepository, never()).findAllById(any());
         verify(chatRecommendationMemoryService, never()).syncMemoryUpdate(any(), any(), any());
     }
 
     @Test
     void malformedId_isDroppedWithoutThrowing() {
-        when(albumRepository.findAllById(anyList())).thenReturn(List.of());
+        when(albumRepository.findAllByIdWithArtist(anyList())).thenReturn(List.of());
 
         ChatExchangeDto result = service.persist(
             chat, "recommend something", "here you go",
