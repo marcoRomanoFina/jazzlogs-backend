@@ -31,7 +31,13 @@ public interface ReviewRepository extends LikeableRepository<Review> {
     // its own mapped attribute, generating invalid JPQL ("Could not resolve
     // attribute 'userId' of Review") instead of drilling into the user
     // association. Spelling out user.id sidesteps the ambiguity entirely.
-    @Query("SELECT r FROM Review r WHERE r.user.id = :userId AND r.album.id = :albumId")
+    //
+    // LEFT JOIN FETCH standoutTracks — ReviewService.upsertReview runs this on
+    // its own async thread/transaction (see ReviewUpsertReads) and mutates the
+    // returned Review's standoutTracks collection back on the caller's thread,
+    // after this method's transaction has already closed; a lazy (unfetched)
+    // collection would throw LazyInitializationException at that point.
+    @Query("SELECT r FROM Review r LEFT JOIN FETCH r.standoutTracks WHERE r.user.id = :userId AND r.album.id = :albumId")
     Optional<Review> findByUserIdAndAlbumId(@Param("userId") UUID userId, @Param("albumId") UUID albumId);
 
     // DISTINCT + JOIN FETCH: one query for the whole album's reviews AND their

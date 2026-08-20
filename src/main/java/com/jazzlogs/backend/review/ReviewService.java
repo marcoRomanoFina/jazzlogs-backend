@@ -9,9 +9,12 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.album.Album;
@@ -19,7 +22,8 @@ import com.jazzlogs.backend.album.AlbumRepository;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.like.LikeService;
 import com.jazzlogs.backend.like.LikeableEntityType;
-import com.jazzlogs.backend.listen.ListenService;
+import com.jazzlogs.backend.note.NoteService;
+import com.jazzlogs.backend.note.dto.NoteDto;
 import com.jazzlogs.backend.review.dto.AlbumRatingStats;
 import com.jazzlogs.backend.review.dto.ReviewDto;
 import com.jazzlogs.backend.review.dto.StandoutTrackDto;
@@ -40,42 +44,81 @@ public class ReviewService {
     private static final BigDecimal MIN_RATING = BigDecimal.ONE;
     private static final BigDecimal MAX_RATING = new BigDecimal("5");
 
+    // Same read-then-write race as TrackRatingService.MAX_UPSERT_ATTEMPTS,
+    // same fix, same reasoning: findByUserIdAndAlbumId-then-save can
+    // double-INSERT if two requests write your first review on this album
+    // at once (e.g. posting, then immediately editing before the first
+    // request lands). uq_reviews_user_album lets only one through and fails
+    // the other with DataIntegrityViolationException; one retry is provably
+    // enough since the loser's retry is guaranteed to find the winner's row
+    // and do a plain UPDATE instead.
+    private static final int MAX_UPSERT_ATTEMPTS = 3;
+
     private final ReviewRepository reviewRepository;
     private final UserRepository userRepository;
     private final AlbumRepository albumRepository;
     private final TrackRepository trackRepository;
-    private final ListenService listenService;
+    private final NoteService noteService;
     private final LikeService likeService;
     private final GraphService graphService;
     private final Neo4jAsyncSyncExecutor syncExecutor;
+    private final PlatformTransactionManager transactionManager;
 
-    @Transactional
     public ReviewDto upsertReview(UUID userId, UUID albumId, BigDecimal rating, String text, List<UUID> standoutTrackIds) {
         assertValidRating(rating);
 
-        User user = getUserOrThrow(userId);
-        Album album = getAlbumOrThrow(albumId);
+        Review saved = upsertWithRetry(userId, albumId, rating, text, standoutTrackIds);
 
-        if (!listenService.hasListenedToAlbum(userId, albumId)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Debés escuchar el álbum antes de dejar una review");
-        }
-
-        Set<Track> standoutTracks = resolveStandoutTracks(albumId, standoutTrackIds);
-
-        Review review = reviewRepository.findByUserIdAndAlbumId(userId, albumId)
-            .orElseGet(() -> new Review(user, album, rating, text));
-
-        review.update(rating, text);
-        review.getStandoutTracks().clear();
-        review.getStandoutTracks().addAll(standoutTracks);
-
-        Review saved = reviewRepository.save(review);
-
-        List<UUID> standoutTrackIdsForGraph = standoutTracks.stream().map(Track::getId).toList();
+        // Derived from the input (already validated/deduped by
+        // resolveStandoutTracks inside the transaction), not
+        // saved.getStandoutTracks() — that's a lazy collection and `saved`
+        // is detached now that the transaction which fetched it has closed.
+        List<UUID> standoutTrackIdsForGraph = standoutTrackIds == null
+            ? List.of()
+            : List.copyOf(new HashSet<>(standoutTrackIds));
         syncRatingToGraph(userId, albumId, saved.getRating(), saved.getUpdatedAt());
         syncHighlightedTracksToGraph(userId, albumId, standoutTrackIdsForGraph);
 
-        return toDto(saved, likeService.hasUserLiked(userId, LikeableEntityType.REVIEW, saved.getId()), user.getDisplayName());
+        List<NoteDto> notes = notesFor(userId, albumId, userId);
+        boolean liked = likeService.hasUserLiked(userId, LikeableEntityType.REVIEW, saved.getId());
+        return toDto(saved, liked, getUserOrThrow(userId).getResolvedDisplayName(), notes);
+    }
+
+    /**
+     * Each attempt runs in its own fresh transaction — a transaction that
+     * already threw is aborted and can't be reused for the retry's queries,
+     * so this can't be a single @Transactional method with a try/catch
+     * inside it (same shape as TrackRatingService.upsertWithRetry). user,
+     * album, and the standout tracks are all re-looked-up per attempt
+     * (cheap, by primary key / a small IN query) rather than fetched once
+     * outside the loop, so nothing here is a detached entity carried across
+     * transactions.
+     */
+    private Review upsertWithRetry(UUID userId, UUID albumId, BigDecimal rating, String text, List<UUID> standoutTrackIds) {
+        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
+        DataIntegrityViolationException lastFailure = null;
+
+        for (int attempt = 0; attempt < MAX_UPSERT_ATTEMPTS; attempt++) {
+            try {
+                return txTemplate.execute(status -> {
+                    User user = getUserOrThrow(userId);
+                    Album album = getAlbumOrThrow(albumId);
+                    Set<Track> standoutTracks = resolveStandoutTracks(albumId, standoutTrackIds);
+
+                    Review review = reviewRepository.findByUserIdAndAlbumId(userId, albumId)
+                        .orElseGet(() -> new Review(user, album, rating, text));
+
+                    review.update(rating, text);
+                    review.getStandoutTracks().clear();
+                    review.getStandoutTracks().addAll(standoutTracks);
+
+                    return reviewRepository.save(review);
+                });
+            } catch (DataIntegrityViolationException e) {
+                lastFailure = e;
+            }
+        }
+        throw lastFailure;
     }
 
     /**
@@ -137,20 +180,29 @@ public class ReviewService {
         List<Review> reviews = reviewRepository.findByAlbumIdWithStandoutTracks(albumId);
         Set<UUID> liked = likedIds(reviews, currentUserId);
         Map<UUID, String> names = namesByUserId(reviews);
-        return reviews.stream().map(review -> toDto(review, liked.contains(review.getId()), names.get(review.getUserId()))).toList();
+        Map<UUID, List<NoteDto>> notes = notesByUserId(reviews, albumId, currentUserId);
+        return reviews.stream()
+            .map(review -> toDto(
+                review,
+                liked.contains(review.getId()),
+                names.get(review.getUserId()),
+                notes.getOrDefault(review.getUserId(), List.of())
+            ))
+            .toList();
     }
 
     @Transactional(readOnly = true)
     public ReviewDto getMyReview(UUID albumId, UUID userId) {
         Review review = reviewRepository.findByUserIdAndAlbumId(userId, albumId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "You haven't reviewed this album"));
-        return toDto(review, likeService.hasUserLiked(userId, LikeableEntityType.REVIEW, review.getId()), getUserOrThrow(userId).getDisplayName());
+        boolean liked = likeService.hasUserLiked(userId, LikeableEntityType.REVIEW, review.getId());
+        return toDto(review, liked, getUserOrThrow(userId).getResolvedDisplayName(), notesFor(userId, albumId, userId));
     }
 
     private Map<UUID, String> namesByUserId(List<Review> reviews) {
         List<UUID> userIds = reviews.stream().map(Review::getUserId).distinct().toList();
         return userRepository.findAllById(userIds).stream()
-            .collect(Collectors.toMap(User::getId, User::getDisplayName));
+            .collect(Collectors.toMap(User::getId, User::getResolvedDisplayName));
     }
 
     /** Every id must exist AND belong to this exact album — a track from another album can't be a standout here. */
@@ -172,7 +224,6 @@ public class ReviewService {
         return new HashSet<>(tracks);
     }
 
-   
     private void assertValidRating(BigDecimal rating) {
         if (rating == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "rating is required");
@@ -191,7 +242,25 @@ public class ReviewService {
         return likeService.hasUserLikedBatch(currentUserId, LikeableEntityType.REVIEW, reviewIds);
     }
 
-    private ReviewDto toDto(Review review, boolean likedByCurrentUser, String userName) {
+    /**
+     * Every note behind a whole album's review list, grouped by reviewer —
+     * delegates to NoteService so the Note -> NoteDto mapping (and its
+     * likedByCurrentUser/userName batching) lives in one place, not
+     * duplicated here. likedByCurrentUser is against the viewer
+     * (currentUserId), not each note's own author.
+     */
+    private Map<UUID, List<NoteDto>> notesByUserId(List<Review> reviews, UUID albumId, UUID currentUserId) {
+        List<UUID> authorUserIds = reviews.stream().map(Review::getUserId).distinct().toList();
+        return noteService.getNotesByAuthorsForAlbum(albumId, authorUserIds, currentUserId);
+    }
+
+    /** Single-reviewer case (upsertReview/getMyReview) — same call, one-element author list. */
+    private List<NoteDto> notesFor(UUID authorUserId, UUID albumId, UUID currentUserId) {
+        return noteService.getNotesByAuthorsForAlbum(albumId, List.of(authorUserId), currentUserId)
+            .getOrDefault(authorUserId, List.of());
+    }
+
+    private ReviewDto toDto(Review review, boolean likedByCurrentUser, String userName, List<NoteDto> notes) {
         List<StandoutTrackDto> standoutTracks = review.getStandoutTracks().stream()
             .map(track -> new StandoutTrackDto(track.getId(), track.getName()))
             .toList();
@@ -206,6 +275,7 @@ public class ReviewService {
             review.getLikeCount(),
             likedByCurrentUser,
             standoutTracks,
+            notes,
             review.getCreatedAt(),
             review.getUpdatedAt()
         );

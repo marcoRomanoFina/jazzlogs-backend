@@ -5,13 +5,14 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.graph.GraphService;
-import com.jazzlogs.backend.listen.ListenService;
 import com.jazzlogs.backend.syncfailure.Neo4jAsyncSyncExecutor;
 import com.jazzlogs.backend.syncfailure.SyncFailureEntityType;
 import com.jazzlogs.backend.track.Track;
@@ -30,32 +31,64 @@ public class TrackRatingService {
     private static final BigDecimal MIN_RATING = BigDecimal.ONE;
     private static final BigDecimal MAX_RATING = new BigDecimal("5");
 
+    // findByUserIdAndTrackId-then-save is a read-then-write race: two rapid
+    // ratings of a track that's never been rated before (drag the stars,
+    // change your mind, drag again before the first request lands) can both
+    // read "no row yet" and both attempt an INSERT — the DB's unique
+    // constraint (uq_track_ratings_user_track) lets only one through and
+    // fails the other with DataIntegrityViolationException, which used to
+    // surface as a raw 500 to whichever request lost the race. One retry is
+    // provably enough: by the time the loser retries, the winner's row
+    // definitely exists, so the retry finds it and does a plain UPDATE,
+    // which can't itself violate the constraint. The extra attempt beyond
+    // that is just cheap headroom, not a requirement.
+    private static final int MAX_UPSERT_ATTEMPTS = 3;
+
     private final TrackRatingRepository trackRatingRepository;
     private final UserRepository userRepository;
     private final TrackRepository trackRepository;
-    private final ListenService listenService;
     private final GraphService graphService;
     private final Neo4jAsyncSyncExecutor syncExecutor;
+    private final PlatformTransactionManager transactionManager;
 
-    @Transactional
     public TrackRatingDto upsertRating(UUID userId, UUID trackId, BigDecimal rating) {
         assertValidRating(rating);
 
-        User user = getUserOrThrow(userId);
-        Track track = getTrackOrThrow(trackId);
-
-        if (!listenService.hasListenedToTrack(userId, trackId)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Debés escuchar el track antes de calificarlo");
-        }
-
-        TrackRating trackRating = trackRatingRepository.findByUserIdAndTrackId(userId, trackId)
-            .orElseGet(() -> new TrackRating(user, track, rating));
-        trackRating.update(rating);
-
-        TrackRating saved = trackRatingRepository.save(trackRating);
+        TrackRating saved = upsertWithRetry(userId, trackId, rating);
         syncRatingToGraph(userId, trackId, saved.getRating(), saved.getUpdatedAt());
 
         return toDto(saved);
+    }
+
+    /**
+     * Each attempt runs in its own fresh transaction — a transaction that
+     * already threw is aborted and can't be reused for the retry's queries,
+     * so this can't be a single @Transactional method with a try/catch
+     * inside it. user/track are re-looked-up per attempt (cheap, by primary
+     * key) rather than fetched once outside the loop, so nothing here is a
+     * detached entity carried across transactions.
+     */
+    private TrackRating upsertWithRetry(UUID userId, UUID trackId, BigDecimal rating) {
+        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
+        DataIntegrityViolationException lastFailure = null;
+
+        for (int attempt = 0; attempt < MAX_UPSERT_ATTEMPTS; attempt++) {
+            try {
+                return txTemplate.execute(status -> {
+                    User user = getUserOrThrow(userId);
+                    Track track = getTrackOrThrow(trackId);
+
+                    TrackRating trackRating = trackRatingRepository.findByUserIdAndTrackId(userId, trackId)
+                        .orElseGet(() -> new TrackRating(user, track, rating));
+                    trackRating.update(rating);
+
+                    return trackRatingRepository.save(trackRating);
+                });
+            } catch (DataIntegrityViolationException e) {
+                lastFailure = e;
+            }
+        }
+        throw lastFailure;
     }
 
     /**

@@ -5,6 +5,8 @@ import java.util.UUID;
 
 import jakarta.validation.Valid;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -16,6 +18,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.jazzlogs.backend.album.dto.ContextTagRequest;
@@ -116,13 +119,21 @@ public class TrackController {
 
     @PostMapping("/{id}/notes")
     public ResponseEntity<NoteDto> createNote(@PathVariable UUID id, @Valid @RequestBody CreateNoteRequest request, @AuthenticationPrincipal Jwt jwt) {
-        NoteDto note = noteService.createNote(currentUserId(jwt), id, request.text(), request.timestampSeconds());
+        NoteDto note = noteService.createNote(currentUserId(jwt), id, request.title(), request.text(), request.timestampSeconds());
         return ResponseEntity.status(HttpStatus.CREATED).body(note);
     }
 
+    // Paged — a track's notes are an unbounded community feed, not something
+    // safe to return in full. Defaults match the frontend's page size so an
+    // omitted ?size still renders sensibly.
     @GetMapping("/{id}/notes")
-    public List<NoteDto> getTrackNotes(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
-        return noteService.getTrackNotes(id, currentUserId(jwt));
+    public Page<NoteDto> getTrackNotes(
+        @PathVariable UUID id,
+        @AuthenticationPrincipal Jwt jwt,
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "6") int size
+    ) {
+        return noteService.getTrackNotes(id, currentUserId(jwt), PageRequest.of(page, size));
     }
 
     @GetMapping("/{id}/notes/me")
