@@ -102,6 +102,26 @@ class AgentOrchestratorTest {
         );
     }
 
+    // A tool call can (and often does) come back with zero accompanying
+    // message text — submit_final_answer's own answerText argument is the
+    // one place the real answer is guaranteed to be, so it must win even
+    // when the turn's separate assistant text is blank or different.
+    @Test
+    void submitFinalAnswersAnswerText_isUsedOverTheTurnsOwnAssistantText() throws Exception {
+        String finalArgs = "{\"resultType\":\"DIRECT_RESPONSE\",\"answerText\":\"The real answer lives here.\","
+            + "\"recommendedItems\":[]}";
+        StreamedTurn finalTurn = new StreamedTurn(
+            "resp_1", "", List.of(new ToolCallRequest("call_1", SubmitFinalAnswerTool.NAME, finalArgs))
+        );
+
+        when(streamClient.streamTurn(any(), isNull(), anyBoolean())).thenReturn(finalTurn);
+        when(chatExchangeService.persist(any(), any(), any(), any(), any(), any())).thenReturn(stubDto());
+
+        orchestrator.runLoop(sink, chat, "hola", null);
+
+        verify(chatExchangeService).persist(eq(chat), eq("hola"), eq("The real answer lives here."), isNull(), isNull(), isNull());
+    }
+
     @Test
     void catalogResponse_passesRecommendedItemsThrough_directResponsePassesNull() throws Exception {
         String finalArgs = "{\"resultType\":\"CATALOG_RESPONSE\",\"recommendedItems\":["
@@ -202,6 +222,34 @@ class AgentOrchestratorTest {
 
         verify(streamClient).streamTurn(any(), eq("resp_1"), eq(true));
         verify(chatExchangeService).persist(any(), any(), any(), any(), any(), any());
+    }
+
+    // Guards against a real bug: the model is instructed to always call
+    // submit_final_answer in the same turn as its conversational text, but
+    // that's a prompt instruction, not something the API enforces. If the
+    // model answers in plain text without calling any tool at all (not even
+    // submit_final_answer — as happened for a casual "hola" greeting), then
+    // only closes on a later, forced-continuation turn with blank text, the
+    // earlier turn's real answer must still make it to the user instead of
+    // being silently dropped.
+    @Test
+    void modelAnswersWithoutClosing_thenClosesWithBlankText_fallsBackToEarlierAnswer() throws Exception {
+        StreamedTurn textOnlyTurn = new StreamedTurn("resp_1", "¡Hola! Todo bien, ¿y vos?", List.of());
+
+        String finalArgs = "{\"resultType\":\"DIRECT_RESPONSE\",\"recommendedItems\":[]}";
+        StreamedTurn blankFinalTurn = new StreamedTurn(
+            "resp_2", "", List.of(new ToolCallRequest("call_1", SubmitFinalAnswerTool.NAME, finalArgs))
+        );
+
+        when(streamClient.streamTurn(any(), isNull(), anyBoolean())).thenReturn(textOnlyTurn);
+        when(streamClient.streamTurn(any(), eq("resp_1"), anyBoolean())).thenReturn(blankFinalTurn);
+        when(chatExchangeService.persist(any(), any(), any(), any(), any(), any())).thenReturn(stubDto());
+
+        orchestrator.runLoop(sink, chat, "hola como estas", null);
+
+        verify(chatExchangeService).persist(
+            eq(chat), eq("hola como estas"), eq("¡Hola! Todo bien, ¿y vos?"), isNull(), isNull(), isNull()
+        );
     }
 
     @Test

@@ -102,7 +102,7 @@ public class ChatContextBuilder {
     private String buildRuntimeContextSection(Chat chat, String timezone) {
         ZoneId zone = resolveZone(timezone);
         String datetime = ZonedDateTime.now(zone).format(RUNTIME_DATETIME_FORMAT);
-        String displayName = chat.getUser().getDisplayName();
+        String displayName = chat.getUser().getResolvedDisplayName();
 
         return """
             RUNTIME CONTEXT
@@ -112,7 +112,7 @@ public class ChatContextBuilder {
             Chat session id: %s""".formatted(
             datetime,
             zone.getId(),
-            displayName == null ? "" : displayName,
+            displayName,
             chat.getId()
         );
     }

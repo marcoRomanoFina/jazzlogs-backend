@@ -67,6 +67,26 @@ public class User {
         }
     }
 
+    /**
+     * displayName stays null until the user actually sets one — that null is
+     * a real signal (UserResponse.from surfaces it as-is, so the frontend
+     * can prompt onboarding), not a bug. Everywhere else a name gets shown
+     * to someone other than the user themself (note/review authorship,
+     * batched author-name lookups, chat context for the LLM), read this
+     * instead of the raw field: falling back to the email's local part
+     * keeps those call sites from ever handling a null, notably
+     * Collectors.toMap(User::getId, ...), which throws on any null value.
+     */
+    public String getResolvedDisplayName() {
+        if (displayName != null && !displayName.isBlank()) {
+            return displayName;
+        }
+        if (email != null && email.contains("@")) {
+            return email.substring(0, email.indexOf('@'));
+        }
+        return "Someone";
+    }
+
     @PrePersist
     void onCreate() {
         Instant now = Instant.now();

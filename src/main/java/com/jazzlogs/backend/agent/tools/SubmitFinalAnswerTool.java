@@ -13,11 +13,12 @@ import com.jazzlogs.backend.agent.ToolExecutionResult;
 // FILTER_CATALOG, etc.) are a later task. Unlike those, this one never goes
 // through AgentOrchestrator's normal dispatch: it's how the model closes a
 // turn, intercepted via turn.findToolCall(NAME) before any tool call is
-// executed (see AgentOrchestrator.runLoop) — its plain-text output IS the
-// user-facing answer (see AgentPromptTemplates' FINAL OUTPUT CONTRACT), this
-// call only attaches the structured metadata alongside it. execute() is
-// unreachable in practice; it throws so a wiring mistake fails loudly instead
-// of silently no-opping.
+// executed (see AgentOrchestrator.runLoop). answerText carries the
+// user-facing answer as a tool argument (see AgentFinalAnswer's doc on why
+// — a model calling a function doesn't reliably also emit separate message
+// text in the same turn), this call only attaches the rest of the
+// structured metadata alongside it. execute() is unreachable in practice;
+// it throws so a wiring mistake fails loudly instead of silently no-opping.
 @Component
 public class SubmitFinalAnswerTool extends JazzTool {
 
@@ -27,6 +28,7 @@ public class SubmitFinalAnswerTool extends JazzTool {
         "type", "object",
         "properties", Map.of(
             "resultType", Map.of("type", "string", "enum", List.of("DIRECT_RESPONSE", "CATALOG_RESPONSE")),
+            "answerText", Map.of("type", "string"),
             "recommendedItems", Map.of(
                 "type", "array",
                 "items", Map.of(
@@ -41,14 +43,17 @@ public class SubmitFinalAnswerTool extends JazzTool {
             "suggestedChatTitle", Map.of("type", List.of("string", "null")),
             "updatedSessionSummary", Map.of("type", List.of("string", "null"))
         ),
-        "required", List.of("resultType", "recommendedItems")
+        "required", List.of("resultType", "answerText", "recommendedItems")
     );
 
     public SubmitFinalAnswerTool() {
         super(
             NAME,
-            "Call this when your conversational answer is complete, to attach the structured "
-                + "recommendation metadata. Never call any other tool in the same turn as this one."
+            "Call this when your answer is ready, to deliver it and attach the structured "
+                + "recommendation metadata. answerText is the actual conversational reply the user "
+                + "reads — put your full answer there, not in a separate message; this is the only "
+                + "place it's guaranteed to reach the user. Never call any other tool in the same turn "
+                + "as this one."
         );
     }
 

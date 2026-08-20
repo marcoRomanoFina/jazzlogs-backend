@@ -24,6 +24,7 @@ import com.jazzlogs.backend.agent.tools.EditorialContentTool;
 import com.jazzlogs.backend.agent.tools.GraphFilterTool;
 import com.jazzlogs.backend.agent.tools.JazzTool;
 import com.jazzlogs.backend.agent.tools.ResolveJazzlogsEntityTool;
+import com.jazzlogs.backend.agent.tools.SemanticSearchTool;
 import com.jazzlogs.backend.agent.tools.SubmitFinalAnswerTool;
 import com.jazzlogs.backend.chat.CatalogRef;
 import com.jazzlogs.backend.chat.Chat;
@@ -65,7 +66,7 @@ public class AgentOrchestrator {
     // lookups. Calls beyond the cap aren't silently dropped — the Responses
     // API requires a function_call_output for every function_call it made,
     // so each gets a synthetic failed result instead (see executeToolCalls).
-    @Value("${agent.max-tool-calls-per-turn:4}")
+    @Value("${agent.max-tool-calls-per-turn:8}")
     private int maxToolCallsPerTurn;
 
     // One entry per JazzTool that actually exists today — add the new
@@ -74,6 +75,7 @@ public class AgentOrchestrator {
         ResolveJazzlogsEntityTool.NAME, "Identificando el álbum/artista",
         EditorialContentTool.NAME, "Leyendo la editorial",
         GraphFilterTool.NAME, "Filtrando por estilo y clima",
+        SemanticSearchTool.NAME, "Buscando en las editoriales",
         SubmitFinalAnswerTool.NAME, "Armando la recomendación"
     );
     private static final String DEFAULT_TOOL_LABEL = "Trabajando en tu pedido";
@@ -141,25 +143,45 @@ public class AgentOrchestrator {
     }
 
     void runLoop(EventSink sink, Chat chat, String userMessage, String timezone) throws IOException {
+        log.info("[chat={}] exchange started, userMessage=\"{}\"", chat.getId(), userMessage);
         List<ResponseInputItem> nextInput = contextBuilder.buildInput(chat, userMessage, timezone);
         String previousResponseId = null;
+        // Carried across iterations as a fallback: the prompt requires the
+        // model to give its conversational reply in the SAME turn as
+        // submit_final_answer, but that's a prompt instruction, not
+        // something the API enforces — if the model splits them (answers in
+        // an earlier turn, then closes with blank text later), that earlier
+        // text would otherwise be silently discarded. See finalizeExchange.
+        String lastNonBlankAssistantText = null;
 
         for (int iteration = 1; iteration <= maxIterations; iteration++) {
             sink.emit("iteration_started", Map.of("iteration", iteration));
 
             boolean forceFinal = iteration == maxIterations;
+            log.info("[chat={}] iteration {} — calling Responses API (forceFinal={})", chat.getId(), iteration, forceFinal);
             StreamedTurn turn = streamClient.streamTurn(nextInput, previousResponseId, forceFinal);
             previousResponseId = turn.responseId();
+            if (turn.assistantText() != null && !turn.assistantText().isBlank()) {
+                lastNonBlankAssistantText = turn.assistantText();
+            }
 
             ToolCallRequest submitCall = turn.findToolCall(SubmitFinalAnswerTool.NAME);
             if (submitCall != null) {
-                finalizeExchange(sink, chat, userMessage, turn, submitCall, iteration);
+                log.info("[chat={}] iteration {} — model closed with submit_final_answer", chat.getId(), iteration);
+                finalizeExchange(sink, chat, userMessage, turn, submitCall, iteration, lastNonBlankAssistantText);
                 return;
             }
+
+            List<ToolCallRequest> requested = turn.otherToolCalls();
+            log.info(
+                "[chat={}] iteration {} — model requested {} tool call(s): {}",
+                chat.getId(), iteration, requested.size(), requested.stream().map(ToolCallRequest::name).toList()
+            );
 
             nextInput = executeToolCalls(sink, turn, iteration, chat.getUserId());
         }
 
+        log.warn("[chat={}] did not converge to submit_final_answer within {} iterations", chat.getId(), maxIterations);
         throw new IllegalStateException("Agent did not converge to submit_final_answer within max iterations");
     }
 
@@ -193,6 +215,7 @@ public class AgentOrchestrator {
             sink.emit("tool_call_finished", Map.of("label", labelFor(call), "success", result.success()));
         }
         for (ToolCallRequest call : rejected) {
+            log.warn("{} (callId={}) rejected: over the {}-call-per-turn cap", call.name(), call.callId(), maxToolCallsPerTurn);
             ToolExecutionResult result = new ToolExecutionResult(
                 "{\"error\":\"Too many tool calls in a single turn (limit: " + maxToolCallsPerTurn + ")\"}", false
             );
@@ -212,7 +235,39 @@ public class AgentOrchestrator {
             log.warn("No JazzTool registered for {}", call.name());
             return new ToolExecutionResult("{\"error\":\"Unknown tool: " + call.name() + "\"}", false);
         }
-        return tool.execute(call, userId);
+        log.info("--> {} (callId={})\nargs: {}", call.name(), call.callId(), prettyJson(call.argumentsJson()));
+        ToolExecutionResult result = tool.execute(call, userId);
+        log.info(
+            "<-- {} (callId={}) success={}\nresult: {}",
+            call.name(), call.callId(), result.success(), prettyJson(result.payload())
+        );
+        return result;
+    }
+
+    // Logging only — reformats a tool's raw single-line JSON (args or
+    // payload) into indented, human-readable JSON so a console reader can
+    // actually see the structure instead of one long unbroken line. Falls
+    // back to the raw string if it's ever not valid JSON, since this must
+    // never be the reason a tool call fails.
+    private static String prettyJson(String rawJson) {
+        try {
+            Object parsed = OBJECT_MAPPER.readValue(rawJson, Object.class);
+            return OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(parsed);
+        } catch (JsonProcessingException e) {
+            return rawJson;
+        }
+    }
+
+    // First non-null/non-blank candidate, in order; "" if none qualify —
+    // never returns null, since assistantText ends up persisted to a
+    // NOT NULL column and shown as-is in the answer_delta SSE payload.
+    private static String firstNonBlank(String... candidates) {
+        for (String candidate : candidates) {
+            if (candidate != null && !candidate.isBlank()) {
+                return candidate;
+            }
+        }
+        return "";
     }
 
     private ResponseInputItem toFunctionCallOutput(ToolCallRequest call, ToolExecutionResult result) {
@@ -225,7 +280,8 @@ public class AgentOrchestrator {
     }
 
     private void finalizeExchange(
-        EventSink sink, Chat chat, String userMessage, StreamedTurn turn, ToolCallRequest submitCall, int iteration
+        EventSink sink, Chat chat, String userMessage, StreamedTurn turn, ToolCallRequest submitCall, int iteration,
+        String fallbackAssistantText
     ) throws IOException {
         String label = TOOL_DISPLAY_LABELS.get(SubmitFinalAnswerTool.NAME);
         sink.emit("tool_call_started", Map.of("label", label, "iteration", iteration));
@@ -237,12 +293,26 @@ public class AgentOrchestrator {
             ? null
             : metadata.recommendedItems();
 
+        // Fallback chain, in order of trust: submit_final_answer's own
+        // answerText argument (see AgentFinalAnswer's doc — the only place
+        // guaranteed to carry the real answer), then this turn's separate
+        // message text (a model can still emit both), then the last
+        // non-blank text from an earlier iteration (see runLoop's comment
+        // on lastNonBlankAssistantText), then "" as the absolute last
+        // resort rather than ever persisting/showing null.
+        String assistantText = firstNonBlank(metadata.answerText(), turn.assistantText(), fallbackAssistantText);
+
         ChatExchangeDto saved = chatExchangeService.persist(
-            chat, userMessage, turn.assistantText(), recommendedItems, metadata.suggestedChatTitle(), metadata.updatedSessionSummary()
+            chat, userMessage, assistantText, recommendedItems, metadata.suggestedChatTitle(), metadata.updatedSessionSummary()
+        );
+
+        log.info(
+            "[chat={}] exchange finished: resultType={}, recommendedItems={}, suggestedChatTitle={}",
+            chat.getId(), metadata.resultType(), recommendedItems == null ? 0 : recommendedItems.size(), metadata.suggestedChatTitle()
         );
 
         sink.emit("tool_call_finished", Map.of("label", label, "success", true));
-        sink.emit("answer_delta", Map.of("text", turn.assistantText()));
+        sink.emit("answer_delta", Map.of("text", assistantText));
         sink.emit("answer_metadata", toMetadataPayload(metadata, saved));
         sink.emit("answer_done", Map.of());
     }
@@ -257,6 +327,11 @@ public class AgentOrchestrator {
 
     private Map<String, Object> toMetadataPayload(AgentFinalAnswer metadata, ChatExchangeDto saved) {
         Map<String, Object> payload = new LinkedHashMap<>();
+        // The only way a caller of POST /chats (create-new) learns the
+        // chatId it just got — there's no other field in this SSE stream
+        // that carries it, and the response itself is just an event stream,
+        // not a JSON body with a Location header or similar.
+        payload.put("chatId", saved.chatId());
         payload.put("resultType", metadata.resultType());
         payload.put("recommendedItems", saved.winners() == null ? List.of() : saved.winners());
         payload.put("suggestedChatTitle", metadata.suggestedChatTitle());

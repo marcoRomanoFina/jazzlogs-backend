@@ -96,7 +96,8 @@ The recommendation chat (`POST /chats/{chatId}/messages`) is backed by a plain L
 |---|---|
 | `RESOLVE_JAZZLOGS_ENTITY` | Free-text album/track/artist name → ranked catalog id candidates, via Postgres `pg_trgm` fuzzy search |
 | `EDITORIAL_CONTENT` | Full or filtered text of an editorial's blocks, given an id already resolved |
-| `GRAPH_FILTER` | Ranks Album/Track/Artist candidates by Neo4j graph-topology overlap with style/rhythm/mood/context/instrument filters. Returns which specific dimensions matched per candidate (not just a score) and excludes items the user already listened to or rated by default. Runs one query per requested entity type, dispatched concurrently |
+| `GRAPH_FILTER` | Ranks candidates of ONE entity type (Album, Track, or Artist — call again for another) by Neo4j graph-topology overlap with style/rhythm/mood/context/instrument filters. Returns which specific dimensions matched per candidate (not just a score) and excludes items the user already listened to or rated by default |
+| `SEMANTIC_SEARCH` | pgvector similarity search over editorial content, scoped to a candidate set of ONE entity type (typically `GRAPH_FILTER`'s output, but works standalone) and ONE content category per call. No shared state between the two — the candidate set is passed explicitly, never fused/reranked server-side |
 | `submit_final_answer` | Not dispatched like the others — intercepted by the orchestrator to close a turn; carries the structured recommendation metadata alongside the model's plain-text answer |
 
 ## Running locally

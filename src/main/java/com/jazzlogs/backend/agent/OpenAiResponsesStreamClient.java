@@ -22,6 +22,8 @@ import com.openai.models.responses.ToolChoiceOptions;
 import com.jazzlogs.backend.agent.tools.JazzTool;
 import com.jazzlogs.backend.agent.tools.SubmitFinalAnswerTool;
 
+import lombok.extern.slf4j.Slf4j;
+
 /**
  * Thin wrapper over the official OpenAI Java SDK's Responses API (pinned at
  * 4.45.0 in pom.xml) — resolves every SDK-specific mechanic AgentOrchestrator
@@ -45,6 +47,7 @@ import com.jazzlogs.backend.agent.tools.SubmitFinalAnswerTool;
  *       simpler and can't end up in an inconsistent partial state.</li>
  * </ul>
  */
+@Slf4j
 @Service
 public class OpenAiResponsesStreamClient {
 
@@ -82,7 +85,19 @@ public class OpenAiResponsesStreamClient {
         if (forceFinalAnswer) {
             builder.toolChoice(ToolChoiceFunction.builder().name(SubmitFinalAnswerTool.NAME).build());
         } else {
-            builder.toolChoice(ToolChoiceOptions.AUTO);
+            // REQUIRED, not AUTO: every turn must call at least one function
+            // — either a retrieval tool (to keep gathering context) or
+            // submit_final_answer itself (to close). AUTO also allows a
+            // third option, plain text with zero function calls, which the
+            // prompt alone couldn't reliably prevent the model from taking
+            // even for something as simple as a greeting — that reply then
+            // has nowhere to go (see AgentOrchestrator's
+            // lastNonBlankAssistantText fallback, which covers for it, but
+            // still costs a wasted extra iteration). Every real closing
+            // path in this design already goes through submit_final_answer,
+            // so there's no legitimate case where zero function calls is
+            // the right outcome for a turn.
+            builder.toolChoice(ToolChoiceOptions.REQUIRED);
         }
 
         Response[] finalResponseHolder = new Response[1];
@@ -103,11 +118,30 @@ public class OpenAiResponsesStreamClient {
             throw new IllegalStateException("Responses API stream ended without a completed event");
         }
 
+        logUsage(finalResponseHolder[0]);
         return toStreamedTurn(finalResponseHolder[0]);
     }
 
     private String describeFailure(Response response) {
         return response.error().map(Object::toString).orElse("response " + response.id() + " failed with no error detail");
+    }
+
+    // Per-call token accounting — cheap to log unconditionally (no request
+    // body content, just counts) and the only place this data is available
+    // at all, since AgentOrchestrator only ever sees the already-reduced
+    // StreamedTurn. usage can be legitimately absent (e.g. a failed/incomplete
+    // response that still reached completed()), so this never assumes it's set.
+    private void logUsage(Response response) {
+        response.usage().ifPresentOrElse(
+            usage -> log.info(
+                "[response={}] tokens: input={} (cached={}), output={} (reasoning={}), total={}",
+                response.id(),
+                usage.inputTokens(), usage.inputTokensDetails().cachedTokens(),
+                usage.outputTokens(), usage.outputTokensDetails().reasoningTokens(),
+                usage.totalTokens()
+            ),
+            () -> log.info("[response={}] no token usage reported", response.id())
+        );
     }
 
     private StreamedTurn toStreamedTurn(Response response) {
