@@ -17,8 +17,9 @@ import com.jazzlogs.backend.user.UserRepository;
 
 import lombok.AllArgsConstructor;
 /**
- * Handles the user´s chats logic, provides chat listing
+ * Handles the user´s chats logic
  * <p>
+ * provides chat listing, 
  * TODO: expand this Javadoc as each remaining flow gets reviewed
  * (see the "Agent — final review & documentation" milestone).
  */
@@ -34,7 +35,7 @@ public class ChatService {
      * Lists chats belonging to the given user, most recently active first by default.
      * <p>
      * Paginated — sort direction/field can be overridden by the client via
-     * {@link Pageable}, though the Sidebar currently relies on the default
+     * {@link Pageable}, though the Frontend currently relies on the default
      * ({@code lastMessageAt} DESC).
      *
      * @param userId   the internal user id
