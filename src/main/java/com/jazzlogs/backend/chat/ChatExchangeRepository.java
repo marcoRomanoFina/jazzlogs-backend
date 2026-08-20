@@ -17,23 +17,23 @@ public interface ChatExchangeRepository extends JpaRepository<ChatExchange, UUID
 
     /**
      * Pages a chat's exchanges. Explicit JPQL, not a derived
-     * {@code findByChatId} — ChatExchange's convenience {@code getChatId()}
-     * trips Spring Data's property-path resolver into treating "chatId" as
-     * its own attribute instead of drilling into the {@code chat}
-     * association. Ordering comes from the Pageable's Sort (see
-     * {@link ChatExchangeService#getChatExchanges}), not hardcoded here.
+     * {@code findByChatId} — sidesteps {@code getChatId()} tripping Spring
+     * Data's property-path resolver.
      *
-     * @param chatId   the chat whose exchanges are being listed
+     * @param chatId   the owning chat
      * @param pageable page/size/sort requested by the caller
      * @return a page of the chat's exchanges
      */
     @Query("SELECT ce FROM ChatExchange ce WHERE ce.chat.id = :chatId")
     Page<ChatExchange> findByChatId(@Param("chatId") UUID chatId, Pageable pageable);
 
-    // Newest-first, capped — ChatContextBuilder reverses this to ascending
-    // order before turning it into conversation turns. Same chatId
-    // ambiguity as above, same fix; LIMIT in HQL is a Hibernate 6+
-    // extension (no need for a Pageable parameter just to cap 3 rows).
+    /**
+     * The 3 most recent exchanges of a chat, newest first — used by
+     * ChatContextBuilder to seed the agent's short-term context.
+     *
+     * @param chatId the owning chat
+     * @return up to 3 exchanges, newest first
+     */
     @Query("SELECT ce FROM ChatExchange ce WHERE ce.chat.id = :chatId ORDER BY ce.createdAt DESC LIMIT 3")
     List<ChatExchange> findTop3ByChatIdOrderByCreatedAtDesc(@Param("chatId") UUID chatId);
 }
