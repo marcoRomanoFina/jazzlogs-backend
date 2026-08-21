@@ -14,11 +14,10 @@ import com.jazzlogs.backend.user.User;
 
 import lombok.AllArgsConstructor;
 /**
- * Handles the user´s chats logic
- * <p>
- * provides chat listing, 
- * TODO: expand this Javadoc as each remaining flow gets reviewed
- * (see the "Agent — final review & documentation" milestone).
+ * Service for the {@link Chat} entity itself — listing, creating, and
+ * resolving-by-id-with-ownership-check. Depends only on
+ * {@link ChatRepository}; the exchanges within a chat are
+ * {@code ChatExchangeService}'s responsibility, not this class's.
  */
 @Service
 @AllArgsConstructor
@@ -55,23 +54,37 @@ public class ChatService {
         return new Chat(user, null);
     }
 
-    // findByIdWithUser (not plain findById) — this Chat is handed to
-    // AgentOrchestrator's async loop, which needs chat.getUser() to already
-    // be initialized; see ChatRepository.findByIdWithUser.
+    /**
+     * Looks up a chat by id and verifies the requesting user owns it.
+     * <p>
+     * "Doesn't exist" and "exists but belongs to someone else" deliberately
+     * throw the exact same 404, via one {@code .filter()} rather than a
+     * separate ownership check with its own 403 — a non-owner can't tell
+     * those two cases apart from the response, so a chat id they don't own
+     * never gets confirmed to exist. Same posture OWASP's Broken Object
+     * Level Authorization guidance recommends, and what GitHub/Google do
+     * for private resources.
+     *
+     * @param chatId           the chat to look up
+     * @param requestingUserId the caller — must own the chat
+     * @return the chat, with its {@code user} already fetched (not a lazy
+     *         proxy), since it's about to be read from the agent's async loop
+     * @throws ResponseStatusException 404 if no such chat exists, or it
+     *                                  exists but belongs to someone else
+     */
     @Transactional(readOnly = true)
     public Chat getOwnedChat(UUID chatId, UUID requestingUserId) {
-        Chat chat = chatRepository.findByIdWithUser(chatId)
+        return chatRepository.findByIdWithUser(chatId)
+            .filter(chat -> chat.getUserId().equals(requestingUserId))
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chat not found: " + chatId));
-        assertOwner(chat, requestingUserId);
-        return chat;
     }
 
-    private void assertOwner(Chat chat, UUID requestingUserId) {
-        if (!chat.getUserId().equals(requestingUserId)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the chat's owner can access it");
-        }
-    }
-
+    /**
+     * Maps a {@link Chat} entity to its API response shape.
+     *
+     * @param chat the entity to map
+     * @return the corresponding {@link ChatDto}
+     */
     private ChatDto toChatDto(Chat chat) {
         return new ChatDto(chat.getId(), chat.getTitle(), chat.getCreatedAt(), chat.getUpdatedAt(), chat.getLastMessageAt());
     }

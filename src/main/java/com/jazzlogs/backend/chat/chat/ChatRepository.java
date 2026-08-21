@@ -24,12 +24,16 @@ public interface ChatRepository extends JpaRepository<Chat, UUID> {
     @Query("SELECT c FROM Chat c WHERE c.user.id = :userId")
     Page<Chat> findByUserId(@Param("userId") UUID userId, Pageable pageable);
 
-    // JOIN FETCH, not plain findById: the Chat this returns gets handed to
-    // AgentOrchestrator, which reads it back on a different thread
-    // (CompletableFuture.runAsync) well after this method's transaction has
-    // closed — chat.user is FetchType.LAZY, so a plain proxy would throw
-    // LazyInitializationException the moment ChatContextBuilder calls
-    // chat.getUser().getDisplayName() outside any open session.
+    /**
+     * By id, with {@code user} eagerly fetched instead of the default lazy
+     * proxy — the returned {@link Chat} is handed to the agent's async
+     * loop, which reads {@code chat.getUser()} on a different thread, after
+     * this method's transaction has already closed; a lazy proxy would
+     * throw {@code LazyInitializationException} at that point.
+     *
+     * @param id the chat to look up
+     * @return the chat, with its user already loaded
+     */
     @Query("SELECT c FROM Chat c JOIN FETCH c.user WHERE c.id = :id")
     Optional<Chat> findByIdWithUser(@Param("id") UUID id);
 }
