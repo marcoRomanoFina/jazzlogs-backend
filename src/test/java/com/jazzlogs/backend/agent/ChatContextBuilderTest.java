@@ -1,6 +1,9 @@
 package com.jazzlogs.backend.agent;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
@@ -12,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import com.openai.models.responses.EasyInputMessage;
 import com.openai.models.responses.ResponseInputItem;
@@ -32,6 +36,12 @@ import com.jazzlogs.backend.user.User;
 // so asserting exact ascending order against real persisted rows would be at
 // the mercy of clock resolution. Mocking the repositories lets each test hand
 // back an exact, deterministic ordering instead.
+//
+// chat is given a real id in setUp() — every test here models an
+// already-persisted chat (continuing a conversation), which is the only case
+// where the repositories are consulted at all. The genuinely-new,
+// not-yet-persisted case (chat.getId() == null, see ChatService.createChat)
+// is its own dedicated test below, since it skips both repositories entirely.
 @ExtendWith(MockitoExtension.class)
 class ChatContextBuilderTest {
 
@@ -49,10 +59,11 @@ class ChatContextBuilderTest {
         builder = new ChatContextBuilder(chatExchangeRepository, chatRecommendationMemoryRepository, new VocabularyProvider());
         User user = new User(UUID.randomUUID(), "test@example.com");
         chat = new Chat(user, null);
+        ReflectionTestUtils.setField(chat, "id", UUID.randomUUID());
     }
 
     @Test
-    void newChatWithoutMemoryOrExchanges_usesPlaceholdersAndOnlyTheNewUserMessage() {
+    void existingChatWithoutMemoryOrExchangesYet_usesPlaceholdersAndOnlyTheNewUserMessage() {
         when(chatExchangeRepository.findTop3ByChatIdOrderByCreatedAtDesc(chat.getId())).thenReturn(List.of());
         when(chatRecommendationMemoryRepository.findByChatId(chat.getId())).thenReturn(Optional.empty());
 
@@ -66,6 +77,27 @@ class ChatContextBuilderTest {
 
         assertThat(roleOf(input.get(1))).isEqualTo(EasyInputMessage.Role.USER);
         assertThat(textOf(input.get(1))).isEqualTo("What should I listen to tonight?");
+    }
+
+    // Covers ChatService.createChat's contract: a brand-new chat is built in
+    // memory only, never saved, until ChatExchangeService.persist() gives it
+    // its first exchange — so chat.getId() is null the whole time this runs.
+    @Test
+    void brandNewChatWithNoIdYet_skipsBothRepositoriesEntirely() {
+        User user = new User(UUID.randomUUID(), "test@example.com");
+        Chat newChat = new Chat(user, null);
+
+        List<ResponseInputItem> input = builder.buildInput(newChat, "What should I listen to tonight?");
+
+        assertThat(input).hasSize(2);
+        String developerText = textOf(input.get(0));
+        assertThat(developerText).contains("SESSION SUMMARY\n(none yet — this is the start of the conversation)");
+        assertThat(developerText).contains("RECOMMENDATION HISTORY\n(none yet)");
+        assertThat(developerText).contains("Chat session id: (new chat, not yet created)");
+        assertThat(textOf(input.get(1))).isEqualTo("What should I listen to tonight?");
+
+        verify(chatExchangeRepository, never()).findTop3ByChatIdOrderByCreatedAtDesc(any());
+        verify(chatRecommendationMemoryRepository, never()).findByChatId(any());
     }
 
     @Test

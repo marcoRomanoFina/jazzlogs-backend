@@ -77,12 +77,27 @@ public class ChatController {
         return chatExchangeService.getChatExchanges(chatId, currentUserId(jwt), pageable);
     }
 
-    // First message of a brand-new chat — creates it, then runs the agent
-    // exactly like sendMessage does. There's no separate "just create an
-    // empty chat" route: a chat without a first message doesn't mean anything.
+    /**
+     * Starts a brand-new chat by sending its first message, streaming the
+     * agent's turn back over SSE exactly like {@link #sendMessage}.
+     * <p>
+     * The chat itself isn't saved by this call — {@link ChatService#createChat}
+     * only builds it in memory; it's only actually persisted, together with
+     * this first exchange, once the agent's turn succeeds (see
+     * {@code ChatExchangeService.persist}), so a failed first turn never
+     * leaves an empty, unreachable chat behind. There's no {@code Location}
+     * header or JSON body to carry the new chat's id either — the caller
+     * only learns it from the {@code answer_metadata} SSE event, once the
+     * stream actually completes successfully.
+     * 
+     * @param request the first message to send — same body {@link #sendMessage}
+     *                takes: {@code userMessage} and an optional {@code timezone}
+     * @param jwt     the authenticated user's token — the new chat's owner
+     * @return an {@link SseEmitter} streaming the agent's progress and final answer
+     */
     @PostMapping
     public SseEmitter createChat(@Valid @RequestBody SendMessageRequest request, @AuthenticationPrincipal Jwt jwt) {
-        Chat chat = chatService.createChat(currentUserId(jwt));
+        Chat chat = chatService.createChat(userService.resolveFromJwt(jwt));
         return agentOrchestrator.runExchange(chat, request.userMessage(), request.timezone());
     }
 

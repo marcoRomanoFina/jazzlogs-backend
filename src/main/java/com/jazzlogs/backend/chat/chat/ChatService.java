@@ -11,7 +11,6 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.chat.chat.dto.ChatDto;
 import com.jazzlogs.backend.user.User;
-import com.jazzlogs.backend.user.UserRepository;
 
 import lombok.AllArgsConstructor;
 /**
@@ -26,7 +25,6 @@ import lombok.AllArgsConstructor;
 public class ChatService {
 
     private final ChatRepository chatRepository;
-    private final UserRepository userRepository;
 
     /**
      * Lists chats belonging to the given user, most recently active first by default.
@@ -44,12 +42,17 @@ public class ChatService {
         return chatRepository.findByUserId(userId, pageable).map(this::toChatDto);
     }
 
-    // user is a freshly-fetched entity here, not a lazy proxy — safe to read
-    // from AgentOrchestrator's async loop with no extra fetch needed.
-    @Transactional
-    public Chat createChat(UUID requestingUserId) {
-        User user = getUserOrThrow(requestingUserId);
-        return chatRepository.save(new Chat(user, null));
+    /**
+     * Builds a chat in memory only — never saved here. It's only actually
+     * persisted, together with its first exchange, in
+     * {@code ChatExchangeService#persist}, so a failed first agent turn
+     * leaves nothing behind.
+     * 
+     * @param user the chat's owner
+     * @return an unsaved {@link Chat}
+     */
+    public Chat createChat(User user) {
+        return new Chat(user, null);
     }
 
     // findByIdWithUser (not plain findById) — this Chat is handed to
@@ -71,10 +74,5 @@ public class ChatService {
 
     private ChatDto toChatDto(Chat chat) {
         return new ChatDto(chat.getId(), chat.getTitle(), chat.getCreatedAt(), chat.getUpdatedAt(), chat.getLastMessageAt());
-    }
-
-    private User getUserOrThrow(UUID userId) {
-        return userRepository.findById(userId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found: " + userId));
     }
 }

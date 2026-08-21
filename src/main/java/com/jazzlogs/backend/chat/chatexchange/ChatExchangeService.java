@@ -35,6 +35,10 @@ import lombok.AllArgsConstructor;
 // submit_final_answer. There's no other writer, but reads (getChatExchanges,
 // for GET /chats/{chatId}/exchanges) live here too — exchanges are always a
 // ChatExchangeRepository concern, whether being written or listed.
+//
+// persist() is also the only place a brand-new chat's row itself gets
+// created — see ChatService.createChat, which deliberately never saves —
+// so a chat and its first exchange are born in the same transaction, atomically.
 @Service
 @AllArgsConstructor
 public class ChatExchangeService {
@@ -55,14 +59,22 @@ public class ChatExchangeService {
         List<ResolvedWinner> resolvedWinners = resolveWinners(recommendedItems);
         List<WinnerRef> winners = toRefs(resolvedWinners);
 
-        ChatExchange saved = chatExchangeRepository.save(new ChatExchange(chat, userMessage, assistantText, winners));
-
-        chat.recordExchangeAt(saved.getCreatedAt());
         // First suggestion wins — a chat gets titled once, early on; later
         // exchanges suggesting a new title don't churn an already-set one.
+        // Applied before the save below so a brand-new chat's very first
+        // INSERT already carries it, instead of needing a second write.
         if (chat.getTitle() == null && suggestedChatTitle != null && !suggestedChatTitle.isBlank()) {
             chat.updateTitle(suggestedChatTitle);
         }
+        // For a brand-new chat (see ChatService.createChat) this is the
+        // INSERT that actually assigns its id — has to happen before the
+        // ChatExchange below, which references it via a NOT NULL FK. For a
+        // chat that already existed (continuing a conversation), this is a
+        // harmless re-attach of an already-managed entity, not a real write.
+        chatRepository.save(chat);
+
+        ChatExchange saved = chatExchangeRepository.save(new ChatExchange(chat, userMessage, assistantText, winners));
+        chat.recordExchangeAt(saved.getCreatedAt());
         chatRepository.save(chat);
 
         boolean hasWinners = winners != null && !winners.isEmpty();
