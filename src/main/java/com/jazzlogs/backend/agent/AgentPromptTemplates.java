@@ -4,11 +4,12 @@ package com.jazzlogs.backend.agent;
 // gated behind agent.model.has-native-reasoning (redundant CoT scaffolding for
 // a model that reasons natively). That property no longer applies here: the
 // current short version isn't CoT prompting, it's an operational contract
-// about submit_final_answer that every model needs regardless of reasoning
+// about the final answer that every model needs regardless of reasoning
 // ability — so this is back to a single static block, unconditionally
 // included. See ChatContextBuilder for the reasoning.effort/context config
-// (a separate, still-live decision) and SubmitFinalAnswerTool for
-// submit_final_answer's actual JSON schema.
+// (a separate, still-live decision) and OpenAiResponsesStreamClient for the
+// final answer's actual JSON schema (enforced by the API itself via
+// text.format, not just described here).
 public final class AgentPromptTemplates {
 
     private AgentPromptTemplates() {
@@ -44,9 +45,9 @@ public final class AgentPromptTemplates {
         anyway.
 
         DECISION RULES
-        "Tools" below means the retrieval/data tools (GRAPH_FILTER, SEMANTIC_SEARCH,
-        RESOLVE_JAZZLOGS_ENTITY, EDITORIAL_CONTENT) — submit_final_answer is never one
-        of them, see FINAL OUTPUT CONTRACT.
+        "Tools" below means the retrieval/data tools only (GRAPH_FILTER, SEMANTIC_SEARCH,
+        RESOLVE_JAZZLOGS_ENTITY, EDITORIAL_CONTENT) — your final answer is never a tool
+        call, see FINAL OUTPUT CONTRACT.
         - Answer directly only for casual conversation, emotional reactions, lightweight
           follow-ups, or a single short clarifying question when the request is too vague
           to act on.
@@ -64,20 +65,22 @@ public final class AgentPromptTemplates {
         session summary, or recent exchanges.
         Before finalizing your answer, make sure you have enough grounded context to
         answer completely and well. If something is missing, gather it before responding.
-        When you are ready to give your final answer, call submit_final_answer with the
-        structured result. Do not call any other tool in the same turn as
-        submit_final_answer.
+        When you call a tool, that call is your entire response for this turn — never
+        attach commentary or a partial answer alongside it. Save your full answer for
+        the turn where you give it, as the only thing in your response that turn.
 
         FINAL OUTPUT CONTRACT
-        - submit_final_answer is mandatory in EVERY turn that ends your response,
+        - When you are ready to give your final answer, respond with plain text — never
+          a tool call — containing ONLY a JSON object matching the required schema: no
+          markdown fences, no commentary before or after it.
+        - This JSON response is mandatory in EVERY turn that ends your response,
           including ones where you answered directly under DECISION RULES without using
           any retrieval tool at all (e.g. a casual greeting).
-        - Your real answer — the actual conversational reply, in full — goes in
-          submit_final_answer's answerText argument. That is the only place it is
-          guaranteed to reach the user; do not rely on separate message text instead of
-          it, and never call submit_final_answer with answerText blank or missing.
-        - Call submit_final_answer with the full structured result: resultType,
-          answerText, recommendedItems, suggestedChatTitle, updatedSessionSummary.
+        - Your real answer — the actual conversational reply, in full — goes in the
+          answerText field. That is the only place it is guaranteed to reach the user;
+          never leave it blank or missing.
+        - The JSON object must include: resultType, answerText, recommendedItems,
+          suggestedChatTitle, updatedSessionSummary.
         - Always set suggestedChatTitle to a short (3-6 word) title summarizing this
           conversation, on every turn, not only the first — it is only ever applied once,
           the first time this chat gets a title, so proposing one again later is harmless

@@ -38,7 +38,7 @@ import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackRepository;
 import com.jazzlogs.backend.user.User;
 
-// The one place submit_final_answer's ids are checked against reality —
+// The one place the model's final-answer ids are checked against reality —
 // AgentOrchestrator just forwards whatever the model said (see
 // AgentOrchestratorTest, which mocks this class entirely). These tests are
 // the real coverage for "a hallucinated/malformed id gets dropped" and
