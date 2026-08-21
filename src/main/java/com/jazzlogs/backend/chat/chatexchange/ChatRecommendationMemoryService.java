@@ -22,7 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 // session_summary is the one exception (it's LLM-generated free text, not
 // reconstructible from raw rows), but it shares this table/write-path anyway
 // since it's produced at the exact same moment as winners, by the same
-// submit_final_answer turn. syncMemoryUpdate is the fire-and-forget entry
+// final-answer turn. syncMemoryUpdate is the fire-and-forget entry
 // point ChatExchangeService calls: off the request thread, and on failure
 // it records a sync_failures row (same table/worker as the Neo4j sync, see
 // ChatRecommendationMemoryUpdatedSyncRetryHandler) instead of propagating —

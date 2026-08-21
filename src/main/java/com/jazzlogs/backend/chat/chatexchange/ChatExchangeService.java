@@ -31,8 +31,8 @@ import com.jazzlogs.backend.track.TrackRepository;
 import lombok.AllArgsConstructor;
 
 // The only place a chat_exchange ever gets created — called once by
-// AgentOrchestrator right after the model closes a turn with
-// submit_final_answer. There's no other writer, but reads (getChatExchanges,
+// AgentOrchestrator right after the model closes a turn with its final
+// answer. There's no other writer, but reads (getChatExchanges,
 // for GET /chats/{chatId}/exchanges) live here too — exchanges are always a
 // ChatExchangeRepository concern, whether being written or listed.
 //
@@ -105,8 +105,9 @@ public class ChatExchangeService {
 
     /**
      * The only place the model's ids are checked against reality: refs is
-     * whatever submit_final_answer echoed back, still possibly hallucinated
-     * (a made-up id, a malformed UUID, a stale id from an unrelated turn).
+     * whatever the model's final answer echoed back, still possibly
+     * hallucinated (a made-up id, a malformed UUID, a stale id from an
+     * unrelated turn).
      * Anything that doesn't resolve to a real row is silently dropped, never
      * surfaced as an error.
      *
