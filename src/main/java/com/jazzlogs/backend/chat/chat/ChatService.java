@@ -44,12 +44,22 @@ public class ChatService {
         return chatRepository.findByUserId(userId, pageable).map(this::toChatDto);
     }
 
+    // Builds the chat in memory only — never saved here. A chat is only
+    // ever born together with its first ChatExchange, inside
+    // ChatExchangeService.persist(); if the agent's first turn fails before
+    // reaching that point (see AgentOrchestrator.handleFailure), nothing
+    // about this chat ever touches the database, instead of leaving behind
+    // a title-less, exchange-less row the Frontend can't even navigate to
+    // (the new chatId is only ever learned from a successful answer_metadata
+    // event). Matches what the Chat class doc already promises: "a chat is
+    // created lazily, together with its first ChatExchange".
+    //
     // user is a freshly-fetched entity here, not a lazy proxy — safe to read
     // from AgentOrchestrator's async loop with no extra fetch needed.
-    @Transactional
+    @Transactional(readOnly = true)
     public Chat createChat(UUID requestingUserId) {
         User user = getUserOrThrow(requestingUserId);
-        return chatRepository.save(new Chat(user, null));
+        return new Chat(user, null);
     }
 
     // findByIdWithUser (not plain findById) — this Chat is handed to

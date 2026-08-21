@@ -48,12 +48,19 @@ public class ChatContextBuilder {
 
     @Transactional(readOnly = true)
     public List<ResponseInputItem> buildInput(Chat chat, String userMessage, String timezone) {
-        List<ChatExchange> recentExchanges = new ArrayList<>(
-            chatExchangeRepository.findTop3ByChatIdOrderByCreatedAtDesc(chat.getId())
-        );
-        Collections.reverse(recentExchanges);
+        // A brand-new chat (built in memory by ChatService.createChat, not
+        // yet saved — see ChatExchangeService.persist) has no id yet and, by
+        // definition, no prior exchanges or recommendation memory to load —
+        // skipped explicitly rather than querying with a null chatId.
+        boolean isNewChat = chat.getId() == null;
 
-        Optional<ChatRecommendationMemory> memory = chatRecommendationMemoryRepository.findByChatId(chat.getId());
+        List<ChatExchange> recentExchanges = new ArrayList<>();
+        Optional<ChatRecommendationMemory> memory = Optional.empty();
+        if (!isNewChat) {
+            recentExchanges.addAll(chatExchangeRepository.findTop3ByChatIdOrderByCreatedAtDesc(chat.getId()));
+            Collections.reverse(recentExchanges);
+            memory = chatRecommendationMemoryRepository.findByChatId(chat.getId());
+        }
 
         String developerText = String.join(
             "\n\n",
@@ -113,7 +120,7 @@ public class ChatContextBuilder {
             datetime,
             zone.getId(),
             displayName,
-            chat.getId()
+            chat.getId() == null ? "(new chat, not yet created)" : chat.getId()
         );
     }
 
