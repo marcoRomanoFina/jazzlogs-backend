@@ -101,6 +101,20 @@ public class ChatController {
         return agentOrchestrator.runExchange(chat, request.userMessage(), request.timezone());
     }
 
+    /**
+     * Continues an existing chat by sending its next message, streaming the
+     * agent's turn back over SSE exactly like {@link #createChat}.
+     * <p>
+     * {@link ChatService#getOwnedChat} resolves the chat and checks {@code
+     * jwt}'s user actually owns it — 404 if no such chat exists, 403 if it
+     * belongs to someone else — before any agent work starts.
+     *
+     * @param chatId  the chat to continue
+     * @param request the message to send — {@code userMessage} and an
+     *                optional {@code timezone}
+     * @param jwt     the authenticated user's token — must own {@code chatId}
+     * @return an {@link SseEmitter} streaming the agent's progress and final answer
+     */
     @PostMapping("/{chatId}/messages")
     public SseEmitter sendMessage(
         @PathVariable UUID chatId,
