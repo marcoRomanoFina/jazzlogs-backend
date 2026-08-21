@@ -15,6 +15,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.Executor;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -65,7 +66,12 @@ class AgentOrchestratorTest {
     void setUp() {
         when(searchTool.name()).thenReturn("SEMANTIC_CATALOG_SEARCH");
 
-        orchestrator = new AgentOrchestrator(contextBuilder, streamClient, chatExchangeService, List.of(searchTool));
+        // Runs the submitted task on the calling thread instead of a real
+        // executor — these tests only assert on outcome/ordering, never on
+        // actual concurrency, so a synchronous stand-in keeps them fast and
+        // deterministic. See AsyncConfig.agentExecutor for the real one.
+        Executor synchronousExecutor = Runnable::run;
+        orchestrator = new AgentOrchestrator(contextBuilder, streamClient, chatExchangeService, synchronousExecutor, List.of(searchTool));
         ReflectionTestUtils.setField(orchestrator, "maxIterations", 6);
         ReflectionTestUtils.setField(orchestrator, "maxToolCallsPerTurn", 4);
 

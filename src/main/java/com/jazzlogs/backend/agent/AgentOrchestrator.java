@@ -8,7 +8,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -87,20 +86,16 @@ public class AgentOrchestrator {
     // dependency for this one use.
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
-    // One virtual thread per task, not the shared ForkJoinPool.commonPool()
-    // that CompletableFuture.runAsync/supplyAsync fall back to without an
-    // explicit executor: everything scheduled here is blocking I/O (the
-    // OpenAI HTTP call, eventually per-tool DB/Neo4j/Spotify calls), never
-    // CPU-bound work — exactly what virtual threads are for. The common pool
-    // is sized for CPU-bound fork/join work and shared process-wide; blocking
-    // it here could starve anything else in the JVM relying on it. No
-    // lifecycle to manage (same reasoning as OBJECT_MAPPER above), safe to
-    // share as a process-lifetime singleton.
-    private static final Executor VIRTUAL_THREADS = Executors.newVirtualThreadPerTaskExecutor();
-
     private final ChatContextBuilder contextBuilder;
     private final OpenAiResponsesStreamClient streamClient;
     private final ChatExchangeService chatExchangeService;
+    // Everything scheduled here (the OpenAI HTTP call, then per-tool DB/Neo4j/
+    // Spotify calls) is blocking I/O, never CPU-bound — a virtual-thread-per-task
+    // executor, injected as a Spring bean rather than owned here: see
+    // AsyncConfig.agentExecutor for why virtual threads specifically, and why
+    // this can't just be an @Async method (SseEmitter needs to be returned
+    // before the loop even starts).
+    private final Executor agentExecutor;
     // Keyed by name for dispatch in executeToolCalls — see JazzTool. Built once
     // here rather than injecting a Map directly: Spring supplies every JazzTool
     // @Component as a plain List<JazzTool>, same list OpenAiResponsesStreamClient
@@ -113,11 +108,13 @@ public class AgentOrchestrator {
         ChatContextBuilder contextBuilder,
         OpenAiResponsesStreamClient streamClient,
         ChatExchangeService chatExchangeService,
+        Executor agentExecutor,
         List<JazzTool> tools
     ) {
         this.contextBuilder = contextBuilder;
         this.streamClient = streamClient;
         this.chatExchangeService = chatExchangeService;
+        this.agentExecutor = agentExecutor;
         this.toolsByName = tools.stream().collect(Collectors.toMap(JazzTool::name, tool -> tool));
     }
 
@@ -145,7 +142,7 @@ public class AgentOrchestrator {
             } catch (Exception e) {
                 handleFailure(sink, emitter, chat, e);
             }
-        }, VIRTUAL_THREADS);
+        }, agentExecutor);
 
         return emitter;
     }
@@ -211,7 +208,7 @@ public class AgentOrchestrator {
         }
 
         List<CompletableFuture<ToolExecutionResult>> futures = accepted.stream()
-            .map(call -> CompletableFuture.supplyAsync(() -> dispatch(call, userId), VIRTUAL_THREADS))
+            .map(call -> CompletableFuture.supplyAsync(() -> dispatch(call, userId), agentExecutor))
             .toList();
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 

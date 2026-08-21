@@ -1,6 +1,7 @@
 package com.jazzlogs.backend.config;
 
 import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -43,5 +44,20 @@ public class AsyncConfig {
         executor.setThreadNamePrefix("async-");
         executor.initialize();
         return executor;
+    }
+
+    // One virtual thread per task, not a bounded ThreadPoolTaskExecutor like
+    // the two above: everything AgentOrchestrator schedules here is blocking
+    // I/O (the OpenAI Responses API call, then per-tool DB/Neo4j/Spotify
+    // calls), never CPU-bound work — exactly what virtual threads are for.
+    // A capped pool would just add queueing delay for no benefit; virtual
+    // threads can have thousands blocked on I/O at once without exhausting
+    // any real OS thread. Injected directly (AgentOrchestrator calls
+    // CompletableFuture.runAsync/supplyAsync manually, not via @Async — a
+    // method returning SseEmitter can't itself be @Async), by parameter name
+    // matching this bean name, same convention as neo4jSyncExecutor/taskExecutor.
+    @Bean(name = "agentExecutor")
+    public Executor agentExecutor() {
+        return Executors.newVirtualThreadPerTaskExecutor();
     }
 }
