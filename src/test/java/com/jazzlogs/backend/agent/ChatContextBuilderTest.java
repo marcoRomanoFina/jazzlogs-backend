@@ -67,7 +67,7 @@ class ChatContextBuilderTest {
         when(chatExchangeRepository.findTop3ByChatIdOrderByCreatedAtDesc(chat.getId())).thenReturn(List.of());
         when(chatRecommendationMemoryRepository.findByChatId(chat.getId())).thenReturn(Optional.empty());
 
-        List<ResponseInputItem> input = builder.buildInput(chat, "What should I listen to tonight?");
+        List<ResponseInputItem> input = builder.buildInput(chat, "What should I listen to tonight?", null);
 
         assertThat(input).hasSize(2);
         assertThat(roleOf(input.get(0))).isEqualTo(EasyInputMessage.Role.DEVELOPER);
@@ -87,7 +87,7 @@ class ChatContextBuilderTest {
         User user = new User(UUID.randomUUID(), "test@example.com");
         Chat newChat = new Chat(user, null);
 
-        List<ResponseInputItem> input = builder.buildInput(newChat, "What should I listen to tonight?");
+        List<ResponseInputItem> input = builder.buildInput(newChat, "What should I listen to tonight?", null);
 
         assertThat(input).hasSize(2);
         String developerText = textOf(input.get(0));
@@ -109,7 +109,7 @@ class ChatContextBuilderTest {
         when(chatExchangeRepository.findTop3ByChatIdOrderByCreatedAtDesc(chat.getId())).thenReturn(List.of());
         when(chatRecommendationMemoryRepository.findByChatId(chat.getId())).thenReturn(Optional.of(memory));
 
-        List<ResponseInputItem> input = builder.buildInput(chat, "Anything similar?");
+        List<ResponseInputItem> input = builder.buildInput(chat, "Anything similar?", null);
 
         assertThat(input).hasSize(2); // developer + final user message, no history turns
         String developerText = textOf(input.get(0));
@@ -126,7 +126,7 @@ class ChatContextBuilderTest {
         when(chatExchangeRepository.findTop3ByChatIdOrderByCreatedAtDesc(chat.getId())).thenReturn(List.of(exchange));
         when(chatRecommendationMemoryRepository.findByChatId(chat.getId())).thenReturn(Optional.empty());
 
-        List<ResponseInputItem> input = builder.buildInput(chat, "What else?");
+        List<ResponseInputItem> input = builder.buildInput(chat, "What else?", null);
 
         assertThat(input).hasSize(4); // developer, user_1, assistant_1, user_actual
         assertThat(roleOf(input.get(1))).isEqualTo(EasyInputMessage.Role.USER);
@@ -144,7 +144,7 @@ class ChatContextBuilderTest {
         when(chatExchangeRepository.findTop3ByChatIdOrderByCreatedAtDesc(chat.getId())).thenReturn(List.of(second, first));
         when(chatRecommendationMemoryRepository.findByChatId(chat.getId())).thenReturn(Optional.empty());
 
-        List<ResponseInputItem> input = builder.buildInput(chat, "final message");
+        List<ResponseInputItem> input = builder.buildInput(chat, "final message", null);
 
         assertThat(input).hasSize(6); // developer, 2 pairs, user_actual
         assertThat(textOf(input.get(1))).isEqualTo("msg1");
@@ -162,7 +162,7 @@ class ChatContextBuilderTest {
         when(chatExchangeRepository.findTop3ByChatIdOrderByCreatedAtDesc(chat.getId())).thenReturn(List.of(third, second, first));
         when(chatRecommendationMemoryRepository.findByChatId(chat.getId())).thenReturn(Optional.empty());
 
-        List<ResponseInputItem> input = builder.buildInput(chat, "final message");
+        List<ResponseInputItem> input = builder.buildInput(chat, "final message", null);
 
         assertThat(input).hasSize(8); // developer, 3 pairs, user_actual
         assertThat(textOf(input.get(1))).isEqualTo("msg1");
@@ -182,7 +182,7 @@ class ChatContextBuilderTest {
         when(chatExchangeRepository.findTop3ByChatIdOrderByCreatedAtDesc(chat.getId())).thenReturn(List.of());
         when(chatRecommendationMemoryRepository.findByChatId(chat.getId())).thenReturn(Optional.of(memory));
 
-        String developerText = textOf(builder.buildInput(chat, "hi").get(0));
+        String developerText = textOf(builder.buildInput(chat, "hi", null).get(0));
 
         assertThat(developerText).contains("- \"Bill Evans\"");
         assertThat(developerText).doesNotContain("\"Bill Evans\" —");
