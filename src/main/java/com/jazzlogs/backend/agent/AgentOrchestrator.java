@@ -126,8 +126,16 @@ public class AgentOrchestrator {
         void emit(String eventName, Object data) throws IOException;
     }
 
+    // A safety-net ceiling, not the expected duration — a turn should
+    // normally finish in well under this. A single iteration can already
+    // request several tool calls together (up to maxToolCallsPerTurn), run
+    // concurrently on virtual threads, so a typical CATALOG_RESPONSE (e.g.
+    // graphFilter + semanticSearch, then submit_final_answer) is just 2
+    // Responses API round trips, and a casual DIRECT_RESPONSE is 1 — nowhere
+    // near maxIterations. 1 minute only gets used up by a genuinely stuck
+    // or pathologically slow turn, not a normal one.
     public SseEmitter runExchange(Chat chat, String userMessage, String timezone) {
-        SseEmitter emitter = new SseEmitter(TimeUnit.MINUTES.toMillis(3));
+        SseEmitter emitter = new SseEmitter(TimeUnit.MINUTES.toMillis(1));
         EventSink sink = (eventName, data) -> emitter.send(SseEmitter.event().name(eventName).data(data));
 
         CompletableFuture.runAsync(() -> {
