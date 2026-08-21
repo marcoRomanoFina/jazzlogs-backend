@@ -47,13 +47,8 @@ public class ChatService {
      * persisted, together with its first exchange, in
      * {@code ChatExchangeService#persist}, so a failed first agent turn
      * leaves nothing behind.
-     * <p>
-     * Takes the already-resolved {@code user} directly, not just an id —
-     * the caller ({@code ChatController#createChat}) already has it from
-     * {@code UserService.resolveFromJwt}; re-fetching it here by id would
-     * just be a second, redundant read of the same row in the same request.
-     *
-     * @param user the chat's owner, already resolved
+     * 
+     * @param user the chat's owner
      * @return an unsaved {@link Chat}
      */
     public Chat createChat(User user) {
