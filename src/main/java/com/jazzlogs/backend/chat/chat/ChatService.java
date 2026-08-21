@@ -11,7 +11,6 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.chat.chat.dto.ChatDto;
 import com.jazzlogs.backend.user.User;
-import com.jazzlogs.backend.user.UserRepository;
 
 import lombok.AllArgsConstructor;
 /**
@@ -26,7 +25,6 @@ import lombok.AllArgsConstructor;
 public class ChatService {
 
     private final ChatRepository chatRepository;
-    private final UserRepository userRepository;
 
     /**
      * Lists chats belonging to the given user, most recently active first by default.
@@ -44,21 +42,21 @@ public class ChatService {
         return chatRepository.findByUserId(userId, pageable).map(this::toChatDto);
     }
 
-    // Builds the chat in memory only — never saved here. A chat is only
-    // ever born together with its first ChatExchange, inside
-    // ChatExchangeService.persist(); if the agent's first turn fails before
-    // reaching that point (see AgentOrchestrator.handleFailure), nothing
-    // about this chat ever touches the database, instead of leaving behind
-    // a title-less, exchange-less row the Frontend can't even navigate to
-    // (the new chatId is only ever learned from a successful answer_metadata
-    // event). Matches what the Chat class doc already promises: "a chat is
-    // created lazily, together with its first ChatExchange".
-    //
-    // user is a freshly-fetched entity here, not a lazy proxy — safe to read
-    // from AgentOrchestrator's async loop with no extra fetch needed.
-    @Transactional(readOnly = true)
-    public Chat createChat(UUID requestingUserId) {
-        User user = getUserOrThrow(requestingUserId);
+    /**
+     * Builds a chat in memory only — never saved here. It's only actually
+     * persisted, together with its first exchange, in
+     * {@code ChatExchangeService#persist}, so a failed first agent turn
+     * leaves nothing behind.
+     * <p>
+     * Takes the already-resolved {@code user} directly, not just an id —
+     * the caller ({@code ChatController#createChat}) already has it from
+     * {@code UserService.resolveFromJwt}; re-fetching it here by id would
+     * just be a second, redundant read of the same row in the same request.
+     *
+     * @param user the chat's owner, already resolved
+     * @return an unsaved {@link Chat}
+     */
+    public Chat createChat(User user) {
         return new Chat(user, null);
     }
 
@@ -81,10 +79,5 @@ public class ChatService {
 
     private ChatDto toChatDto(Chat chat) {
         return new ChatDto(chat.getId(), chat.getTitle(), chat.getCreatedAt(), chat.getUpdatedAt(), chat.getLastMessageAt());
-    }
-
-    private User getUserOrThrow(UUID userId) {
-        return userRepository.findById(userId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found: " + userId));
     }
 }
