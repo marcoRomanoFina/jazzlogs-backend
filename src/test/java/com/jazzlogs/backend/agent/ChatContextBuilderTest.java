@@ -104,7 +104,7 @@ class ChatContextBuilderTest {
     void chatWithMemoryButNoRecentExchanges_includesSummaryAndHistoryWithNoConversationTurns() {
         ChatRecommendationMemory memory = new ChatRecommendationMemory(chat.getId());
         memory.updateSessionSummary("User is into late-night piano trios.");
-        memory.appendWinners(List.of(new WinnerReference(CatalogItemType.ALBUM, UUID.randomUUID(), "Waltz for Debby", "Bill Evans")), 100);
+        memory.appendWinners(List.of(new WinnerReference(CatalogItemType.ALBUM, UUID.randomUUID(), "Waltz for Debby", "Bill Evans")));
 
         when(chatExchangeRepository.findTop3ByChatIdOrderByCreatedAtDesc(chat.getId())).thenReturn(List.of());
         when(chatRecommendationMemoryRepository.findByChatId(chat.getId())).thenReturn(Optional.of(memory));
@@ -177,7 +177,7 @@ class ChatContextBuilderTest {
     @Test
     void recommendationHistoryItemWithNullPrimaryArtist_isFormattedWithoutArtistSeparator() {
         ChatRecommendationMemory memory = new ChatRecommendationMemory(chat.getId());
-        memory.appendWinners(List.of(new WinnerReference(CatalogItemType.ARTIST, UUID.randomUUID(), "Bill Evans", null)), 100);
+        memory.appendWinners(List.of(new WinnerReference(CatalogItemType.ARTIST, UUID.randomUUID(), "Bill Evans", null)));
 
         when(chatExchangeRepository.findTop3ByChatIdOrderByCreatedAtDesc(chat.getId())).thenReturn(List.of());
         when(chatRecommendationMemoryRepository.findByChatId(chat.getId())).thenReturn(Optional.of(memory));

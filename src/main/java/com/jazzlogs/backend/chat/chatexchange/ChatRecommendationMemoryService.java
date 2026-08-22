@@ -30,9 +30,6 @@ import lombok.extern.slf4j.Slf4j;
 @AllArgsConstructor
 public class ChatRecommendationMemoryService {
 
-    // High cap, truncated in-service (not SQL) — see ChatRecommendationMemory.appendWinners.
-    private static final int WINNERS_HISTORY_CAP = 100;
-
     private final ChatRecommendationMemoryRepository chatRecommendationMemoryRepository;
     private final SyncFailureRepository syncFailureRepository;
 
@@ -76,7 +73,7 @@ public class ChatRecommendationMemoryService {
             .orElseGet(() -> new ChatRecommendationMemory(chatId));
 
         if (winners != null && !winners.isEmpty()) {
-            memory.appendWinners(winners, WINNERS_HISTORY_CAP);
+            memory.appendWinners(winners);
         }
         if (updatedSessionSummary != null && !updatedSessionSummary.isBlank()) {
             memory.updateSessionSummary(updatedSessionSummary);

@@ -31,6 +31,14 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ChatRecommendationMemory {
 
+    // High cap, truncated in-service (not SQL) — see appendWinners.
+    private static final int WINNERS_HISTORY_CAP = 100;
+
+    // Defends against a model that keeps growing the summary instead of
+    // summarizing — see updateSessionSummary. ~2000 chars is generous for a
+    // few sentences of user preferences/context.
+    private static final int SESSION_SUMMARY_MAX_LENGTH = 2000;
+
     @Id
     @GeneratedValue
     private UUID id;
@@ -40,17 +48,14 @@ public class ChatRecommendationMemory {
 
     /**
      * Full-but-light history of everything recommended in the session, capped
-     * and truncated from the front (oldest first) in {@link #appendWinners} —
-     * see {@code ChatRecommendationMemoryService.WINNERS_HISTORY_CAP}. Used
-     * for "don't repeat a recommendation already shown this session".
+     * and truncated from the front (oldest first) in {@link #appendWinners}.
+     * Used for "don't repeat a recommendation already shown this session".
      */
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "winners_history")
     private List<WinnerReference> winnersHistory = new ArrayList<>();
 
-    // Free text, model-generated (AgentFinalAnswer.updatedSessionSummary),
-    // updated exchange to exchange — not reconstructible from raw rows, see
-    // ChatRecommendationMemoryService's class doc.
+    /** Model-generated free text ({@code AgentFinalAnswer.updatedSessionSummary}), replaced whole each exchange. */
     @Column(name = "session_summary", columnDefinition = "TEXT")
     private String sessionSummary;
 
@@ -65,24 +70,25 @@ public class ChatRecommendationMemory {
         this.chatId = chatId;
     }
 
-    /** Replaces the session summary outright — the model always sends the full updated text, never a delta. */
+    /** Replaces the session summary outright, keeping only the last {@link #SESSION_SUMMARY_MAX_LENGTH} characters. */
     public void updateSessionSummary(String sessionSummary) {
-        this.sessionSummary = sessionSummary;
+        this.sessionSummary = sessionSummary.length() > SESSION_SUMMARY_MAX_LENGTH
+            ? sessionSummary.substring(sessionSummary.length() - SESSION_SUMMARY_MAX_LENGTH)
+            : sessionSummary;
     }
 
     /**
      * Appends this turn's winners to the history, then truncates from the
-     * front (oldest first) down to {@code cap} — in-memory, not relying on
-     * unbounded SQL growth.
+     * front (oldest first) down to {@link #WINNERS_HISTORY_CAP} — in-memory,
+     * not relying on unbounded SQL growth.
      *
      * @param newWinners this turn's recommended items
-     * @param cap        the maximum history size to keep afterward
      */
-    public void appendWinners(List<WinnerReference> newWinners, int cap) {
+    public void appendWinners(List<WinnerReference> newWinners) {
         List<WinnerReference> combined = new ArrayList<>(winnersHistory);
         combined.addAll(newWinners);
 
-        int excess = combined.size() - cap;
+        int excess = combined.size() - WINNERS_HISTORY_CAP;
         this.winnersHistory = excess > 0 ? new ArrayList<>(combined.subList(excess, combined.size())) : combined;
     }
 

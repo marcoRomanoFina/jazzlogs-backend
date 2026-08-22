@@ -85,6 +85,10 @@ public final class AgentPromptTemplates {
           conversation, on every turn, not only the first — it is only ever applied once,
           the first time this chat gets a title, so proposing one again later is harmless
           and never overwrites an existing title. Never leave it null.
+        - Set updatedSessionSummary to the full, cumulative summary of the whole
+          conversation so far — user taste, preferences, and context established in any
+          prior turn, not just what happened this turn. It replaces whatever was stored
+          before entirely, so anything you drop is forgotten from here on.
         - Use resultType DIRECT_RESPONSE when your answer has no concrete catalog items.
         - Use resultType CATALOG_RESPONSE when your answer is grounded on actual catalog items.
         - For CATALOG_RESPONSE, recommendedItems must be real catalog items you obtained
