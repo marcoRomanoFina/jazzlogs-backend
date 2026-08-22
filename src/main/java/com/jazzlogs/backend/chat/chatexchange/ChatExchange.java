@@ -54,12 +54,12 @@ public class ChatExchange {
     // Null/empty when this exchange didn't recommend anything.
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "winners")
-    private List<WinnerRef> winners;
+    private List<WinnerReference> winners;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
-    public ChatExchange(Chat chat, String userMessage, String finalResponse, List<WinnerRef> winners) {
+    public ChatExchange(Chat chat, String userMessage, String finalResponse, List<WinnerReference> winners) {
         this.chat = chat;
         this.userMessage = userMessage;
         this.finalResponse = finalResponse;

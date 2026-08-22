@@ -17,7 +17,7 @@ import com.jazzlogs.backend.chat.CatalogItemType;
  * @param name          the catalog item's display name
  * @param primaryArtist the item's primary artist name, null when {@code type} is ARTIST
  */
-public record WinnerRef(
+public record WinnerReference(
     CatalogItemType type,
     UUID id,
     String name,

@@ -26,7 +26,7 @@ import com.jazzlogs.backend.chat.chatexchange.ChatExchange;
 import com.jazzlogs.backend.chat.chatexchange.ChatExchangeRepository;
 import com.jazzlogs.backend.chat.chatexchange.ChatRecommendationMemory;
 import com.jazzlogs.backend.chat.chatexchange.ChatRecommendationMemoryRepository;
-import com.jazzlogs.backend.chat.chatexchange.WinnerRef;
+import com.jazzlogs.backend.chat.chatexchange.WinnerReference;
 import com.jazzlogs.backend.user.User;
 
 // Pure Mockito unit tests, no Spring context: ChatContextBuilder is a pure
@@ -104,7 +104,7 @@ class ChatContextBuilderTest {
     void chatWithMemoryButNoRecentExchanges_includesSummaryAndHistoryWithNoConversationTurns() {
         ChatRecommendationMemory memory = new ChatRecommendationMemory(chat.getId());
         memory.updateSessionSummary("User is into late-night piano trios.");
-        memory.appendWinners(List.of(new WinnerRef(CatalogItemType.ALBUM, UUID.randomUUID(), "Waltz for Debby", "Bill Evans")), 100);
+        memory.appendWinners(List.of(new WinnerReference(CatalogItemType.ALBUM, UUID.randomUUID(), "Waltz for Debby", "Bill Evans")), 100);
 
         when(chatExchangeRepository.findTop3ByChatIdOrderByCreatedAtDesc(chat.getId())).thenReturn(List.of());
         when(chatRecommendationMemoryRepository.findByChatId(chat.getId())).thenReturn(Optional.of(memory));
@@ -177,7 +177,7 @@ class ChatContextBuilderTest {
     @Test
     void recommendationHistoryItemWithNullPrimaryArtist_isFormattedWithoutArtistSeparator() {
         ChatRecommendationMemory memory = new ChatRecommendationMemory(chat.getId());
-        memory.appendWinners(List.of(new WinnerRef(CatalogItemType.ARTIST, UUID.randomUUID(), "Bill Evans", null)), 100);
+        memory.appendWinners(List.of(new WinnerReference(CatalogItemType.ARTIST, UUID.randomUUID(), "Bill Evans", null)), 100);
 
         when(chatExchangeRepository.findTop3ByChatIdOrderByCreatedAtDesc(chat.getId())).thenReturn(List.of());
         when(chatRecommendationMemoryRepository.findByChatId(chat.getId())).thenReturn(Optional.of(memory));

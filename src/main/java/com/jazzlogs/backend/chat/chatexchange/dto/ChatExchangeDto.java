@@ -14,7 +14,7 @@ import java.util.UUID;
  * @param finalResponse the agent's reply
  * @param winners       items the agent recommended in this exchange, if any —
  *                      resolved fresh against the catalog, not the persisted
- *                      {@link com.jazzlogs.backend.chat.chatexchange.WinnerRef} snapshot
+ *                      {@link com.jazzlogs.backend.chat.chatexchange.WinnerReference} snapshot
  * @param createdAt     when the exchange was recorded — drives list ordering
  */
 public record ChatExchangeDto(

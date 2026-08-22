@@ -19,13 +19,12 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-// 1:1 with Chat, kept as its own table (not columns on Chat) on purpose: Chat
-// is the hot path for GET /chats and must not drag JSONB along, and the two
-// are written by different services on different timing (ChatService touches
-// chats, ChatRecommendationMemoryService touches this one after resolving an
-// exchange). chatId is a plain column, not a @ManyToOne — the memory writer
-// only ever has the id value, never needs to load Chat, and there's no
-// bidirectional nav from Chat either (see Chat.java).
+/**
+ * A chat's cross-exchange memory: the rolling recommendation history and
+ * session summary that carry forward from turn to turn, one row per chat.
+ * Kept as its own table rather than columns on {@code Chat} so the hot
+ * {@code GET /chats} path never has to drag this JSONB along.
+ */
 @Entity
 @Table(name = "chat_recommendation_memory")
 @Getter
@@ -39,16 +38,19 @@ public class ChatRecommendationMemory {
     @Column(name = "chat_id", nullable = false, unique = true)
     private UUID chatId;
 
-    // Full-but-light history of everything recommended in the session, capped
-    // and truncated from the front (oldest first) in appendWinners — see the
-    // cap constant on ChatRecommendationMemoryService. Used for "don't repeat
-    // a recommendation already shown this session".
+    /**
+     * Full-but-light history of everything recommended in the session, capped
+     * and truncated from the front (oldest first) in {@link #appendWinners} —
+     * see {@code ChatRecommendationMemoryService.WINNERS_HISTORY_CAP}. Used
+     * for "don't repeat a recommendation already shown this session".
+     */
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "winners_history")
-    private List<WinnerRef> winnersHistory = new ArrayList<>();
+    private List<WinnerReference> winnersHistory = new ArrayList<>();
 
-    // Free text, updated exchange to exchange. No generation logic yet — the
-    // column is ready, nothing writes to it until the agent step exists.
+    // Free text, model-generated (AgentFinalAnswer.updatedSessionSummary),
+    // updated exchange to exchange — not reconstructible from raw rows, see
+    // ChatRecommendationMemoryService's class doc.
     @Column(name = "session_summary", columnDefinition = "TEXT")
     private String sessionSummary;
 
@@ -58,22 +60,33 @@ public class ChatRecommendationMemory {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    /** Starts a brand-new, empty memory row for a chat that doesn't have one yet. */
     public ChatRecommendationMemory(UUID chatId) {
         this.chatId = chatId;
     }
 
+    /** Replaces the session summary outright — the model always sends the full updated text, never a delta. */
     public void updateSessionSummary(String sessionSummary) {
         this.sessionSummary = sessionSummary;
     }
 
-    public void appendWinners(List<WinnerRef> newWinners, int cap) {
-        List<WinnerRef> combined = new ArrayList<>(winnersHistory);
+    /**
+     * Appends this turn's winners to the history, then truncates from the
+     * front (oldest first) down to {@code cap} — in-memory, not relying on
+     * unbounded SQL growth.
+     *
+     * @param newWinners this turn's recommended items
+     * @param cap        the maximum history size to keep afterward
+     */
+    public void appendWinners(List<WinnerReference> newWinners, int cap) {
+        List<WinnerReference> combined = new ArrayList<>(winnersHistory);
         combined.addAll(newWinners);
 
         int excess = combined.size() - cap;
         this.winnersHistory = excess > 0 ? new ArrayList<>(combined.subList(excess, combined.size())) : combined;
     }
 
+    /** Stamps both timestamps on first insert. */
     @PrePersist
     void onCreate() {
         Instant now = Instant.now();
@@ -81,6 +94,7 @@ public class ChatRecommendationMemory {
         updatedAt = now;
     }
 
+    /** Refreshes {@code updatedAt} on every subsequent save. */
     @PreUpdate
     void onUpdate() {
         updatedAt = Instant.now();

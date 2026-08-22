@@ -22,7 +22,7 @@ import com.jazzlogs.backend.chat.chatexchange.ChatExchange;
 import com.jazzlogs.backend.chat.chatexchange.ChatExchangeRepository;
 import com.jazzlogs.backend.chat.chatexchange.ChatRecommendationMemory;
 import com.jazzlogs.backend.chat.chatexchange.ChatRecommendationMemoryRepository;
-import com.jazzlogs.backend.chat.chatexchange.WinnerRef;
+import com.jazzlogs.backend.chat.chatexchange.WinnerReference;
 
 import lombok.AllArgsConstructor;
 
@@ -168,7 +168,7 @@ public class ChatContextBuilder {
 
     /** Renders prior recommendations to avoid repeating, or a placeholder when there's none. */
     private String buildRecommendationHistorySection(Optional<ChatRecommendationMemory> memory) {
-        List<WinnerRef> history = memory.map(ChatRecommendationMemory::getWinnersHistory).orElse(List.of());
+        List<WinnerReference> history = memory.map(ChatRecommendationMemory::getWinnersHistory).orElse(List.of());
 
         if (history.isEmpty()) {
             return "RECOMMENDATION HISTORY\n(none yet)";
@@ -179,7 +179,7 @@ public class ChatContextBuilder {
     }
 
     /** One "- name" or "- name — artist" line; omits the artist separator when there isn't one. */
-    private String formatWinnerLine(WinnerRef winner) {
+    private String formatWinnerLine(WinnerReference winner) {
         if (winner.primaryArtist() == null) {
             return "- \"" + winner.name() + "\"";
         }
