@@ -15,6 +15,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import tools.jackson.databind.json.JsonMapper;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -40,7 +42,7 @@ class EditorialContentToolTest {
 
     @BeforeEach
     void setUp() {
-        tool = new EditorialContentTool(editorialBlockRepository);
+        tool = new EditorialContentTool(editorialBlockRepository, new JsonMapper());
     }
 
     @Test

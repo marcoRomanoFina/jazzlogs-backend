@@ -7,8 +7,8 @@ import java.util.UUID;
 
 import org.springframework.stereotype.Component;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 
 import com.jazzlogs.backend.agent.ToolCallRequest;
 import com.jazzlogs.backend.agent.ToolExecutionResult;
@@ -39,12 +39,10 @@ public class EditorialContentTool extends JazzTool {
         "required", List.of("editorialId")
     );
 
-    // Not Spring-managed — same reasoning as AgentOrchestrator.OBJECT_MAPPER.
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-
+    private final JsonMapper objectMapper;
     private final EditorialBlockRepository editorialBlockRepository;
 
-    public EditorialContentTool(EditorialBlockRepository editorialBlockRepository) {
+    public EditorialContentTool(EditorialBlockRepository editorialBlockRepository, JsonMapper objectMapper) {
         super(
             NAME,
             "Fetch the full or filtered text content of an editorial's blocks, given an editorialId. "
@@ -53,9 +51,11 @@ public class EditorialContentTool extends JazzTool {
                 + "The only source for a real editorialId is RESOLVE_JAZZLOGS_ENTITY's editorialId field "
                 + "— call that tool with the entity's name if you don't already have one from earlier in "
                 + "this conversation. Use this to get real substance to write from before answering — "
-                + "never invent editorial content, and never guess or reuse an unrelated id here."
+                + "never invent editorial content, and never guess or reuse an unrelated id here.",
+            "Leyendo la editorial"
         );
         this.editorialBlockRepository = editorialBlockRepository;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -80,8 +80,8 @@ public class EditorialContentTool extends JazzTool {
 
     private Args parseArgs(String argumentsJson) {
         try {
-            return OBJECT_MAPPER.readValue(argumentsJson, Args.class);
-        } catch (JsonProcessingException e) {
+            return objectMapper.readValue(argumentsJson, Args.class);
+        } catch (JacksonException e) {
             throw new IllegalArgumentException(NAME + " arguments were not valid JSON: " + e.getMessage(), e);
         }
     }
@@ -125,8 +125,8 @@ public class EditorialContentTool extends JazzTool {
 
     private String writeJson(Output output) {
         try {
-            return OBJECT_MAPPER.writeValueAsString(output);
-        } catch (JsonProcessingException e) {
+            return objectMapper.writeValueAsString(output);
+        } catch (JacksonException e) {
             throw new IllegalStateException("Failed to serialize " + NAME + " output", e);
         }
     }

@@ -17,6 +17,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import tools.jackson.databind.json.JsonMapper;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -50,7 +52,7 @@ class GraphFilterToolTest {
 
     @BeforeEach
     void setUp() {
-        tool = new GraphFilterTool(graphFilterService);
+        tool = new GraphFilterTool(graphFilterService, new JsonMapper());
     }
 
     @Test

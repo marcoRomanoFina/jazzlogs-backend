@@ -7,8 +7,8 @@ import java.util.UUID;
 
 import org.springframework.stereotype.Component;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 
 import com.jazzlogs.backend.agent.CatalogEntityResolver;
 import com.jazzlogs.backend.agent.ToolCallRequest;
@@ -50,18 +50,20 @@ public class ResolveJazzlogsEntityTool extends JazzTool {
         "required", List.of("entityType", "query")
     );
 
-    // Not Spring-managed — same reasoning as AgentOrchestrator.OBJECT_MAPPER.
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-
+    private final JsonMapper objectMapper;
     private final Map<CatalogItemType, CatalogEntityResolver> resolversByType;
 
-    public ResolveJazzlogsEntityTool(AlbumRepository albumRepository, ArtistRepository artistRepository, TrackRepository trackRepository) {
+    public ResolveJazzlogsEntityTool(
+        AlbumRepository albumRepository, ArtistRepository artistRepository, TrackRepository trackRepository, JsonMapper objectMapper
+    ) {
         super(
             NAME,
             "Resolve a free-text album, track, or artist name the user mentioned into ranked JazzLogs "
                 + "catalog id candidates. Use this whenever you need a concrete catalog id and don't "
-                + "already have one from an earlier tool result in this conversation."
+                + "already have one from an earlier tool result in this conversation.",
+            "Identificando el álbum/artista"
         );
+        this.objectMapper = objectMapper;
         this.resolversByType = Map.of(
             CatalogItemType.ALBUM, albumRepository,
             CatalogItemType.ARTIST, artistRepository,
@@ -93,8 +95,8 @@ public class ResolveJazzlogsEntityTool extends JazzTool {
 
     private Args parseArgs(String argumentsJson) {
         try {
-            return OBJECT_MAPPER.readValue(argumentsJson, Args.class);
-        } catch (JsonProcessingException e) {
+            return objectMapper.readValue(argumentsJson, Args.class);
+        } catch (JacksonException e) {
             throw new IllegalArgumentException(NAME + " arguments were not valid JSON: " + e.getMessage(), e);
         }
     }
@@ -148,8 +150,8 @@ public class ResolveJazzlogsEntityTool extends JazzTool {
 
     private String writeJson(Output output) {
         try {
-            return OBJECT_MAPPER.writeValueAsString(output);
-        } catch (JsonProcessingException e) {
+            return objectMapper.writeValueAsString(output);
+        } catch (JacksonException e) {
             throw new IllegalStateException("Failed to serialize " + NAME + " output", e);
         }
     }
