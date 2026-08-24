@@ -1,11 +1,13 @@
 package com.jazzlogs.backend.chat.chatexchange;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
@@ -39,10 +41,11 @@ import com.jazzlogs.backend.track.TrackRepository;
 import com.jazzlogs.backend.user.User;
 
 // The one place the model's final-answer ids are checked against reality —
-// AgentOrchestrator just forwards whatever the model said (see
-// AgentOrchestratorTest, which mocks this class entirely). These tests are
-// the real coverage for "a hallucinated/malformed id gets dropped" and
-// "DIRECT_RESPONSE has null winners, not an empty list".
+// JazzlogsAgent just forwards whatever the model said (see
+// JazzlogsAgentTest, which mocks this class entirely). These tests are the
+// real coverage for "a partially hallucinated id gets dropped, but a
+// totally hallucinated set rejects the turn" and "DIRECT_RESPONSE has null
+// winners, not an empty list".
 @ExtendWith(MockitoExtension.class)
 class ChatExchangeServiceTest {
 
@@ -107,8 +110,8 @@ class ChatExchangeServiceTest {
         ChatExchangeDto result = service.persist(
             chat, "recommend something mellow", "here you go",
             List.of(
-                new CatalogRef(CatalogItemType.ALBUM, albumId.toString()),
-                new CatalogRef(CatalogItemType.ALBUM, "hallucinated-id-the-model-made-up")
+                new CatalogReference(CatalogItemType.ALBUM, albumId.toString()),
+                new CatalogReference(CatalogItemType.ALBUM, "hallucinated-id-the-model-made-up")
             ),
             null, null
         );
@@ -134,7 +137,7 @@ class ChatExchangeServiceTest {
 
         ChatExchangeDto result = service.persist(
             chat, "recommend a track", "here you go",
-            List.of(new CatalogRef(CatalogItemType.TRACK, trackId.toString())),
+            List.of(new CatalogReference(CatalogItemType.TRACK, trackId.toString())),
             null, null
         );
 
@@ -156,24 +159,23 @@ class ChatExchangeServiceTest {
     }
 
     @Test
-    void malformedId_isDroppedWithoutThrowing() {
-        stubSaveAssignsIdAndCreatedAt();
+    void allIdsHallucinated_rejectsTheWholeTurn_ratherThanPersistingEmptyWinners() {
         when(albumRepository.findAllByIdWithArtist(anyList())).thenReturn(List.of());
 
-        ChatExchangeDto result = service.persist(
+        assertThatThrownBy(() -> service.persist(
             chat, "recommend something", "here you go",
-            List.of(new CatalogRef(CatalogItemType.ALBUM, "not-a-uuid")),
+            List.of(new CatalogReference(CatalogItemType.ALBUM, "not-a-uuid")),
             null, null
-        );
+        )).isInstanceOf(IllegalStateException.class);
 
-        assertThat(result.winners()).isEmpty();
+        verifyNoInteractions(chatExchangeRepository, chatRecommendationMemoryService);
     }
 
     // --- getChatExchanges ---
     //
     // Coverage for the read side of the flow: ownership is delegated to
     // ChatService (never re-checked here), and winners are re-resolved fresh
-    // against the catalog from the persisted WinnerRef snapshot — never
+    // against the catalog from the persisted WinnerReference snapshot — never
     // trusted as-is, same "don't trust what's already stored" posture as
     // resolveWinners takes with the model's raw ids above.
 
@@ -190,7 +192,7 @@ class ChatExchangeServiceTest {
         ReflectionTestUtils.setField(album, "id", albumId);
 
         // Deliberately stale — a fresh lookup must win over this snapshot.
-        WinnerRef staleRef = new WinnerRef(CatalogItemType.ALBUM, albumId, "Kind of Blue", "Miles Davis");
+        WinnerReference staleRef = new WinnerReference(CatalogItemType.ALBUM, albumId, "Kind of Blue", "Miles Davis");
         ChatExchange exchange = newExchange(chat, "recommend something mellow", "here you go", List.of(staleRef));
 
         when(chatService.getOwnedChat(chatId, userId)).thenReturn(chat);
@@ -207,7 +209,7 @@ class ChatExchangeServiceTest {
         assertThat(dto.winners()).hasSize(1);
         AlbumWinnerCard card = (AlbumWinnerCard) dto.winners().get(0);
         assertThat(card.id()).isEqualTo(albumId);
-        // Re-resolved name, not the stale WinnerRef.name snapshot.
+        // Re-resolved name, not the stale WinnerReference.name snapshot.
         assertThat(card.name()).isEqualTo("Kind of Blue (Remastered)");
     }
 
@@ -226,10 +228,10 @@ class ChatExchangeServiceTest {
         ReflectionTestUtils.setField(secondAlbum, "id", secondAlbumId);
 
         ChatExchange firstExchange = newExchange(
-            chat, "first", "first reply", List.of(new WinnerRef(CatalogItemType.ALBUM, firstAlbumId, "Waltz for Debby", "Bill Evans"))
+            chat, "first", "first reply", List.of(new WinnerReference(CatalogItemType.ALBUM, firstAlbumId, "Waltz for Debby", "Bill Evans"))
         );
         ChatExchange secondExchange = newExchange(
-            chat, "second", "second reply", List.of(new WinnerRef(CatalogItemType.ALBUM, secondAlbumId, "Sunday at the Village Vanguard", "Bill Evans"))
+            chat, "second", "second reply", List.of(new WinnerReference(CatalogItemType.ALBUM, secondAlbumId, "Sunday at the Village Vanguard", "Bill Evans"))
         );
 
         when(chatService.getOwnedChat(any(), any())).thenReturn(chat);
@@ -250,7 +252,7 @@ class ChatExchangeServiceTest {
         Pageable pageable = PageRequest.of(0, 10);
         ReflectionTestUtils.setField(chat, "id", chatId);
 
-        WinnerRef refToDeletedAlbum = new WinnerRef(CatalogItemType.ALBUM, UUID.randomUUID(), "Some Album", "Some Artist");
+        WinnerReference refToDeletedAlbum = new WinnerReference(CatalogItemType.ALBUM, UUID.randomUUID(), "Some Album", "Some Artist");
         ChatExchange exchange = newExchange(chat, "recommend something", "here you go", List.of(refToDeletedAlbum));
 
         when(chatService.getOwnedChat(any(), any())).thenReturn(chat);
@@ -287,7 +289,7 @@ class ChatExchangeServiceTest {
     // Builds an already-persisted ChatExchange — id/createdAt are normally
     // stamped by @GeneratedValue/@PrePersist inside a real persistence
     // context, which findByChatId's mocked return value never goes through.
-    private static ChatExchange newExchange(Chat chat, String userMessage, String finalResponse, List<WinnerRef> winners) {
+    private static ChatExchange newExchange(Chat chat, String userMessage, String finalResponse, List<WinnerReference> winners) {
         ChatExchange exchange = new ChatExchange(chat, userMessage, finalResponse, winners);
         ReflectionTestUtils.setField(exchange, "id", UUID.randomUUID());
         ReflectionTestUtils.setField(exchange, "createdAt", Instant.now());

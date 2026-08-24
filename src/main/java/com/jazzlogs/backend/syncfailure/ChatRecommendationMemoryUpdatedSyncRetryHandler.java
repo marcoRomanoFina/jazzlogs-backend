@@ -7,7 +7,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 import com.jazzlogs.backend.chat.chatexchange.ChatRecommendationMemoryService;
-import com.jazzlogs.backend.chat.chatexchange.WinnerRef;
+import com.jazzlogs.backend.chat.chatexchange.WinnerReference;
 
 import lombok.AllArgsConstructor;
 
@@ -20,7 +20,7 @@ public class ChatRecommendationMemoryUpdatedSyncRetryHandler implements SyncRetr
     @Override
     public void retry(Map<String, Object> payload) {
         UUID chatId = UUID.fromString((String) payload.get("chatId"));
-        List<WinnerRef> winners = ChatRecommendationMemoryService.winnersFromPayload(payload);
+        List<WinnerReference> winners = ChatRecommendationMemoryService.winnersFromPayload(payload);
         String updatedSessionSummary = ChatRecommendationMemoryService.summaryFromPayload(payload);
         chatRecommendationMemoryService.recordMemoryUpdate(chatId, winners, updatedSessionSummary);
     }

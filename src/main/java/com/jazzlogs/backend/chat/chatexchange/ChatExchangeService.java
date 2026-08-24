@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
 
@@ -30,15 +31,13 @@ import com.jazzlogs.backend.track.TrackRepository;
 
 import lombok.AllArgsConstructor;
 
-// The only place a chat_exchange ever gets created — called once by
-// AgentOrchestrator right after the model closes a turn with its final
-// answer. There's no other writer, but reads (getChatExchanges,
-// for GET /chats/{chatId}/exchanges) live here too — exchanges are always a
-// ChatExchangeRepository concern, whether being written or listed.
-//
-// persist() is also the only place a brand-new chat's row itself gets
-// created — see ChatService.createChat, which deliberately never saves —
-// so a chat and its first exchange are born in the same transaction, atomically.
+/**
+ * The only place a {@code chat_exchange} gets created — called once by
+ * {@code JazzlogsAgent} after the model closes a turn. Also the only place a
+ * brand-new chat's row gets created (see {@code ChatService.createChat},
+ * which deliberately never saves) — a chat and its first exchange are born
+ * atomically, in the same transaction.
+ */
 @Service
 @AllArgsConstructor
 public class ChatExchangeService {
@@ -51,100 +50,107 @@ public class ChatExchangeService {
     private final TrackRepository trackRepository;
     private final ArtistRepository artistRepository;
 
+    /**
+     * Persists one exchange: resolves the model's raw catalog references
+     * against the real catalog, saves the chat (creating it, if brand-new)
+     * and the exchange, then fires the recommendation-memory update.
+     *
+     * @param chat                  the chat this exchange belongs to
+     * @param userMessage           the user's message this turn
+     * @param assistantText         the model's conversational reply
+     * @param recommendedItems      the model's raw catalog references; null for a DIRECT_RESPONSE
+     * @param suggestedChatTitle    the model's proposed title; applied only if the chat has none yet
+     * @param updatedSessionSummary the model's updated session summary
+     * @return the persisted exchange, with winners resolved to display-ready cards
+     */
     @Transactional
     public ChatExchangeDto persist(
         Chat chat, String userMessage, String assistantText,
-        List<CatalogRef> recommendedItems, String suggestedChatTitle, String updatedSessionSummary
+        List<CatalogReference> recommendedItems, String suggestedChatTitle, String updatedSessionSummary
     ) {
-        List<ResolvedWinner> resolvedWinners = resolveWinners(recommendedItems);
-        List<WinnerRef> winners = toRefs(resolvedWinners);
+        Optional<List<ResolvedWinner>> resolvedWinners = resolveWinners(recommendedItems);
+        Optional<List<WinnerReference>> winners = toRefs(resolvedWinners);
 
-        // First suggestion wins — a chat gets titled once, early on; later
-        // exchanges suggesting a new title don't churn an already-set one.
-        // Applied before the save below so a brand-new chat's very first
-        // INSERT already carries it, instead of needing a second write.
+        // First suggestion wins — never overwrites an already-titled chat.
         if (chat.getTitle() == null && suggestedChatTitle != null && !suggestedChatTitle.isBlank()) {
             chat.updateTitle(suggestedChatTitle);
         }
-        // For a brand-new chat (see ChatService.createChat) this is the
-        // INSERT that actually assigns its id — has to happen before the
-        // ChatExchange below, which references it via a NOT NULL FK. For a
-        // chat that already existed (continuing a conversation), this is a
-        // harmless re-attach of an already-managed entity, not a real write.
+
+        // Runs here, inside this same @Transactional method, rather than in
+        // ChatService.createChat (which deliberately never saves) for two
+        // reasons: a brand-new chat needs its id assigned before the
+        // ChatExchange below, which references it via a NOT NULL FK; and it
+        // shares the exact transaction as that exchange, so if anything
+        // after this fails, both roll back together — no orphaned chat.
         chatRepository.save(chat);
 
-        ChatExchange saved = chatExchangeRepository.save(new ChatExchange(chat, userMessage, assistantText, winners));
+        ChatExchange saved = chatExchangeRepository.save(new ChatExchange(chat, userMessage, assistantText, winners.orElse(null)));
         chat.recordExchangeAt(saved.getCreatedAt());
         chatRepository.save(chat);
 
-        boolean hasWinners = winners != null && !winners.isEmpty();
+        boolean hasWinners = winners.map(w -> !w.isEmpty()).orElse(false);
         boolean hasSummary = updatedSessionSummary != null && !updatedSessionSummary.isBlank();
         if (hasWinners || hasSummary) {
-            chatRecommendationMemoryService.syncMemoryUpdate(chat.getId(), winners, updatedSessionSummary);
+            chatRecommendationMemoryService.syncMemoryUpdate(chat.getId(), winners.orElse(null), updatedSessionSummary);
         }
 
-        return toChatExchangeDto(saved, toCards(resolvedWinners));
+        return toChatExchangeDto(saved, toCards(resolvedWinners).orElse(null));
     }
 
-    // --- persist flow ---
-    //
-    // Everything below, down to the getChatExchanges section, exists only to
-    // support persist(): turning the model's raw CatalogRefs into validated
-    // WinnerRefs (what gets saved) and WinnerCards (what this same call
-    // returns to the caller) in one pass over the catalog.
-
     /**
-     * Bundles a persisted-shape WinnerRef with its display-ready WinnerCard —
+     * Bundles a persisted-shape WinnerReference with its display-ready WinnerCard —
      * both built from the exact same Album/Track/Artist row, resolved once.
      *
      * @param ref  the persisted shape, saved onto the ChatExchange
      * @param card the display-ready shape, returned to the caller
      */
-    private record ResolvedWinner(WinnerRef ref, WinnerCard card) {
+    private record ResolvedWinner(WinnerReference ref, WinnerCard card) {
     }
 
     /**
      * The only place the model's ids are checked against reality: refs is
      * whatever the model's final answer echoed back, still possibly
      * hallucinated (a made-up id, a malformed UUID, a stale id from an
-     * unrelated turn).
-     * Anything that doesn't resolve to a real row is silently dropped, never
-     * surfaced as an error.
+     * unrelated turn). A ref that doesn't resolve is silently dropped — but
+     * if refs was non-empty and NONE of them resolved, the whole turn is
+     * rejected instead: an answer that talks about specific recommendations
+     * while returning zero of them is worse than a clean failure.
      *
      * @param refs the model's raw catalog references; null means "don't
-     *             touch the catalog at all" — AgentOrchestrator passes null
+     *             touch the catalog at all" — JazzlogsAgent passes null
      *             exactly when the model's resultType was DIRECT_RESPONSE
      * @return the refs that resolved to a real row, each paired with its
-     *         display-ready card; null iff refs was null
+     *         display-ready card; absent iff refs was null
+     * @throws IllegalStateException if refs was non-empty and none resolved
      */
-    private List<ResolvedWinner> resolveWinners(List<CatalogRef> refs) {
+    private Optional<List<ResolvedWinner>> resolveWinners(List<CatalogReference> refs) {
         if (refs == null) {
-            return null;
+            return Optional.empty();
         }
         if (refs.isEmpty()) {
-            return List.of();
+            return Optional.of(List.of());
         }
 
-        // toWinnerRef/toWinnerCard below reach through a lazy artist
-        // association (Track also through a lazy album first) — the plain
-        // findAllById(...) these used to call would trigger up to 2 extra
-        // per-row SELECTs per item instead of one batched query per type.
-        // See AlbumRepository.findAllByIdWithArtist/
-        // TrackRepository.findAllByIdWithAlbumAndArtist.
+        // Up to 3 queries — one batched call per entity type, never one per ref.
         Map<UUID, ResolvedWinner> resolved = new HashMap<>();
         albumRepository.findAllByIdWithArtist(idsOfType(refs, CatalogItemType.ALBUM))
-            .forEach(album -> resolved.put(album.getId(), new ResolvedWinner(toWinnerRef(album), toWinnerCard(album))));
+            .forEach(album -> resolved.put(album.getId(), new ResolvedWinner(toWinnerReference(album), toWinnerCard(album))));
         trackRepository.findAllByIdWithAlbumAndArtist(idsOfType(refs, CatalogItemType.TRACK))
-            .forEach(track -> resolved.put(track.getId(), new ResolvedWinner(toWinnerRef(track), toWinnerCard(track))));
+            .forEach(track -> resolved.put(track.getId(), new ResolvedWinner(toWinnerReference(track), toWinnerCard(track))));
         artistRepository.findAllById(idsOfType(refs, CatalogItemType.ARTIST))
-            .forEach(artist -> resolved.put(artist.getId(), new ResolvedWinner(toWinnerRef(artist), toWinnerCard(artist))));
+            .forEach(artist -> resolved.put(artist.getId(), new ResolvedWinner(toWinnerReference(artist), toWinnerCard(artist))));
 
-        return refs.stream()
-            .map(ref -> parseUuid(ref.id()))
-            .filter(Objects::nonNull)
+        // First filter invalid ids, then filter invalid references.
+        List<ResolvedWinner> result = refs.stream()
+            .flatMap(ref -> parseUuid(ref.id()).stream())
             .map(resolved::get)
             .filter(Objects::nonNull)
             .toList();
+
+        if (result.isEmpty()) {
+            throw new IllegalStateException("None of the model's " + refs.size() + " recommended ids resolved to a real catalog row");
+        }
+        return Optional.of(result);
     }
 
     /**
@@ -152,10 +158,10 @@ public class ChatExchangeService {
      * onto the ChatExchange.
      *
      * @param resolvedWinners the winners resolved by resolveWinners
-     * @return the WinnerRef of each; null iff resolvedWinners was null
+     * @return the WinnerReference of each; absent iff resolvedWinners is absent
      */
-    private static List<WinnerRef> toRefs(List<ResolvedWinner> resolvedWinners) {
-        return resolvedWinners == null ? null : resolvedWinners.stream().map(ResolvedWinner::ref).toList();
+    private static Optional<List<WinnerReference>> toRefs(Optional<List<ResolvedWinner>> resolvedWinners) {
+        return resolvedWinners.map(winners -> winners.stream().map(ResolvedWinner::ref).toList());
     }
 
     /**
@@ -163,10 +169,10 @@ public class ChatExchangeService {
      * persist()'s own return value.
      *
      * @param resolvedWinners the winners resolved by resolveWinners
-     * @return the WinnerCard of each; null iff resolvedWinners was null
+     * @return the WinnerCard of each; absent iff resolvedWinners is absent
      */
-    private static List<WinnerCard> toCards(List<ResolvedWinner> resolvedWinners) {
-        return resolvedWinners == null ? null : resolvedWinners.stream().map(ResolvedWinner::card).toList();
+    private static Optional<List<WinnerCard>> toCards(Optional<List<ResolvedWinner>> resolvedWinners) {
+        return resolvedWinners.map(winners -> winners.stream().map(ResolvedWinner::card).toList());
     }
 
     /**
@@ -178,11 +184,10 @@ public class ChatExchangeService {
      * @return the parsed ids of only the refs matching {@code type}; a ref
      *         whose id isn't a valid UUID is dropped, not surfaced as an error
      */
-    private static List<UUID> idsOfType(List<CatalogRef> refs, CatalogItemType type) {
+    private static List<UUID> idsOfType(List<CatalogReference> refs, CatalogItemType type) {
         return refs.stream()
             .filter(ref -> ref.type() == type)
-            .map(ref -> parseUuid(ref.id()))
-            .filter(Objects::nonNull)
+            .flatMap(ref -> parseUuid(ref.id()).stream())
             .toList();
     }
 
@@ -191,13 +196,13 @@ public class ChatExchangeService {
      * actually be a UUID.
      *
      * @param raw the candidate id, as echoed back by the model
-     * @return the parsed UUID, or null if raw isn't a valid UUID
+     * @return the parsed UUID, or empty if raw isn't a valid UUID
      */
-    private static UUID parseUuid(String raw) {
+    private static Optional<UUID> parseUuid(String raw) {
         try {
-            return UUID.fromString(raw);
+            return Optional.of(UUID.fromString(raw));
         } catch (IllegalArgumentException e) {
-            return null;
+            return Optional.empty();
         }
     }
 
@@ -205,30 +210,30 @@ public class ChatExchangeService {
      * Builds the persisted shape for a resolved album.
      *
      * @param album the resolved catalog row
-     * @return the WinnerRef to save onto the ChatExchange
+     * @return the WinnerReference to save onto the ChatExchange
      */
-    private static WinnerRef toWinnerRef(Album album) {
-        return new WinnerRef(CatalogItemType.ALBUM, album.getId(), album.getName(), album.getArtist().getName());
+    private static WinnerReference toWinnerReference(Album album) {
+        return new WinnerReference(CatalogItemType.ALBUM, album.getId(), album.getName(), album.getArtist().getName());
     }
 
     /**
      * Builds the persisted shape for a resolved track.
      *
      * @param track the resolved catalog row
-     * @return the WinnerRef to save onto the ChatExchange
+     * @return the WinnerReference to save onto the ChatExchange
      */
-    private static WinnerRef toWinnerRef(Track track) {
-        return new WinnerRef(CatalogItemType.TRACK, track.getId(), track.getName(), track.getAlbum().getArtist().getName());
+    private static WinnerReference toWinnerReference(Track track) {
+        return new WinnerReference(CatalogItemType.TRACK, track.getId(), track.getName(), track.getAlbum().getArtist().getName());
     }
 
     /**
      * Builds the persisted shape for a resolved artist.
      *
      * @param artist the resolved catalog row
-     * @return the WinnerRef to save onto the ChatExchange
+     * @return the WinnerReference to save onto the ChatExchange
      */
-    private static WinnerRef toWinnerRef(Artist artist) {
-        return new WinnerRef(CatalogItemType.ARTIST, artist.getId(), artist.getName(), null);
+    private static WinnerReference toWinnerReference(Artist artist) {
+        return new WinnerReference(CatalogItemType.ARTIST, artist.getId(), artist.getName(), null);
     }
 
     /**
@@ -249,29 +254,24 @@ public class ChatExchangeService {
         Chat chat = chatService.getOwnedChat(chatId, requestingUserId);
         Page<ChatExchange> page = chatExchangeRepository.findByChatId(chat.getId(), pageable);
 
-        // Persisted exchanges only carry WinnerRef (id + a name snapshot) —
+        // Persisted exchanges only carry WinnerReference (id + a name snapshot) —
         // re-resolve the whole page's worth of winners against the current
         // catalog in one batch per type, instead of one query per exchange.
         Map<UUID, WinnerCard> cardsById = resolveWinnerCards(page.getContent());
-        return page.map(exchange -> toChatExchangeDto(exchange, toCards(exchange.getWinners(), cardsById)));
+        return page.map(exchange -> toChatExchangeDto(exchange, toCards(exchange.getWinners(), cardsById).orElse(null)));
     }
-
-    // --- getChatExchanges flow ---
-    //
-    // Everything below exists only to support getChatExchanges(): re-deriving
-    // display-ready WinnerCards for a page of already-persisted WinnerRefs.
 
     /**
      * Same batching as resolveWinners, but starting from already-persisted
-     * WinnerRefs
-     * 
+     * WinnerReferences.
+     *
      * @param exchanges the page's exchanges whose winners need cards
      * @return display-ready cards keyed by entity id; a ref whose entity was
      *         deleted since simply has no entry here and gets dropped by
-     *         toCards below.
+     *         toCards below
      */
     private Map<UUID, WinnerCard> resolveWinnerCards(List<ChatExchange> exchanges) {
-        List<WinnerRef> allWinners = exchanges.stream()
+        List<WinnerReference> allWinners = exchanges.stream()
             .flatMap(exchange -> exchange.getWinners() == null ? Stream.empty() : exchange.getWinners().stream())
             .toList();
         if (allWinners.isEmpty()) {
@@ -293,15 +293,15 @@ public class ChatExchangeService {
      *
      * @param winners   an exchange's persisted winner refs
      * @param cardsById cards resolved by resolveWinnerCards, keyed by entity id
-     * @return the card for each ref that still resolves; null iff winners
+     * @return the card for each ref that still resolves; absent iff winners
      *         was null, and a ref with no matching card (its entity was
      *         deleted since) is silently dropped rather than kept as null
      */
-    private static List<WinnerCard> toCards(List<WinnerRef> winners, Map<UUID, WinnerCard> cardsById) {
+    private static Optional<List<WinnerCard>> toCards(List<WinnerReference> winners, Map<UUID, WinnerCard> cardsById) {
         if (winners == null) {
-            return null;
+            return Optional.empty();
         }
-        return winners.stream().map(ref -> cardsById.get(ref.id())).filter(Objects::nonNull).toList();
+        return Optional.of(winners.stream().map(ref -> cardsById.get(ref.id())).filter(Objects::nonNull).toList());
     }
 
     /**
@@ -312,14 +312,12 @@ public class ChatExchangeService {
      * @param type    the entity type to keep
      * @return the ids of only the refs matching {@code type}
      */
-    private static List<UUID> winnerIdsOfType(List<WinnerRef> winners, CatalogItemType type) {
+    private static List<UUID> winnerIdsOfType(List<WinnerReference> winners, CatalogItemType type) {
         return winners.stream()
             .filter(winner -> winner.type() == type)
-            .map(WinnerRef::id)
+            .map(WinnerReference::id)
             .toList();
     }
-
-    // --- shared by both flows ---
 
     /**
      * Assembles the response shape for one exchange, given its winners
