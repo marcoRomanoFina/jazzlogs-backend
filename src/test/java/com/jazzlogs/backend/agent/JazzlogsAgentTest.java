@@ -187,6 +187,32 @@ class JazzlogsAgentTest {
     }
 
     @Test
+    void toolRejectsInvalidArguments_becomesAFailedResult_insteadOfFailingTheExchange() throws Exception {
+        ToolCallRequest badCall = new ToolCallRequest("call_1", "SEMANTIC_CATALOG_SEARCH", "{\"entityType\":\"NOT_REAL\"}");
+        Step toolTurn = new Step("resp_1", "", List.of(badCall));
+
+        String finalJson = "{\"resultType\":\"DIRECT_RESPONSE\",\"answerText\":\"done\",\"recommendedItems\":[],"
+            + "\"suggestedChatTitle\":null,\"updatedSessionSummary\":null}";
+        Step finalTurn = new Step("resp_2", finalJson, List.of());
+
+        when(streamClient.streamTurn(any(), isNull(), anyBoolean())).thenReturn(toolTurn);
+        when(streamClient.streamTurn(any(), eq("resp_1"), anyBoolean())).thenReturn(finalTurn);
+        when(searchTool.execute(eq(badCall), any())).thenThrow(new IllegalArgumentException("entityType must be one of ALBUM, TRACK, ARTIST"));
+        when(chatExchangeService.persist(any(), any(), any(), any(), any(), any())).thenReturn(stubDto());
+
+        agent.run(sink, chat, "find me something", null);
+
+        verify(chatExchangeService).persist(any(), any(), any(), any(), any(), any());
+        assertThat(sink.eventTypes()).containsExactly(
+            AgentEvent.RunStarted.class,
+            AgentEvent.ToolCallStarted.class, AgentEvent.ToolCallFinished.class,
+            AgentEvent.RunFinished.class
+        );
+        AgentEvent.ToolCallFinished finished = (AgentEvent.ToolCallFinished) sink.events.get(2);
+        assertThat(finished.success()).isFalse();
+    }
+
+    @Test
     void lastIteration_forcesAFinalAnswer_whenModelDoesNotConverge() throws Exception {
         ReflectionTestUtils.setField(agent, "maxIterations", 2);
 

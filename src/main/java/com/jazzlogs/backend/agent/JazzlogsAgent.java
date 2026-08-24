@@ -23,15 +23,12 @@ import com.jazzlogs.backend.chat.chatexchange.CatalogReference;
 import com.jazzlogs.backend.chat.chatexchange.ChatExchangeService;
 import com.jazzlogs.backend.chat.chatexchange.dto.ChatExchangeDto;
 
-import lombok.extern.slf4j.Slf4j;
-
 /**
  * The ReAct loop itself: given a chat and the user's new message, repeatedly
  * calls the model, dispatches whatever tool calls it requests, and reports
  * every step through {@link EventSink} until the model closes with a final
  * answer.
  */
-@Slf4j
 @Service
 public class JazzlogsAgent implements Agent {
 
@@ -85,7 +82,6 @@ public class JazzlogsAgent implements Agent {
      */
     @Override
     public void run(EventSink sink, Chat chat, String userMessage, String timezone) throws IOException {
-        log.info("[chat={}] exchange started, userMessage=\"{}\"", chat.getId(), userMessage);
         sink.emit(new AgentEvent.RunStarted(RUN_STARTED_LABEL));
 
         List<ResponseInputItem> nextInput = contextBuilder.buildInput(chat, userMessage, timezone);
@@ -93,7 +89,6 @@ public class JazzlogsAgent implements Agent {
 
         for (int iteration = 1; iteration <= maxIterations; iteration++) {
             boolean forceFinal = iteration == maxIterations;
-            log.info("[chat={}] iteration {} — calling Responses API (forceFinal={})", chat.getId(), iteration, forceFinal);
             Step turn = streamClient.streamTurn(nextInput, previousResponseId, forceFinal);
             previousResponseId = turn.responseId();
 
@@ -104,20 +99,13 @@ public class JazzlogsAgent implements Agent {
             // third case to handle here: a turn either requests tool calls,
             // or it closes.
             if (turn.toolCalls().isEmpty()) {
-                log.info("[chat={}] iteration {} — model closed with a final answer", chat.getId(), iteration);
                 finalizeExchange(sink, chat, userMessage, turn);
                 return;
             }
 
-            log.info(
-                "[chat={}] iteration {} — model requested {} tool call(s): {}",
-                chat.getId(), iteration, turn.toolCalls().size(), turn.toolCalls().stream().map(ToolCallRequest::name).toList()
-            );
-
             nextInput = executeToolCalls(sink, turn, chat.getUserId());
         }
 
-        log.warn("[chat={}] did not converge within {} iterations", chat.getId(), maxIterations);
         throw new IllegalStateException("Agent did not converge to a final answer within max iterations");
     }
 
@@ -151,7 +139,6 @@ public class JazzlogsAgent implements Agent {
             sink.emit(new AgentEvent.ToolCallFinished(labelFor(call), result.success()));
         }
         for (ToolCallRequest call : rejected) {
-            log.warn("{} (callId={}) rejected: over the {}-call-per-turn cap", call.name(), call.callId(), maxToolCallsPerTurn);
             ToolExecutionResult result = new ToolExecutionResult(
                 "{\"error\":\"Too many tool calls in a single turn (limit: " + maxToolCallsPerTurn + ")\"}", false
             );
@@ -167,29 +154,22 @@ public class JazzlogsAgent implements Agent {
         return tool == null ? UNKNOWN_TOOL_LABEL : tool.displayLabel();
     }
 
-    /** Runs one tool call, logging args/result; an unregistered tool name fails instead of throwing. */
+    /**
+     * Runs one tool call. Never throws: an unregistered tool name or invalid
+     * arguments (a JazzTool's own parsing rejects them with {@link
+     * IllegalArgumentException}) become a failed result instead — the model
+     * sees why in the function_call_output and can retry with corrected
+     * arguments next turn, instead of the whole exchange dying.
+     */
     private ToolExecutionResult dispatch(ToolCallRequest call, UUID userId) {
         JazzTool tool = toolsByName.get(call.name());
         if (tool == null) {
-            log.warn("No JazzTool registered for {}", call.name());
             return new ToolExecutionResult("{\"error\":\"Unknown tool: " + call.name() + "\"}", false);
         }
-        log.info("--> {} (callId={})\nargs: {}", call.name(), call.callId(), prettyJson(call.argumentsJson()));
-        ToolExecutionResult result = tool.execute(call, userId);
-        log.info(
-            "<-- {} (callId={}) success={}\nresult: {}",
-            call.name(), call.callId(), result.success(), prettyJson(result.payload())
-        );
-        return result;
-    }
-
-    /** Logging only — reformats compact JSON for readability, falls back to the raw string if invalid. */
-    private String prettyJson(String rawJson) {
         try {
-            Object parsed = objectMapper.readValue(rawJson, Object.class);
-            return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(parsed);
-        } catch (JacksonException e) {
-            return rawJson;
+            return tool.execute(call, userId);
+        } catch (IllegalArgumentException e) {
+            return new ToolExecutionResult(objectMapper.writeValueAsString(Map.of("error", "Invalid arguments: " + e.getMessage())), false);
         }
     }
 
@@ -214,11 +194,6 @@ public class JazzlogsAgent implements Agent {
 
         ChatExchangeDto saved = chatExchangeService.persist(
             chat, userMessage, metadata.answerText(), recommendedItems, metadata.suggestedChatTitle(), metadata.updatedSessionSummary()
-        );
-
-        log.info(
-            "[chat={}] exchange finished: resultType={}, recommendedItems={}, suggestedChatTitle={}",
-            chat.getId(), metadata.resultType(), recommendedItems == null ? 0 : recommendedItems.size(), metadata.suggestedChatTitle()
         );
 
         // The only way a caller of POST /chats (create-new) learns the
