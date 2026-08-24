@@ -16,6 +16,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import tools.jackson.databind.json.JsonMapper;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -47,7 +49,7 @@ class SemanticSearchToolTest {
 
     @BeforeEach
     void setUp() {
-        tool = new SemanticSearchTool(semanticSearchService);
+        tool = new SemanticSearchTool(semanticSearchService, new JsonMapper());
     }
 
     @Test

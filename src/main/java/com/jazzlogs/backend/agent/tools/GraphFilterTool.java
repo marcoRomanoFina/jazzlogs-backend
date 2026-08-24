@@ -7,8 +7,8 @@ import java.util.UUID;
 
 import org.springframework.stereotype.Component;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 
 import com.jazzlogs.backend.agent.ToolCallRequest;
 import com.jazzlogs.backend.agent.ToolExecutionResult;
@@ -75,12 +75,10 @@ public class GraphFilterTool extends JazzTool {
         "required", List.of("entityType")
     );
 
-    // Not Spring-managed — same reasoning as AgentOrchestrator.OBJECT_MAPPER.
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-
+    private final JsonMapper objectMapper;
     private final GraphFilterService graphFilterService;
 
-    public GraphFilterTool(GraphFilterService graphFilterService) {
+    public GraphFilterTool(GraphFilterService graphFilterService, JsonMapper objectMapper) {
         super(
             NAME,
             "Rank candidates of ONE entity type (ALBUM, TRACK, or ARTIST) by graph-topology overlap with "
@@ -101,9 +99,11 @@ public class GraphFilterTool extends JazzTool {
                 + "default excludes items the current user already listened to or rated. Omit every "
                 + "vocabulary filter and this returns no candidates — at least one of "
                 + "styles/rhythms/moods/contexts/instruments (whichever apply to the chosen entityType) is "
-                + "required for a useful result."
+                + "required for a useful result.",
+            "Filtrando por estilo y clima"
         );
         this.graphFilterService = graphFilterService;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -134,8 +134,8 @@ public class GraphFilterTool extends JazzTool {
 
     private Args parseArgs(String argumentsJson) {
         try {
-            return OBJECT_MAPPER.readValue(argumentsJson, Args.class);
-        } catch (JsonProcessingException e) {
+            return objectMapper.readValue(argumentsJson, Args.class);
+        } catch (JacksonException e) {
             throw new IllegalArgumentException(NAME + " arguments were not valid JSON: " + e.getMessage(), e);
         }
     }
@@ -158,8 +158,8 @@ public class GraphFilterTool extends JazzTool {
 
     private String writeJson(Output output) {
         try {
-            return OBJECT_MAPPER.writeValueAsString(output);
-        } catch (JsonProcessingException e) {
+            return objectMapper.writeValueAsString(output);
+        } catch (JacksonException e) {
             throw new IllegalStateException("Failed to serialize " + NAME + " output", e);
         }
     }

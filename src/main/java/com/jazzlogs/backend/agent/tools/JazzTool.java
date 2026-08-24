@@ -21,14 +21,25 @@ public abstract class JazzTool {
 
     private final String name;
     private final String description;
+    private final String displayLabel;
 
-    protected JazzTool(String name, String description) {
+    // displayLabel is what AgentOrchestrator shows the Frontend while this
+    // tool is running (a ToolCallStarted/Finished event's label) — required
+    // here, not a Map<String, String> AgentOrchestrator keeps separately and
+    // someone has to remember to update for every new tool, same reasoning
+    // as name/description already being owned by the tool itself.
+    protected JazzTool(String name, String description, String displayLabel) {
         this.name = name;
         this.description = description;
+        this.displayLabel = displayLabel;
     }
 
     public final String name() {
         return name;
+    }
+
+    public final String displayLabel() {
+        return displayLabel;
     }
 
     protected abstract Map<String, Object> schema();
@@ -38,10 +49,13 @@ public abstract class JazzTool {
     // strict(false): OpenAI's strict mode requires every property to be
     // listed in "required" (optional fields expressed via a nullable type
     // union instead of omission) — none of our schema()s satisfy that today
-    // (see e.g. SubmitFinalAnswerTool, where suggestedChatTitle/
-    // updatedSessionSummary are genuinely optional), so strict(true) would be
-    // rejected by the API. .strict(...) itself is non-optional on the SDK's
-    // builder — omitting it entirely throws at build() time, not request time.
+    // (e.g. GraphFilterTool's vocabulary filters are genuinely optional), so
+    // strict(true) would be rejected by the API. .strict(...) itself is
+    // non-optional on the SDK's builder — omitting it entirely throws at
+    // build() time, not request time. Compare OpenAiResponsesStreamClient's
+    // FINAL_ANSWER_SCHEMA, which does satisfy strict mode's requirement (every
+    // property listed in "required", nullable ones via a type union) and uses
+    // strict(true) accordingly.
     public final FunctionTool toFunctionTool() {
         FunctionTool.Parameters.Builder builder = FunctionTool.Parameters.builder();
         schema().forEach((key, value) -> builder.putAdditionalProperty(key, JsonValue.from(value)));

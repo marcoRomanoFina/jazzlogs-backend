@@ -8,8 +8,8 @@ import java.util.UUID;
 
 import org.springframework.stereotype.Component;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 
 import com.jazzlogs.backend.agent.ToolCallRequest;
 import com.jazzlogs.backend.agent.ToolExecutionResult;
@@ -61,12 +61,10 @@ public class SemanticSearchTool extends JazzTool {
         "required", List.of("entityType", "candidateIds", "category", "queryText")
     );
 
-    // Not Spring-managed — same reasoning as AgentOrchestrator.OBJECT_MAPPER.
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-
+    private final JsonMapper objectMapper;
     private final SemanticSearchService semanticSearchService;
 
-    public SemanticSearchTool(SemanticSearchService semanticSearchService) {
+    public SemanticSearchTool(SemanticSearchService semanticSearchService, JsonMapper objectMapper) {
         super(
             NAME,
             "Semantically rank editorial content blocks against a query, scoped to candidateIds of ONE "
@@ -75,9 +73,11 @@ public class SemanticSearchTool extends JazzTool {
                 + "real text instead of inventing it, or standalone with a candidate set you already have. "
                 + "An empty candidateIds list returns no matches without erroring. energy/accessibility/"
                 + "moodIntensity are optional extra filters that only apply when entityType is ALBUM or "
-                + "TRACK — they're ignored for ARTIST."
+                + "TRACK — they're ignored for ARTIST.",
+            "Buscando en las editoriales"
         );
         this.semanticSearchService = semanticSearchService;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -106,8 +106,8 @@ public class SemanticSearchTool extends JazzTool {
 
     private Args parseArgs(String argumentsJson) {
         try {
-            return OBJECT_MAPPER.readValue(argumentsJson, Args.class);
-        } catch (JsonProcessingException e) {
+            return objectMapper.readValue(argumentsJson, Args.class);
+        } catch (JacksonException e) {
             throw new IllegalArgumentException(NAME + " arguments were not valid JSON: " + e.getMessage(), e);
         }
     }
@@ -156,8 +156,8 @@ public class SemanticSearchTool extends JazzTool {
 
     private String writeJson(Output output) {
         try {
-            return OBJECT_MAPPER.writeValueAsString(output);
-        } catch (JsonProcessingException e) {
+            return objectMapper.writeValueAsString(output);
+        } catch (JacksonException e) {
             throw new IllegalStateException("Failed to serialize " + NAME + " output", e);
         }
     }

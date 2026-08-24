@@ -15,6 +15,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import tools.jackson.databind.json.JsonMapper;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -53,7 +55,7 @@ class ResolveJazzlogsEntityToolTest {
 
     @BeforeEach
     void setUp() {
-        tool = new ResolveJazzlogsEntityTool(albumRepository, artistRepository, trackRepository);
+        tool = new ResolveJazzlogsEntityTool(albumRepository, artistRepository, trackRepository, new JsonMapper());
     }
 
     @Test
