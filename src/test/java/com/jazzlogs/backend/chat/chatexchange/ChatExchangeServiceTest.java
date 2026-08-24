@@ -1,11 +1,13 @@
 package com.jazzlogs.backend.chat.chatexchange;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
@@ -39,10 +41,11 @@ import com.jazzlogs.backend.track.TrackRepository;
 import com.jazzlogs.backend.user.User;
 
 // The one place the model's final-answer ids are checked against reality —
-// AgentOrchestrator just forwards whatever the model said (see
-// AgentOrchestratorTest, which mocks this class entirely). These tests are
-// the real coverage for "a hallucinated/malformed id gets dropped" and
-// "DIRECT_RESPONSE has null winners, not an empty list".
+// JazzlogsAgent just forwards whatever the model said (see
+// JazzlogsAgentTest, which mocks this class entirely). These tests are the
+// real coverage for "a partially hallucinated id gets dropped, but a
+// totally hallucinated set rejects the turn" and "DIRECT_RESPONSE has null
+// winners, not an empty list".
 @ExtendWith(MockitoExtension.class)
 class ChatExchangeServiceTest {
 
@@ -156,17 +159,16 @@ class ChatExchangeServiceTest {
     }
 
     @Test
-    void malformedId_isDroppedWithoutThrowing() {
-        stubSaveAssignsIdAndCreatedAt();
+    void allIdsHallucinated_rejectsTheWholeTurn_ratherThanPersistingEmptyWinners() {
         when(albumRepository.findAllByIdWithArtist(anyList())).thenReturn(List.of());
 
-        ChatExchangeDto result = service.persist(
+        assertThatThrownBy(() -> service.persist(
             chat, "recommend something", "here you go",
             List.of(new CatalogReference(CatalogItemType.ALBUM, "not-a-uuid")),
             null, null
-        );
+        )).isInstanceOf(IllegalStateException.class);
 
-        assertThat(result.winners()).isEmpty();
+        verifyNoInteractions(chatExchangeRepository, chatRecommendationMemoryService);
     }
 
     // --- getChatExchanges ---
