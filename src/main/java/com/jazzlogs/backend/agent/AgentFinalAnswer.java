@@ -4,16 +4,20 @@ import java.util.List;
 
 import com.jazzlogs.backend.chat.chatexchange.CatalogReference;
 
-// The model's final answer — structured text output (see
-// OpenAiResponsesStreamClient's text.format json_schema), not a tool call.
-// A turn with no tool calls (see Step) is, by construction, the
-// model closing with one of these; its raw assistantText is exactly this
-// record's JSON, parsed straight off by AgentOrchestrator.finalizeExchange.
-//
-// recommendedItems reuses chatexchange.CatalogReference (not its own nested type): it's
-// the same raw, unresolved (type, id) shape ChatExchangeService.persist
-// expects — an id the model invented, or that isn't a valid UUID, is
-// silently dropped there, never trusted as-is.
+/**
+ * The model's final answer — structured text output, not a tool call. A
+ * {@link Step} with no tool calls is, by construction, the model closing
+ * with one of these; its raw {@code assistantText} is exactly this record's
+ * JSON, parsed straight off by {@link JazzlogsAgent#finalizeExchange}.
+ *
+ * @param resultType             whether {@code recommendedItems} has anything real in it
+ * @param answerText             the conversational reply the user reads
+ * @param recommendedItems       raw, unresolved {@link CatalogReference}s — same
+ *                                shape {@code ChatExchangeService.persist} expects;
+ *                                an invented or malformed id is silently dropped there
+ * @param suggestedChatTitle     the model's proposed title, applied only once
+ * @param updatedSessionSummary  the model's updated cumulative session summary
+ */
 public record AgentFinalAnswer(
     ResultType resultType,
     String answerText,
@@ -22,6 +26,7 @@ public record AgentFinalAnswer(
     String updatedSessionSummary
 ) {
 
+    /** Whether the turn recommends real catalog items or is just conversational. */
     public enum ResultType {
         DIRECT_RESPONSE,
         CATALOG_RESPONSE

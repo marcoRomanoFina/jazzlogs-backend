@@ -15,8 +15,10 @@ import com.jazzlogs.backend.saveditem.SavedItemResolver;
 
 public interface AlbumRepository extends JpaRepository<Album, UUID>, SavedItemResolver, CatalogEntityResolver {
 
-    // Spotify identity is what POST /albums upserts on — an album with this
-    // spotifyAlbumId already existing means "update it", not "create a duplicate".
+    /**
+     * Spotify identity is what POST /albums upserts on — an album with this
+     * spotifyAlbumId already existing means "update it", not "create a duplicate".
+     */
     Optional<Album> findBySpotifyAlbumId(String spotifyAlbumId);
 
     @Override
@@ -34,16 +36,22 @@ public interface AlbumRepository extends JpaRepository<Album, UUID>, SavedItemRe
         return new Resolved(album.getName(), album.getImageUrl(), album.getSpotifyUrl());
     }
 
-    // JOIN FETCH, not the default findAllById — ChatExchangeService.resolveWinners
-    // needs each album's artist (album.artist is FetchType.LAZY); without this,
-    // resolving N recommended albums means N extra per-row SELECTs (one per
-    // artist) instead of one batched query.
+    /**
+     * JOIN FETCH, not the default findAllById — {@code
+     * ChatExchangeService.resolveWinners} needs each album's artist ({@code
+     * album.artist} is {@code FetchType.LAZY}); without this, resolving N
+     * recommended albums means N extra per-row SELECTs (one per artist)
+     * instead of one batched query.
+     */
     @Query("SELECT a FROM Album a JOIN FETCH a.artist WHERE a.id IN :ids")
     List<Album> findAllByIdWithArtist(@Param("ids") List<UUID> ids);
 
-    // Same matchType/ordering shape as ArtistRepository.search — see its
-    // comment. artistFullName comes from the joined artists row (an album's
-    // artist is just its direct artist_id, no sideman/graph resolution here).
+    /**
+     * Same matchType/ordering shape as {@code ArtistRepository.search} — see
+     * its Javadoc. {@code artistFullName} comes from the joined artists row
+     * (an album's artist is just its direct artist_id, no sideman/graph
+     * resolution here).
+     */
     @Override
     @Query(value = """
         SELECT

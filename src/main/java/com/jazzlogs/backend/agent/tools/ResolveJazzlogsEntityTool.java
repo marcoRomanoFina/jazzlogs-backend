@@ -19,26 +19,20 @@ import com.jazzlogs.backend.artist.ArtistRepository;
 import com.jazzlogs.backend.chat.CatalogItemType;
 import com.jazzlogs.backend.track.TrackRepository;
 
-// Text -> id translator: the agent calls this when the user names an album,
-// track, or artist in free text and doesn't have its stable catalog id yet.
-// Deliberately thin — a ranked list of candidates, nothing else. Richer
-// context (tracklist, personnel, mood) is a job for deeper tools later
-// (CATALOG_CONTEXT, ALBUM_TRACKS), not this one.
-//
-// Resolves against Postgres, not Neo4j: the graph's nodes are intentionally
-// light (id + name only) and were never the source of truth for text —
-// that's artists/albums/tracks.normalized_name, which pg_trgm searches
-// directly with one indexed query per entity type (see CatalogEntityResolver
-// and Album/Artist/TrackRepository.search) instead of several sequential
-// passes with hand-rolled fuzzy matching in Java.
+/**
+ * Text-to-id translator: the agent calls this when the user names an album,
+ * track, or artist in free text and doesn't have its stable catalog id yet.
+ * Deliberately thin — a ranked list of candidates, nothing else. Resolves
+ * against Postgres via pg_trgm ({@link CatalogEntityResolver}), not Neo4j —
+ * the graph's nodes are id+name only and were never the source of truth for
+ * text search.
+ */
 @Component
 public class ResolveJazzlogsEntityTool extends JazzTool {
 
     public static final String NAME = "RESOLVE_JAZZLOGS_ENTITY";
 
-    // Not exposed to the model — see class doc. 20 is the fuzzy shortlist
-    // CatalogEntityResolver.search returns; this is what actually goes back
-    // in the tool result after dedupe.
+    /** Not exposed to the model — the cap on candidates returned after dedupe, not on {@link CatalogEntityResolver}'s own shortlist. */
     private static final int MAX_CANDIDATES = 7;
 
     private static final Map<String, Object> SCHEMA = Map.of(
@@ -51,6 +45,7 @@ public class ResolveJazzlogsEntityTool extends JazzTool {
     );
 
     private final JsonMapper objectMapper;
+    /** Each repository implements {@link CatalogEntityResolver} itself — no separate resolver classes needed. */
     private final Map<CatalogItemType, CatalogEntityResolver> resolversByType;
 
     public ResolveJazzlogsEntityTool(
@@ -76,10 +71,11 @@ public class ResolveJazzlogsEntityTool extends JazzTool {
         return SCHEMA;
     }
 
+    /** Resolves the model's free-text query into ranked, deduped candidates of one entity type. */
     @Override
     public ToolExecutionResult execute(ToolCallRequest call, UUID userId) {
         Args args = parseArgs(call.argumentsJson());
-        CatalogItemType entityType = parseEntityType(args.entityType());
+        CatalogItemType entityType = parseRequiredEnum(args.entityType(), CatalogItemType.class, "entityType");
         String query = requireQuery(args.query());
         String normalizedQuery = Album.normalize(query);
 
@@ -93,6 +89,7 @@ public class ResolveJazzlogsEntityTool extends JazzTool {
         return new ToolExecutionResult(writeJson(output), true);
     }
 
+    /** Parses the model's raw JSON args, rejecting malformed JSON. */
     private Args parseArgs(String argumentsJson) {
         try {
             return objectMapper.readValue(argumentsJson, Args.class);
@@ -101,14 +98,7 @@ public class ResolveJazzlogsEntityTool extends JazzTool {
         }
     }
 
-    private CatalogItemType parseEntityType(String raw) {
-        try {
-            return CatalogItemType.valueOf(raw);
-        } catch (IllegalArgumentException | NullPointerException e) {
-            throw new IllegalArgumentException("entityType must be one of ALBUM, TRACK, ARTIST, got: " + raw);
-        }
-    }
-
+    /** Rejects a missing/blank query. */
     private String requireQuery(String query) {
         if (query == null || query.isBlank()) {
             throw new IllegalArgumentException("query must not be blank");
@@ -116,10 +106,12 @@ public class ResolveJazzlogsEntityTool extends JazzTool {
         return query;
     }
 
-    // Safety net, not the primary defense: the query is already scoped to
-    // one table per entityType and shouldn't return duplicate ids, but
-    // dedupe by id anyway. Preserves first-seen order — the rows are already
-    // matchType/score-sorted by the query itself, this never re-sorts.
+    /**
+     * Safety net, not the primary defense: the query is already scoped to
+     * one table per entityType and shouldn't return duplicate ids, but
+     * dedupe by id anyway. Preserves first-seen order — the rows are already
+     * matchType/score-sorted by the query itself, this never re-sorts.
+     */
     private List<Candidate> dedupeAndTruncate(List<CatalogEntityResolver.CandidateRow> rows, CatalogItemType entityType) {
         Map<UUID, Candidate> byId = new LinkedHashMap<>();
         for (CatalogEntityResolver.CandidateRow row : rows) {
@@ -128,6 +120,7 @@ public class ResolveJazzlogsEntityTool extends JazzTool {
         return byId.values().stream().limit(MAX_CANDIDATES).toList();
     }
 
+    /** Projects one resolver row into the tool's output shape. */
     private Candidate toCandidate(CatalogEntityResolver.CandidateRow row, CatalogItemType entityType) {
         return new Candidate(
             row.getId(),
@@ -141,6 +134,7 @@ public class ResolveJazzlogsEntityTool extends JazzTool {
         );
     }
 
+    /** The conversational summary line the model reads alongside the structured candidates. */
     private String buildContent(CatalogItemType entityType, String query, List<Candidate> candidates) {
         if (candidates.isEmpty()) {
             return "No JazzLogs entity candidates found for \"" + query + "\".";
@@ -148,6 +142,7 @@ public class ResolveJazzlogsEntityTool extends JazzTool {
         return "Resolved " + candidates.size() + " candidate(s) for " + entityType + " query \"" + query + "\".";
     }
 
+    /** Serializes the tool's output — a failure here is our bug, not the model's, hence {@link IllegalStateException}. */
     private String writeJson(Output output) {
         try {
             return objectMapper.writeValueAsString(output);
@@ -156,17 +151,21 @@ public class ResolveJazzlogsEntityTool extends JazzTool {
         }
     }
 
+    /** The model's raw tool-call arguments, before validation. */
     private record Args(String entityType, String query) {
     }
 
+    /** One ranked candidate; {@code album} is only set for a TRACK. */
     private record Candidate(
         UUID id, CatalogItemType type, String name, String artistFullName, String album, Double score, String matchType, UUID editorialId
     ) {
     }
 
+    /** The tool's structured payload, alongside {@link #buildContent}'s summary. */
     private record Metadata(boolean found, CatalogItemType entityType, String query, List<Candidate> candidates) {
     }
 
+    /** The tool's full JSON result shape — conversational summary plus structured metadata. */
     private record Output(String content, Metadata metadata) {
     }
 }
