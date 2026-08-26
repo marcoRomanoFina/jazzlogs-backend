@@ -17,11 +17,13 @@ import com.jazzlogs.backend.editorial.EditorialBlock;
 import com.jazzlogs.backend.editorial.EditorialBlockRepository;
 import com.jazzlogs.backend.editorial.EditorialBlockType;
 
-// Full/filtered text of one editorial's blocks — what the agent calls once
-// it already has a concrete editorialId (from RESOLVE_JAZZLOGS_ENTITY) and
-// needs real substance to write from, not just a name. No JOIN to
-// album/track/artist_editorials: editorialId already identifies the
-// editorials row directly, see EditorialBlockRepository.
+/**
+ * Full/filtered text of one editorial's blocks — what the agent calls once
+ * it already has a concrete editorialId (from RESOLVE_JAZZLOGS_ENTITY) and
+ * needs real substance to write from, not just a name. No JOIN to
+ * album/track/artist_editorials: editorialId already identifies the
+ * editorials row directly, see {@link EditorialBlockRepository}.
+ */
 @Component
 public class EditorialContentTool extends JazzTool {
 
@@ -63,11 +65,12 @@ public class EditorialContentTool extends JazzTool {
         return SCHEMA;
     }
 
+    /** Fetches an editorial's blocks, optionally filtered to specific content categories. */
     @Override
     public ToolExecutionResult execute(ToolCallRequest call, UUID userId) {
         Args args = parseArgs(call.argumentsJson());
         UUID editorialId = requireEditorialId(args.editorialId());
-        List<BlockContentCategory> categories = parseCategories(args.categories());
+        List<BlockContentCategory> categories = parseEnumList(args.categories(), BlockContentCategory.class, "category");
 
         List<EditorialBlock> blocks = categories.isEmpty()
             ? editorialBlockRepository.findByEditorialIdOrderByPositionAsc(editorialId)
@@ -78,6 +81,7 @@ public class EditorialContentTool extends JazzTool {
         return new ToolExecutionResult(writeJson(output), true);
     }
 
+    /** Parses the model's raw JSON args, rejecting malformed JSON. */
     private Args parseArgs(String argumentsJson) {
         try {
             return objectMapper.readValue(argumentsJson, Args.class);
@@ -86,6 +90,7 @@ public class EditorialContentTool extends JazzTool {
         }
     }
 
+    /** Rejects a missing/blank/malformed editorialId. */
     private UUID requireEditorialId(String raw) {
         if (raw == null || raw.isBlank()) {
             throw new IllegalArgumentException("editorialId must not be blank");
@@ -97,25 +102,12 @@ public class EditorialContentTool extends JazzTool {
         }
     }
 
-    private List<BlockContentCategory> parseCategories(List<String> raw) {
-        if (raw == null) {
-            return List.of();
-        }
-        return raw.stream().map(this::parseCategory).toList();
-    }
-
-    private BlockContentCategory parseCategory(String raw) {
-        try {
-            return BlockContentCategory.valueOf(raw);
-        } catch (IllegalArgumentException | NullPointerException e) {
-            throw new IllegalArgumentException("Unknown BlockContentCategory: " + raw);
-        }
-    }
-
+    /** Projects one persistence-layer {@link EditorialBlock} into the tool's output shape. */
     private static Block toBlock(EditorialBlock block) {
         return new Block(block.getId(), block.getType(), block.getContentCategory(), block.getSubhead(), block.getText(), block.getPosition());
     }
 
+    /** The conversational summary line the model reads alongside the structured blocks. */
     private String buildContent(UUID editorialId, List<Block> blocks) {
         if (blocks.isEmpty()) {
             return "No blocks found for editorial " + editorialId + ".";
@@ -123,6 +115,7 @@ public class EditorialContentTool extends JazzTool {
         return "Retrieved " + blocks.size() + " block(s) for editorial " + editorialId + ".";
     }
 
+    /** Serializes the tool's output — a failure here is our bug, not the model's, hence {@link IllegalStateException}. */
     private String writeJson(Output output) {
         try {
             return objectMapper.writeValueAsString(output);
@@ -131,19 +124,24 @@ public class EditorialContentTool extends JazzTool {
         }
     }
 
+    /** Every {@link BlockContentCategory} name — exposed to the model as the {@code categories} field's schema enum. */
     private static List<String> categoryNames() {
         return Arrays.stream(BlockContentCategory.values()).map(Enum::name).toList();
     }
 
+    /** The model's raw tool-call arguments, before validation. */
     private record Args(String editorialId, List<String> categories) {
     }
 
+    /** One editorial block, projected from {@link EditorialBlock}. */
     private record Block(UUID id, EditorialBlockType type, BlockContentCategory contentCategory, String subhead, String text, int position) {
     }
 
+    /** The tool's structured payload, alongside {@link #buildContent}'s summary. */
     private record Metadata(UUID editorialId, List<Block> blocks) {
     }
 
+    /** The tool's full JSON result shape — conversational summary plus structured metadata. */
     private record Output(String content, Metadata metadata) {
     }
 }

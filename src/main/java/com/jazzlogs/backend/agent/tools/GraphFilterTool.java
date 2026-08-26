@@ -140,15 +140,6 @@ public class GraphFilterTool extends JazzTool {
         }
     }
 
-    // parseEnumValue/parseRequiredEnum are inherited from JazzTool — shared
-    // with SemanticSearchTool, which needs the identical entityType parsing.
-    private <E extends Enum<E>> List<E> parseEnumList(List<String> raw, Class<E> enumClass, String kind) {
-        if (raw == null) {
-            return List.of();
-        }
-        return raw.stream().map(code -> parseEnumValue(code, enumClass, kind)).toList();
-    }
-
     private String buildContent(List<GraphCandidate> candidates) {
         if (candidates.isEmpty()) {
             return "No graph candidates matched the given filters.";
