@@ -7,47 +7,50 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+/** Backs {@code EditorialContentTool} and {@code SemanticSearchTool} (via {@code SemanticSearchService}). */
 public interface EditorialBlockRepository extends JpaRepository<EditorialBlock, UUID> {
 
-    // editorialId traverses EditorialBlock.editorial.id — no JOIN to any
-    // subclass table (album_editorials etc.): editorial_id on this table
-    // already points straight at the editorials row EDITORIAL_CONTENT wants.
+    /**
+     * {@code editorialId} traverses {@code EditorialBlock.editorial.id} — no
+     * JOIN to any subclass table ({@code album_editorials} etc.): {@code
+     * editorial_id} on this table already points straight at the editorials
+     * row EDITORIAL_CONTENT wants.
+     */
     List<EditorialBlock> findByEditorialIdOrderByPositionAsc(UUID editorialId);
 
+    /** Same as {@link #findByEditorialIdOrderByPositionAsc}, narrowed to specific {@code categories}. */
     List<EditorialBlock> findByEditorialIdAndContentCategoryInOrderByPositionAsc(UUID editorialId, List<BlockContentCategory> categories);
 
     // --- semanticSearch (agent tool) ---
-    //
-    // One method per entity type, same reasoning as GraphService's per-type
-    // Neo4j finders: editorial_blocks has no direct entity_type/entity_id
-    // column (it only knows editorial_id), and resolving it means joining
-    // through a different subclass table per type — Album/Track
-    // additionally filter on energy/accessibility/mood_intensity (columns
-    // that live on albums/tracks, not editorial_blocks), Artist has neither.
-    // A single UNION'd query would need to fake those columns for Artist
-    // rows and re-derive the join target per row; three explicit queries
-    // are simpler and match this project's editorial_summaries view, which
-    // resolves the same Album/Track/Artist ownership the same way (see
-    // V13__editorial_summaries_context_id.sql). SemanticSearchRequest.entityType
-    // is singular and required, so a given call only ever invokes exactly
-    // one of these — SemanticSearchService picks which one via a
-    // Map<CatalogItemType, ...> lookup, not an if/switch chain.
-    //
-    // Native, not JPQL: pgvector's <=> (cosine distance) has no JPQL
-    // equivalent. queryEmbedding is a pgvector text literal
-    // ("[0.1,0.2,...]"), produced via `new PGvector(vector).getValue()` —
-    // see SemanticSearchService — and CAST to vector here rather than bound
-    // through PgVectorType, since native-query parameters aren't run
-    // through Hibernate's UserType machinery. similarityScore is
-    // 1 - cosine_distance (higher = more similar), matching the old,
-    // now-deleted EDITORIAL_SEARCH tool's convention.
-    //
-    // *Ids is always non-empty when these are actually called —
-    // SemanticSearchService.search() short-circuits on an empty/null
-    // candidateIds before ever reaching the entityType dispatch below (an
-    // empty "IN ()" is invalid SQL besides), so there's no null/empty-list
-    // branch to handle here.
 
+    /**
+     * One of {@link #semanticSearchAlbums}/{@link #semanticSearchTracks}/
+     * {@link #semanticSearchArtists} — one method per entity type: {@code
+     * editorial_blocks} has no direct {@code entity_type}/{@code entity_id}
+     * column, and resolving one means joining through a different subclass
+     * table per type (Album/Track also filter on energy/accessibility/
+     * moodIntensity, columns Artist doesn't have) — matches how this
+     * project's {@code editorial_summaries} view resolves the same
+     * ownership (see {@code V13__editorial_summaries_context_id.sql}).
+     * {@code SemanticSearchService} picks which one to call via a {@code
+     * Map<CatalogItemType, ...>} lookup, matching {@code
+     * SemanticSearchRequest.entityType} (singular and required, so a call
+     * only ever invokes exactly one of these).
+     *
+     * <p>Native, not JPQL — pgvector's {@code <=>} (cosine distance) has no
+     * JPQL equivalent. {@code queryEmbedding} is a pgvector text literal
+     * produced via {@code new PGvector(vector).getValue()} (see {@code
+     * SemanticSearchService}) and {@code CAST} here rather than bound
+     * through {@code PgVectorType}, since native-query parameters skip
+     * Hibernate's {@code UserType} machinery. {@code similarityScore} is
+     * {@code 1 - cosine_distance} (higher = more similar).
+     *
+     * <p>{@code *Ids} is always non-empty when these are actually called —
+     * {@code SemanticSearchService.search()} short-circuits on an empty/null
+     * {@code candidateIds} before ever reaching the entityType dispatch (an
+     * empty {@code IN ()} is invalid SQL besides), so there's no
+     * null/empty-list branch to handle here.
+     */
     @Query(value = """
         SELECT
             a.id AS entityId,
@@ -73,6 +76,7 @@ public interface EditorialBlockRepository extends JpaRepository<EditorialBlock, 
         @Param("moodIntensity") String moodIntensity
     );
 
+    /** Same shape as {@link #semanticSearchAlbums} — see its Javadoc. */
     @Query(value = """
         SELECT
             t.id AS entityId,
@@ -98,9 +102,12 @@ public interface EditorialBlockRepository extends JpaRepository<EditorialBlock, 
         @Param("moodIntensity") String moodIntensity
     );
 
-    // No energy/accessibility/moodIntensity — artists has none of those
-    // columns (see SemanticSearchRequest's doc on why those never apply to
-    // ARTIST candidates).
+    /**
+     * Same shape as {@link #semanticSearchAlbums} — see its Javadoc. No
+     * energy/accessibility/moodIntensity: artists has none of those columns
+     * (see {@code SemanticSearchRequest}'s doc on why those never apply to
+     * ARTIST candidates).
+     */
     @Query(value = """
         SELECT
             ar.id AS entityId,
@@ -120,6 +127,7 @@ public interface EditorialBlockRepository extends JpaRepository<EditorialBlock, 
         @Param("category") String category
     );
 
+    /** One row from {@link #semanticSearchAlbums}/{@link #semanticSearchTracks}/{@link #semanticSearchArtists}. */
     interface SemanticMatchRow {
         UUID getEntityId();
 
