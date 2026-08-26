@@ -15,13 +15,18 @@ import com.jazzlogs.backend.saveditem.SavedItemResolver;
 
 public interface TrackRepository extends JpaRepository<Track, UUID>, SavedItemResolver, CatalogEntityResolver {
 
-    // Spotify identity is what POST /albums/{id}/tracks upserts on — a track
-    // with this spotifyTrackId already existing means "update it", not
-    // "create a duplicate".
+    /**
+     * Spotify identity is what POST /albums/{id}/tracks upserts on — a track
+     * with this spotifyTrackId already existing means "update it", not
+     * "create a duplicate".
+     */
     Optional<Track> findBySpotifyTrackId(String spotifyTrackId);
 
-    // For ListenService.syncAlbumCompletionState — needs every track id on
-    // the album to check whether the user has now listened to all of them.
+    /**
+     * For {@code ListenService.syncAlbumCompletionState} — needs every track
+     * id on the album to check whether the user has now listened to all of
+     * them.
+     */
     @Query("SELECT t.id FROM Track t WHERE t.album.id = :albumId")
     List<UUID> findIdsByAlbumId(@Param("albumId") UUID albumId);
 
@@ -40,17 +45,22 @@ public interface TrackRepository extends JpaRepository<Track, UUID>, SavedItemRe
         return new Resolved(track.getName(), track.getImageUrl(), track.getSpotifyUrl());
     }
 
-    // JOIN FETCH, not the default findAllById — ChatExchangeService.resolveWinners
-    // needs each track's album AND that album's artist (track.album and
-    // album.artist are both FetchType.LAZY); without this, resolving N
-    // recommended tracks means up to 2N extra per-row SELECTs (one for the
-    // album, one for the artist) instead of one batched query.
+    /**
+     * JOIN FETCH, not the default findAllById — {@code
+     * ChatExchangeService.resolveWinners} needs each track's album AND that
+     * album's artist ({@code track.album} and {@code album.artist} are both
+     * {@code FetchType.LAZY}); without this, resolving N recommended tracks
+     * means up to 2N extra per-row SELECTs (one for the album, one for the
+     * artist) instead of one batched query.
+     */
     @Query("SELECT t FROM Track t JOIN FETCH t.album al JOIN FETCH al.artist WHERE t.id IN :ids")
     List<Track> findAllByIdWithAlbumAndArtist(@Param("ids") List<UUID> ids);
 
-    // Same matchType/ordering shape as ArtistRepository.search — see its
-    // comment. Two-hop join (track -> album -> artist): a track's artist is
-    // its album's direct artist_id, no sideman/graph resolution here.
+    /**
+     * Same matchType/ordering shape as {@code ArtistRepository.search} — see
+     * its Javadoc. Two-hop join (track -> album -> artist): a track's artist
+     * is its album's direct artist_id, no sideman/graph resolution here.
+     */
     @Override
     @Query(value = """
         SELECT
