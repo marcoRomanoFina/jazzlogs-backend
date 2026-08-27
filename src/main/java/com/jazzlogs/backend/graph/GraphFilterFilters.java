@@ -9,18 +9,15 @@ import com.jazzlogs.backend.vocabulary.MoodVocabulary;
 import com.jazzlogs.backend.vocabulary.RhythmVocabulary;
 import com.jazzlogs.backend.vocabulary.StyleVocabulary;
 
-// Already-validated vocabulary codes as real enum values, not raw strings —
-// GraphFilterTool owns turning the model's JSON args into this shape (and
-// rejecting invalid codes before they ever reach here). entityType is
-// singular and required, not a list with a "search everything" default:
-// Album/Track/Artist connect to vocabulary through different relationships
-// (BELONGS_TO vs HAS_STYLE, etc.), so mixing their candidates into one
-// topoScore-ranked list would compare matches that aren't really the same
-// kind of signal. The model makes one graphFilter call per entity type it
-// cares about instead — same reasoning already applied to semanticSearch's
-// single-category-per-call rule. userId deliberately isn't a field here —
-// it's the authenticated user, not something the model controls, so it's a
-// separate parameter on GraphFilterService.filter instead.
+/**
+ * Already-validated vocabulary codes as real enum values, not raw strings —
+ * {@code GraphFilterTool} rejects invalid codes before this is built.
+ * {@code entityType} is singular and required: Album/Track/Artist connect to
+ * vocabulary through different relationships, so mixing their candidates
+ * into one ranked list would compare matches that aren't the same kind of
+ * signal. {@code userId} isn't a field here since it's the authenticated
+ * user, not something the model controls — see {@link GraphFilterService#filter}.
+ */
 public record GraphFilterFilters(
     CatalogItemType entityType,
     List<StyleVocabulary> styles,

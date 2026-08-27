@@ -23,22 +23,23 @@ import com.jazzlogs.backend.vocabulary.MoodVocabulary;
 import com.jazzlogs.backend.vocabulary.RhythmVocabulary;
 import com.jazzlogs.backend.vocabulary.StyleVocabulary;
 
-// Structural (graph-topology) prefilter: given vocabulary filters, ranks
-// candidates of ONE entity type (Album, Track, or Artist — call this again
-// for another type, same rule already applied to semanticSearch's category)
-// by which of the requested dimensions they match in Neo4j
-// (matchedDimensions — the specific (dimension, code) pairs, not just a
-// count), excluding what the current user already listened to / rated by
-// default. Matching a single requested dimension is enough to be eligible
-// (OR, not AND) — candidates with no matches at all are already excluded by
-// GraphService's Cypher, never returned here. Standalone — the model can
-// synthesize an answer from matchedDimensions alone (e.g. "this has the
-// mood you wanted, though not the instrument"), or chain the returned
-// candidates into semanticSearch itself; this tool holds no memory between
-// calls. All the actual short-circuit/dispatch logic lives in
-// GraphFilterService — this class only translates the model's JSON args
-// into strongly-typed GraphFilterFilters (and rejects invalid codes) and
-// serializes the result back out.
+/**
+ * Structural (graph-topology) prefilter: given vocabulary filters, ranks
+ * candidates of ONE entity type (Album, Track, or Artist — call this again
+ * for another type, same rule already applied to semanticSearch's category)
+ * by which requested dimensions they match in Neo4j (matchedDimensions —
+ * the specific (dimension, code) pairs, not just a count), excluding what
+ * the current user already listened to / rated by default. Matching a
+ * single requested dimension is enough to be eligible (OR, not AND) —
+ * candidates with no matches at all are already excluded in Cypher, never
+ * returned here. Standalone — the model can synthesize an answer from
+ * matchedDimensions alone, or chain the returned candidates into
+ * semanticSearch itself; this tool holds no memory between calls. All the
+ * actual short-circuit/dispatch logic lives in {@link GraphFilterService} —
+ * this class only translates the model's JSON args into strongly-typed
+ * {@link GraphFilterFilters} (rejecting invalid codes) and serializes the
+ * result back out.
+ */
 @Component
 public class GraphFilterTool extends JazzTool {
 
@@ -111,6 +112,7 @@ public class GraphFilterTool extends JazzTool {
         return SCHEMA;
     }
 
+    /** Ranks one entity type's candidates by graph-topology overlap with the given vocabulary filters. */
     @Override
     public ToolExecutionResult execute(ToolCallRequest call, UUID userId) {
         Args args = parseArgs(call.argumentsJson());
@@ -132,6 +134,7 @@ public class GraphFilterTool extends JazzTool {
         return new ToolExecutionResult(writeJson(output), true);
     }
 
+    /** Parses the model's raw JSON args, rejecting malformed JSON. */
     private Args parseArgs(String argumentsJson) {
         try {
             return objectMapper.readValue(argumentsJson, Args.class);
@@ -140,6 +143,7 @@ public class GraphFilterTool extends JazzTool {
         }
     }
 
+    /** The conversational summary line the model reads alongside the structured candidates. */
     private String buildContent(List<GraphCandidate> candidates) {
         if (candidates.isEmpty()) {
             return "No graph candidates matched the given filters.";
@@ -147,6 +151,7 @@ public class GraphFilterTool extends JazzTool {
         return "Found " + candidates.size() + " graph candidate(s), ranked by number of matched dimensions.";
     }
 
+    /** Serializes the tool's output — a failure here is our bug, not the model's, hence {@link IllegalStateException}. */
     private String writeJson(Output output) {
         try {
             return objectMapper.writeValueAsString(output);
@@ -155,10 +160,12 @@ public class GraphFilterTool extends JazzTool {
         }
     }
 
+    /** Every {@code enumClass} constant's name — exposed to the model as one vocabulary field's schema enum. */
     private static <E extends Enum<E>> List<String> namesOf(Class<E> enumClass) {
         return Arrays.stream(enumClass.getEnumConstants()).map(Enum::name).toList();
     }
 
+    /** The model's raw tool-call arguments, before validation. */
     private record Args(
         String entityType,
         List<String> styles,
@@ -172,9 +179,11 @@ public class GraphFilterTool extends JazzTool {
     ) {
     }
 
+    /** The tool's structured payload, alongside {@link #buildContent}'s summary. */
     private record Metadata(List<GraphCandidate> candidates) {
     }
 
+    /** The tool's full JSON result shape — conversational summary plus structured metadata. */
     private record Output(String content, Metadata metadata) {
     }
 }

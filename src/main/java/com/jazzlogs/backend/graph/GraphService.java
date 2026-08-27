@@ -765,33 +765,35 @@ public class GraphService {
     }
 
     // --- graphFilter (agent tool) ---
-    //
-    // One method per entity type, not one query with label branching — Album/
-    // Track/Artist each connect to a different subset of vocabulary
-    // dimensions (see the individual methods below), so a single combined
-    // query would need per-label conditionals throughout; three separate,
-    // readable queries are more maintainable. GraphFilterFilters.entityType
-    // is singular and required, so a given graphFilter call only ever
-    // invokes exactly one of these — GraphFilterService picks which one via
-    // a Map<CatalogItemType, ...> lookup, not an if/switch chain.
-    //
-    // Matching is permissive by design (OR, not AND): a candidate doesn't
-    // need to match every requested dimension, matching at least one is
-    // enough — that's what "WHERE matchCount > 0" enforces below, nothing
-    // stronger. Ranking (by matchCount, i.e. matchedDimensions.size()) is a
-    // separate concern from eligibility, done right here via "ORDER BY
-    // matchCount DESC LIMIT $limit" — GraphFilterService never re-sorts or
-    // re-clamps what comes back.
-    //
-    // Each dimension is a pattern comprehension — e.g.
-    // "[(al)-[:BELONGS_TO]->(s:Style) WHERE s.code IN $styleCodes | s.code]"
-    // — collecting the actual codes that matched, not just a 0/1 flag: the
-    // LLM gets to see e.g. "matched Mood=RELAXED" instead of a bare count.
-    // An empty codes list for a dimension naturally yields an empty match
-    // list here (s.code IN [] is never true), so "not requested" and
-    // "requested but nothing matched" both fall out without a separate
-    // guard.
 
+    /**
+     * One of {@link #findAlbumCandidates}/{@link #findTrackCandidates}/
+     * {@link #findArtistCandidates} — one method per entity type, not one
+     * query with label branching: Album/Track/Artist each connect to a
+     * different subset of vocabulary dimensions, so a single combined query
+     * would need per-label conditionals throughout. {@code
+     * GraphFilterFilters.entityType} is singular and required, so a given
+     * graphFilter call only ever invokes exactly one of these — {@code
+     * GraphFilterService} picks which one via a {@code Map<CatalogItemType,
+     * ...>} lookup, not an if/switch chain.
+     *
+     * <p>Matching is permissive by design (OR, not AND): a candidate doesn't
+     * need to match every requested dimension, matching at least one is
+     * enough — that's what {@code WHERE matchCount > 0} enforces, nothing
+     * stronger. Ranking (by matchCount, i.e. {@code matchedDimensions.size()})
+     * is a separate concern from eligibility, done right here via {@code
+     * ORDER BY matchCount DESC LIMIT $limit} — {@code GraphFilterService}
+     * never re-sorts or re-clamps what comes back.
+     *
+     * <p>Each dimension is a pattern comprehension — e.g. {@code
+     * [(al)-[:BELONGS_TO]->(s:Style) WHERE s.code IN $styleCodes | s.code]}
+     * — collecting the actual codes that matched, not just a 0/1 flag: the
+     * LLM gets to see e.g. "matched Mood=RELAXED" instead of a bare count.
+     * An empty codes list for a dimension naturally yields an empty match
+     * list ({@code s.code IN []} is never true), so "not requested" and
+     * "requested but nothing matched" both fall out without a separate
+     * guard.
+     */
     public List<GraphCandidate> findAlbumCandidates(
         List<String> styleCodes, List<String> moodCodes, List<String> contextCodes,
         UUID userId, boolean excludeListened, boolean excludeAlreadyRated, int limit
@@ -835,9 +837,13 @@ public class GraphService {
                 .toList());
     }
 
-    // excludeAlreadyRated checks RATED_TRACK, not RATED — that's the
-    // Track-level rating relationship (see rateTrack), kept under its own
-    // name to avoid ambiguity with rateAlbum's Album-level RATED.
+    /**
+     * Same shape as {@link #findAlbumCandidates} — see its Javadoc. {@code
+     * excludeAlreadyRated} checks RATED_TRACK, not RATED — that's the
+     * Track-level rating relationship (see {@link #rateTrack}), kept under
+     * its own name to avoid ambiguity with {@link #rateAlbum}'s Album-level
+     * RATED.
+     */
     public List<GraphCandidate> findTrackCandidates(
         List<String> moodCodes, List<String> contextCodes, List<String> rhythmCodes, List<String> instrumentCodes,
         UUID userId, boolean excludeListened, boolean excludeAlreadyRated, int limit
@@ -884,8 +890,11 @@ public class GraphService {
                 .toList());
     }
 
-    // No userId/excludeListened/excludeAlreadyRated — Artist has neither a
-    // LISTENED nor a RATED relationship in the graph today.
+    /**
+     * Same shape as {@link #findAlbumCandidates} — see its Javadoc. No
+     * userId/excludeListened/excludeAlreadyRated: Artist has neither a
+     * LISTENED nor a RATED relationship in the graph today.
+     */
     public List<GraphCandidate> findArtistCandidates(
         List<String> styleCodes, List<String> contextCodes, List<String> instrumentCodes, int limit
     ) {
