@@ -31,9 +31,22 @@ import lombok.AllArgsConstructor;
 @AllArgsConstructor
 public class SemanticSearchService {
 
+    /**
+     * The result cap: "one block per category per editorial" is a content
+     * convention, not an enforced invariant (no DB constraint, {@code
+     * EditorialService.upsertBlocks} doesn't dedupe) — a single editorial
+     * can legitimately contribute more than one match, so the result size
+     * isn't naturally bounded by candidateIds.size() alone. Public so
+     * {@code SemanticSearchTool} can reuse the same number as
+     * candidateIds' schema {@code maxItems} — one constant, not two magic
+     * numbers that could drift apart.
+     */
+    public static final int MAX_MATCHES = 30;
+
     private final EditorialBlockRepository editorialBlockRepository;
     private final EmbeddingService embeddingService;
 
+    /** Fast-empty path: an empty/null candidateIds is a valid "nothing to search", not an error — skips embedding the query entirely. */
     public SemanticSearchResult search(SemanticSearchRequest request) {
         List<UUID> candidateIds = request.candidateIds();
 
@@ -42,6 +55,7 @@ public class SemanticSearchService {
             : new SemanticSearchResult(searchNonEmpty(request));
     }
 
+    /** Embeds {@code queryText} once, then ranks {@code request.entityType()}'s candidates by cosine similarity to it. */
     private List<ScoredBlock> searchNonEmpty(SemanticSearchRequest request) {
         List<UUID> candidateIds = request.candidateIds();
         String queryEmbedding = new PGvector(embeddingService.embed(request.queryText())).getValue();
@@ -58,13 +72,13 @@ public class SemanticSearchService {
         // final, ranked result — no merge/re-sort needed here.
         Map<CatalogItemType, Supplier<List<SemanticMatchRow>>> finders = Map.of(
             CatalogItemType.ALBUM, () -> editorialBlockRepository.semanticSearchAlbums(
-                queryEmbedding, candidateIds, category, energy, accessibility, moodIntensity
+                queryEmbedding, candidateIds, category, energy, accessibility, moodIntensity, MAX_MATCHES
             ),
             CatalogItemType.TRACK, () -> editorialBlockRepository.semanticSearchTracks(
-                queryEmbedding, candidateIds, category, energy, accessibility, moodIntensity
+                queryEmbedding, candidateIds, category, energy, accessibility, moodIntensity, MAX_MATCHES
             ),
             CatalogItemType.ARTIST, () -> editorialBlockRepository.semanticSearchArtists(
-                queryEmbedding, candidateIds, category
+                queryEmbedding, candidateIds, category, MAX_MATCHES
             )
         );
 
