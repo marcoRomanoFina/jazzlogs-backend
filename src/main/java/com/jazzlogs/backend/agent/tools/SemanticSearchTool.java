@@ -42,7 +42,7 @@ public class SemanticSearchTool extends JazzTool {
         "type", "object",
         "properties", Map.of(
             "entityType", Map.of("type", "string", "enum", List.of("ALBUM", "TRACK", "ARTIST")),
-            "candidateIds", Map.of("type", "array", "items", Map.of("type", "string")),
+            "candidateIds", Map.of("type", "array", "items", Map.of("type", "string"), "maxItems", SemanticSearchService.MAX_MATCHES),
             "category", Map.of("type", "string", "enum", categoryNames()),
             "energy", Map.of("type", List.of("string", "null"), "enum", levelNamesOrNull()),
             "accessibility", Map.of("type", List.of("string", "null"), "enum", levelNamesOrNull()),

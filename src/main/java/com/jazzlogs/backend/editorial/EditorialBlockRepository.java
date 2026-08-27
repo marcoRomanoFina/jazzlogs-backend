@@ -33,7 +33,10 @@ public interface EditorialBlockRepository extends JpaRepository<EditorialBlock, 
      *
      * <p>{@code *Ids} is always non-empty here — {@code
      * SemanticSearchService.search()} short-circuits on empty/null
-     * candidateIds before reaching this.
+     * candidateIds before reaching this. {@code LIMIT} isn't redundant with
+     * "one block per category" — nothing enforces that invariant (no DB
+     * constraint, {@code EditorialService.upsertBlocks} doesn't dedupe), so
+     * a single editorial can legitimately contribute more than one match.
      */
     @Query(value = """
         SELECT
@@ -50,6 +53,7 @@ public interface EditorialBlockRepository extends JpaRepository<EditorialBlock, 
           AND (:accessibility IS NULL OR a.accessibility = :accessibility)
           AND (:moodIntensity IS NULL OR a.mood_intensity = :moodIntensity)
         ORDER BY eb.embedding <=> CAST(:queryEmbedding AS vector)
+        LIMIT :limit
         """, nativeQuery = true)
     List<SemanticMatchRow> semanticSearchAlbums(
         @Param("queryEmbedding") String queryEmbedding,
@@ -57,7 +61,8 @@ public interface EditorialBlockRepository extends JpaRepository<EditorialBlock, 
         @Param("category") String category,
         @Param("energy") String energy,
         @Param("accessibility") String accessibility,
-        @Param("moodIntensity") String moodIntensity
+        @Param("moodIntensity") String moodIntensity,
+        @Param("limit") int limit
     );
 
     /** Same shape as {@link #semanticSearchAlbums} — see its Javadoc. */
@@ -76,6 +81,7 @@ public interface EditorialBlockRepository extends JpaRepository<EditorialBlock, 
           AND (:accessibility IS NULL OR t.accessibility = :accessibility)
           AND (:moodIntensity IS NULL OR t.mood_intensity = :moodIntensity)
         ORDER BY eb.embedding <=> CAST(:queryEmbedding AS vector)
+        LIMIT :limit
         """, nativeQuery = true)
     List<SemanticMatchRow> semanticSearchTracks(
         @Param("queryEmbedding") String queryEmbedding,
@@ -83,7 +89,8 @@ public interface EditorialBlockRepository extends JpaRepository<EditorialBlock, 
         @Param("category") String category,
         @Param("energy") String energy,
         @Param("accessibility") String accessibility,
-        @Param("moodIntensity") String moodIntensity
+        @Param("moodIntensity") String moodIntensity,
+        @Param("limit") int limit
     );
 
     /**
@@ -104,11 +111,13 @@ public interface EditorialBlockRepository extends JpaRepository<EditorialBlock, 
         WHERE eb.content_category = :category
           AND are.artist_id IN (:artistIds)
         ORDER BY eb.embedding <=> CAST(:queryEmbedding AS vector)
+        LIMIT :limit
         """, nativeQuery = true)
     List<SemanticMatchRow> semanticSearchArtists(
         @Param("queryEmbedding") String queryEmbedding,
         @Param("artistIds") List<UUID> artistIds,
-        @Param("category") String category
+        @Param("category") String category,
+        @Param("limit") int limit
     );
 
     /** One row from {@link #semanticSearchAlbums}/{@link #semanticSearchTracks}/{@link #semanticSearchArtists}. */
