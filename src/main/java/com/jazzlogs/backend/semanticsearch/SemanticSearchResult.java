@@ -2,6 +2,6 @@ package com.jazzlogs.backend.semanticsearch;
 
 import java.util.List;
 
-// matches is sorted DESC by similarityScore — see SemanticSearchService.
+/** {@code matches} is sorted DESC by similarityScore — see {@link SemanticSearchService}. */
 public record SemanticSearchResult(List<ScoredBlock> matches) {
 }

@@ -25,31 +25,15 @@ public interface EditorialBlockRepository extends JpaRepository<EditorialBlock, 
 
     /**
      * One of {@link #semanticSearchAlbums}/{@link #semanticSearchTracks}/
-     * {@link #semanticSearchArtists} — one method per entity type: {@code
-     * editorial_blocks} has no direct {@code entity_type}/{@code entity_id}
-     * column, and resolving one means joining through a different subclass
-     * table per type (Album/Track also filter on energy/accessibility/
-     * moodIntensity, columns Artist doesn't have) — matches how this
-     * project's {@code editorial_summaries} view resolves the same
-     * ownership (see {@code V13__editorial_summaries_context_id.sql}).
-     * {@code SemanticSearchService} picks which one to call via a {@code
-     * Map<CatalogItemType, ...>} lookup, matching {@code
-     * SemanticSearchRequest.entityType} (singular and required, so a call
-     * only ever invokes exactly one of these).
+     * {@link #semanticSearchArtists} — one query per entity type, since each
+     * joins through a different subclass table (Album/Track also filter on
+     * energy/accessibility/moodIntensity, which Artist doesn't have). {@code
+     * SemanticSearchService} calls exactly one, matching {@code
+     * SemanticSearchRequest.entityType}.
      *
-     * <p>Native, not JPQL — pgvector's {@code <=>} (cosine distance) has no
-     * JPQL equivalent. {@code queryEmbedding} is a pgvector text literal
-     * produced via {@code new PGvector(vector).getValue()} (see {@code
-     * SemanticSearchService}) and {@code CAST} here rather than bound
-     * through {@code PgVectorType}, since native-query parameters skip
-     * Hibernate's {@code UserType} machinery. {@code similarityScore} is
-     * {@code 1 - cosine_distance} (higher = more similar).
-     *
-     * <p>{@code *Ids} is always non-empty when these are actually called —
-     * {@code SemanticSearchService.search()} short-circuits on an empty/null
-     * {@code candidateIds} before ever reaching the entityType dispatch (an
-     * empty {@code IN ()} is invalid SQL besides), so there's no
-     * null/empty-list branch to handle here.
+     * <p>{@code *Ids} is always non-empty here — {@code
+     * SemanticSearchService.search()} short-circuits on empty/null
+     * candidateIds before reaching this.
      */
     @Query(value = """
         SELECT

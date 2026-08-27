@@ -21,16 +21,18 @@ import com.jazzlogs.backend.semanticsearch.SemanticSearchRequest;
 import com.jazzlogs.backend.semanticsearch.SemanticSearchResult;
 import com.jazzlogs.backend.semanticsearch.SemanticSearchService;
 
-// Semantic (pgvector) search over editorial_blocks — the second, independent
-// half of a two-tool pipeline with GRAPH_FILTER. Standalone: candidateIds is
-// explicit input, not a shared search/session id, so the model can call
-// this on its own (with a candidate set it built itself) or chain it right
-// after GRAPH_FILTER by copying that tool's entityIds — entityType here
-// should match whichever entityType that GRAPH_FILTER call used, since a
-// candidate set is expected to already be homogeneous. No rerank/fusion
-// step here or anywhere server-side — the model sees similarityScore (and
-// matchedDimensions, if it used GRAPH_FILTER first) side by side and
-// synthesizes the final answer itself.
+/**
+ * Semantic (pgvector) search over editorial_blocks — the second, independent
+ * half of a two-tool pipeline with GRAPH_FILTER. Standalone: candidateIds is
+ * explicit input, not a shared search/session id, so the model can call this
+ * on its own (with a candidate set it built itself) or chain it right after
+ * GRAPH_FILTER by copying that tool's entityIds — entityType here should
+ * match whichever entityType that GRAPH_FILTER call used, since a candidate
+ * set is expected to already be homogeneous. No rerank/fusion step here or
+ * anywhere server-side — the model sees similarityScore (and
+ * matchedDimensions, if it used GRAPH_FILTER first) side by side and
+ * synthesizes the final answer itself.
+ */
 @Component
 public class SemanticSearchTool extends JazzTool {
 
@@ -85,6 +87,7 @@ public class SemanticSearchTool extends JazzTool {
         return SCHEMA;
     }
 
+    /** Ranks candidateIds' editorial blocks of one category by similarity to queryText. */
     @Override
     public ToolExecutionResult execute(ToolCallRequest call, UUID userId) {
         Args args = parseArgs(call.argumentsJson());
@@ -104,6 +107,7 @@ public class SemanticSearchTool extends JazzTool {
         return new ToolExecutionResult(writeJson(output), true);
     }
 
+    /** Parses the model's raw JSON args, rejecting malformed JSON. */
     private Args parseArgs(String argumentsJson) {
         try {
             return objectMapper.readValue(argumentsJson, Args.class);
@@ -112,9 +116,7 @@ public class SemanticSearchTool extends JazzTool {
         }
     }
 
-    // candidateIds must be present (possibly empty) — see
-    // SemanticSearchRequest's doc on why null is rejected here rather than
-    // treated the same as empty.
+    /** candidateIds must be present (possibly empty) — see {@link SemanticSearchRequest}'s doc on why null is rejected here rather than treated the same as empty. */
     private List<UUID> parseCandidateIds(List<String> raw) {
         if (raw == null) {
             throw new IllegalArgumentException("candidateIds must not be null");
@@ -122,6 +124,7 @@ public class SemanticSearchTool extends JazzTool {
         return raw.stream().map(this::parseUuid).toList();
     }
 
+    /** Rejects a missing/blank/malformed candidateIds entry. */
     private UUID parseUuid(String raw) {
         if (raw == null || raw.isBlank()) {
             throw new IllegalArgumentException("candidateIds entry must not be blank");
@@ -133,10 +136,12 @@ public class SemanticSearchTool extends JazzTool {
         }
     }
 
+    /** energy/accessibility/moodIntensity are optional — a missing field is a real {@code null}, not an error. */
     private Level parseLevel(String raw, String kind) {
         return raw == null ? null : parseEnumValue(raw, Level.class, kind);
     }
 
+    /** Rejects a missing/blank queryText. */
     private String requireQueryText(String raw) {
         if (raw == null || raw.isBlank()) {
             throw new IllegalArgumentException("queryText must not be blank");
@@ -144,9 +149,7 @@ public class SemanticSearchTool extends JazzTool {
         return raw;
     }
 
-    // parseEnumValue/parseRequiredEnum are inherited from JazzTool — shared
-    // with GraphFilterTool, which needs the identical entityType parsing.
-
+    /** The conversational summary line the model reads alongside the structured matches. */
     private String buildContent(List<ScoredBlock> matches) {
         if (matches.isEmpty()) {
             return "No semantically similar blocks found for the given candidates/category.";
@@ -154,6 +157,7 @@ public class SemanticSearchTool extends JazzTool {
         return "Found " + matches.size() + " matching block(s), ranked by similarity.";
     }
 
+    /** Serializes the tool's output — a failure here is our bug, not the model's, hence {@link IllegalStateException}. */
     private String writeJson(Output output) {
         try {
             return objectMapper.writeValueAsString(output);
@@ -162,20 +166,25 @@ public class SemanticSearchTool extends JazzTool {
         }
     }
 
+    /** Every {@link BlockContentCategory} name — exposed to the model as the {@code category} field's schema enum. */
     private static List<String> categoryNames() {
         return Arrays.stream(BlockContentCategory.values()).map(Enum::name).toList();
     }
 
-    // Includes a null entry so the JSON Schema's enum stays valid alongside
-    // "type": ["string", "null"] — List.of(...) can't hold null, hence the
-    // explicit ArrayList build here instead of reusing a List.of(...)-based
-    // helper like categoryNames().
+    /**
+     * Every {@link Level} name plus a trailing {@code null} entry, so the
+     * JSON Schema's enum stays valid alongside {@code "type": ["string",
+     * "null"]} — {@code List.of(...)} can't hold null, hence the explicit
+     * {@code ArrayList} build here instead of reusing a {@code
+     * List.of(...)}-based helper like {@link #categoryNames}.
+     */
     private static List<String> levelNamesOrNull() {
         List<String> names = new ArrayList<>(Arrays.stream(Level.values()).map(Enum::name).toList());
         names.add(null);
         return names;
     }
 
+    /** The model's raw tool-call arguments, before validation. */
     private record Args(
         String entityType,
         List<String> candidateIds,
@@ -187,9 +196,11 @@ public class SemanticSearchTool extends JazzTool {
     ) {
     }
 
+    /** The tool's structured payload, alongside {@link #buildContent}'s summary. */
     private record Metadata(List<ScoredBlock> matches) {
     }
 
+    /** The tool's full JSON result shape — conversational summary plus structured metadata. */
     private record Output(String content, Metadata metadata) {
     }
 }

@@ -34,6 +34,7 @@ public class SemanticSearchService {
     private final EditorialBlockRepository editorialBlockRepository;
     private final EmbeddingService embeddingService;
 
+    /** Fast-empty path: an empty/null candidateIds is a valid "nothing to search", not an error — skips embedding the query entirely. */
     public SemanticSearchResult search(SemanticSearchRequest request) {
         List<UUID> candidateIds = request.candidateIds();
 
@@ -42,6 +43,7 @@ public class SemanticSearchService {
             : new SemanticSearchResult(searchNonEmpty(request));
     }
 
+    /** Embeds {@code queryText} once, then ranks {@code request.entityType()}'s candidates by cosine similarity to it. */
     private List<ScoredBlock> searchNonEmpty(SemanticSearchRequest request) {
         List<UUID> candidateIds = request.candidateIds();
         String queryEmbedding = new PGvector(embeddingService.embed(request.queryText())).getValue();
