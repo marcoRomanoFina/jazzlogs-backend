@@ -31,10 +31,13 @@ public interface EditorialRepository extends LikeableRepository<Editorial> {
     Optional<Integer> findLikeCount(@Param("id") UUID entityId);
 
     /**
-     * At most one editorial is featurated at a time, across every subtype
-     * (Album/Track/ArtistEditorial alike) — {@link EditorialService#setFeaturated}
-     * calls this before {@link #markFeaturated}, both as atomic UPDATEs
-     * rather than read-modify-save.
+     * The normal-path way to clear the previous featurated row, across
+     * every subtype (Album/Track/ArtistEditorial alike) — {@link
+     * EditorialService#setFeaturated} calls this before {@link
+     * #markFeaturated}, both as atomic UPDATEs rather than
+     * read-modify-save. This alone doesn't guarantee at most one stays
+     * featured under concurrent calls; {@code idx_editorials_only_one_featured}
+     * (see V18) is what actually enforces that.
      */
     @Modifying
     @Query("UPDATE Editorial e SET e.featurated = false WHERE e.featurated = true")

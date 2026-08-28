@@ -10,6 +10,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.springframework.ai.document.Document;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -60,10 +61,18 @@ public class EditorialService {
 
     /**
      * Marks {@code editorialId} as THE featurated one, unfeaturating
-     * whichever one (if any) held that spot before.
+     * whichever one (if any) held that spot before. {@code
+     * idx_editorials_only_one_featured} (see V18) is what actually
+     * guarantees at most one stays featured under concurrent calls —
+     * clearFeaturated()+markFeaturated() alone can't: two overlapping calls
+     * can each see nothing featured, clear nothing, then both mark a
+     * different row true. The unique index turns that into a thrown
+     * exception here instead of silently leaving two rows featured.
      *
      * @param editorialId must already exist — a base {@link Editorial} id,
      *                    valid regardless of which concrete subtype it is
+     * @throws ResponseStatusException 409 if a concurrent call already
+     *                                  featured a different editorial
      */
     @Transactional
     public void setFeaturated(UUID editorialId) {
@@ -71,7 +80,13 @@ public class EditorialService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Editorial not found: " + editorialId);
         }
         editorialRepository.clearFeaturated();
-        editorialRepository.markFeaturated(editorialId);
+        try {
+            editorialRepository.markFeaturated(editorialId);
+        } catch (DataIntegrityViolationException e) {
+            throw new ResponseStatusException(
+                HttpStatus.CONFLICT, "Another editorial was just featured concurrently — try again", e
+            );
+        }
     }
 
     @Transactional(readOnly = true)

@@ -13,10 +13,12 @@ import org.springframework.data.repository.query.Param;
 public interface EditorialSummaryRepository extends JpaRepository<EditorialSummary, UUID> {
 
     /**
-     * {@code findFirst}, not {@code find}: {@code featurated} isn't
-     * unique-constrained in the schema — {@link
-     * EditorialRepository#clearFeaturated} is what actually keeps it to at
-     * most one.
+     * {@code findFirst}, not {@code find}, defensively: {@code
+     * idx_editorials_only_one_featured} (see V18) enforces at most one row
+     * with {@code featurated = true} at the DB level, so this should never
+     * actually find more than one — {@code findFirst} just means a second
+     * row would be picked over, not an error, if that guarantee were ever
+     * violated.
      *
      * @return the featurated editorial, or empty if none is set
      */
