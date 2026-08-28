@@ -15,11 +15,15 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-// Read-only mapping over the `editorial_summaries` view (see
-// V9__editorial_summaries_view.sql) — the UNION across Album/Track/
-// ArtistEditorial that lets the archive endpoints filter, search and page
-// across all three owner types with a single JPQL query, letting Spring
-// Data translate Pageable's Sort automatically.
+/**
+ * Read-only mapping over the {@code editorial_summaries} view (see {@code
+ * V9__editorial_summaries_view.sql}) — a plain SQL view, not a duplicated
+ * table: it's the {@code UNION ALL} across Album/Track/ArtistEditorial
+ * computed live on every query, never stored separately. Lets the archive
+ * endpoints filter, search and page across all three owner types with a
+ * single JPQL query, with Spring Data translating {@code Pageable}'s
+ * {@code Sort} automatically.
+ */
 @Entity
 @Immutable
 @Table(name = "editorial_summaries")
@@ -57,22 +61,22 @@ public class EditorialSummary {
 
     private boolean featurated;
 
-    // Artist name for an album, album name for a track — null for an artist
-    // editorial (nothing one hop further to show).
+    /** Artist name for an album, album name for a track — null for an artist editorial (nothing one hop further to show). */
     @Column(name = "context_name")
     private String contextName;
 
     @Column(name = "release_year")
     private Integer releaseYear;
 
-    // First block's raw text, for the archive lead card's preview snippet —
-    // no embedding, no other block metadata (see V11's LATERAL join).
+    /** First block's raw text, for the archive lead card's preview snippet — no embedding, no other block metadata (see V11's LATERAL join). */
     @Column(name = "preview_text")
     private String previewText;
 
-    // Artist id for an album, album id for a track — null for an artist. Lets
-    // the archive deep-link a track editorial straight into its album's
-    // editorial page instead of nowhere (see V13).
+    /**
+     * Artist id for an album, album id for a track — null for an artist.
+     * Lets the archive deep-link a track editorial straight into its
+     * album's editorial page instead of nowhere (see V13).
+     */
     @Column(name = "context_id")
     private UUID contextId;
 }

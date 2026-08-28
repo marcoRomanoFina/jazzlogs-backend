@@ -33,16 +33,20 @@ public class EditorialController {
     private final EditorialService editorialService;
     private final UserService userService;
 
-    // Curated single "hero" slot for the archive page — see
-    // EditorialRepository.clearFeaturated/markFeaturated (only ever one
-    // featurated editorial at a time, across every owner type).
+    /**
+     * Curated single "hero" slot for the archive page — see {@link
+     * EditorialRepository#clearFeaturated}/{@link
+     * EditorialRepository#markFeaturated} (only ever one featurated
+     * editorial at a time, across every owner type).
+     *
+     * @param jwt the caller, resolved to a user id only to compute {@code likedByCurrentUser}
+     * @return the featurated editorial
+     * @throws ResponseStatusException 404 if none is set
+     */
     @GetMapping("/featured")
     public EditorialSummaryDto featured(@AuthenticationPrincipal Jwt jwt) {
-        EditorialSummaryDto dto = editorialService.getFeatured(userService.resolveFromJwt(jwt).getId());
-        if (dto == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No featured editorial set");
-        }
-        return dto;
+        return editorialService.getFeatured(userService.resolveFromJwt(jwt).getId())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No featured editorial set"));
     }
 
     /** Count-only — see {@link EditorialService#countEditorials}. No auth-dependent data, doesn't need the JWT principal. */
