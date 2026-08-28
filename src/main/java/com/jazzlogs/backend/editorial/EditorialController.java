@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.jazzlogs.backend.editorial.dto.EditorialCountResponse;
 import com.jazzlogs.backend.editorial.dto.EditorialSummaryDto;
 import com.jazzlogs.backend.user.UserService;
 
@@ -42,6 +43,12 @@ public class EditorialController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No featured editorial set");
         }
         return dto;
+    }
+
+    /** Count-only — see {@link EditorialService#countEditorials}. No auth-dependent data, doesn't need the JWT principal. */
+    @GetMapping("/count")
+    public EditorialCountResponse count() {
+        return new EditorialCountResponse(editorialService.countEditorials());
     }
 
     // Cross-type (album/track/artist) editorial listing, backing both the
