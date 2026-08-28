@@ -79,6 +79,12 @@ public class EditorialService {
         return page.map(summary -> toSummaryDto(summary, liked.contains(summary.getId())));
     }
 
+    /** {@code COUNT(*)} only — no content, no joins, no like-status lookup. See {@link #listEditorials} for the filtered/paginated version. */
+    @Transactional(readOnly = true)
+    public long countEditorials() {
+        return editorialSummaryRepository.count();
+    }
+
     @Transactional(readOnly = true)
     public EditorialSummaryDto getFeatured(UUID currentUserId) {
         return editorialSummaryRepository.findFirstByFeaturatedTrue()
