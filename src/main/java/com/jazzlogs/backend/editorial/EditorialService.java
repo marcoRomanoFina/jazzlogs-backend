@@ -4,11 +4,13 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.springframework.ai.document.Document;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -57,13 +59,34 @@ public class EditorialService {
     private final EmbeddingService embeddingService;
     private final LikeService likeService;
 
+    /**
+     * Marks {@code editorialId} as THE featurated one, unfeaturating
+     * whichever one (if any) held that spot before. {@code
+     * idx_editorials_only_one_featured} (see V18) is what actually
+     * guarantees at most one stays featured under concurrent calls —
+     * clearFeaturated()+markFeaturated() alone can't: two overlapping calls
+     * can each see nothing featured, clear nothing, then both mark a
+     * different row true. The unique index turns that into a thrown
+     * exception here instead of silently leaving two rows featured.
+     *
+     * @param editorialId must already exist — a base {@link Editorial} id,
+     *                    valid regardless of which concrete subtype it is
+     * @throws ResponseStatusException 409 if a concurrent call already
+     *                                  featured a different editorial
+     */
     @Transactional
     public void setFeaturated(UUID editorialId) {
         if (!editorialRepository.existsById(editorialId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Editorial not found: " + editorialId);
         }
         editorialRepository.clearFeaturated();
-        editorialRepository.markFeaturated(editorialId);
+        try {
+            editorialRepository.markFeaturated(editorialId);
+        } catch (DataIntegrityViolationException e) {
+            throw new ResponseStatusException(
+                HttpStatus.CONFLICT, "Another editorial was just featured concurrently — try again", e
+            );
+        }
     }
 
     @Transactional(readOnly = true)
@@ -76,7 +99,7 @@ public class EditorialService {
         List<UUID> ids = page.getContent().stream().map(EditorialSummary::getId).toList();
         Set<UUID> liked = likeService.hasUserLikedBatch(currentUserId, LikeableEntityType.EDITORIAL, ids);
 
-        return page.map(summary -> toSummaryDto(summary, liked.contains(summary.getId())));
+        return page.map(summary -> toEditorialSummaryDto(summary, liked.contains(summary.getId())));
     }
 
     /** {@code COUNT(*)} only — no content, no joins, no like-status lookup. See {@link #listEditorials} for the filtered/paginated version. */
@@ -85,16 +108,20 @@ public class EditorialService {
         return editorialSummaryRepository.count();
     }
 
+    /**
+     * @param currentUserId used only to compute {@code likedByCurrentUser} on the result
+     * @return the featurated editorial, empty if none is set — {@link
+     *         EditorialController#featured} turns that into the 404
+     */
     @Transactional(readOnly = true)
-    public EditorialSummaryDto getFeatured(UUID currentUserId) {
+    public Optional<EditorialSummaryDto> getFeatured(UUID currentUserId) {
         return editorialSummaryRepository.findFirstByFeaturatedTrue()
-            .map(summary -> toSummaryDto(
+            .map(summary -> toEditorialSummaryDto(
                 summary, likeService.hasUserLiked(currentUserId, LikeableEntityType.EDITORIAL, summary.getId())
-            ))
-            .orElse(null);
+            ));
     }
 
-    private EditorialSummaryDto toSummaryDto(EditorialSummary summary, boolean likedByCurrentUser) {
+    private EditorialSummaryDto toEditorialSummaryDto(EditorialSummary summary, boolean likedByCurrentUser) {
         return new EditorialSummaryDto(
             summary.getId(),
             summary.getOwnerType(),

@@ -9,8 +9,19 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+/** Backs the archive page's endpoints — see {@link EditorialSummary} for what the underlying view is. */
 public interface EditorialSummaryRepository extends JpaRepository<EditorialSummary, UUID> {
 
+    /**
+     * {@code findFirst}, not {@code find}, defensively: {@code
+     * idx_editorials_only_one_featured} (see V18) enforces at most one row
+     * with {@code featurated = true} at the DB level, so this should never
+     * actually find more than one — {@code findFirst} just means a second
+     * row would be picked over, not an error, if that guarantee were ever
+     * violated.
+     *
+     * @return the featurated editorial, or empty if none is set
+     */
     Optional<EditorialSummary> findFirstByFeaturatedTrue();
 
     // `pattern` is a pre-built "%...%" string (see EditorialService), rather

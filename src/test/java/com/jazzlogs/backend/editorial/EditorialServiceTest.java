@@ -1,13 +1,17 @@
 package com.jazzlogs.backend.editorial;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
 import java.util.List;
+import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpStatus;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import jakarta.persistence.EntityManager;
 
@@ -34,6 +38,12 @@ class EditorialServiceTest {
 
     @Autowired
     private EntityManager entityManager;
+
+    @Autowired
+    private EditorialRepository editorialRepository;
+
+    @Autowired
+    private EditorialSummaryRepository editorialSummaryRepository;
 
     @Test
     void upsertAlbumEditorial_persistsAcrossJoinedInheritanceTables() {
@@ -70,5 +80,48 @@ class EditorialServiceTest {
         entityManager.flush();
 
         assertThat(editorialService.countEditorials()).isEqualTo(before + 1);
+    }
+
+    @Test
+    void getFeatured_returnsEmpty_whenNothingIsFeatured() {
+        editorialRepository.clearFeaturated();
+
+        assertThat(editorialService.getFeatured(UUID.randomUUID())).isEmpty();
+    }
+
+    @Test
+    void setFeaturated_marksExactlyOneEditorial_clearingWhicheverWasFeaturedBefore() {
+        Artist artist = artistRepository.save(new Artist("Featured Test Artist", null, null, null));
+        Album albumA = albumRepository.save(new Album(
+            artist, "Featured Album A", null, null, null, 2024, 1, "LOG-FEAT-A", "LABEL-FEAT-A",
+            VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
+        ));
+        Album albumB = albumRepository.save(new Album(
+            artist, "Featured Album B", null, null, null, 2024, 1, "LOG-FEAT-B", "LABEL-FEAT-B",
+            VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
+        ));
+        AlbumEditorial editorialA = editorialService.upsertAlbumEditorial(
+            albumA.getId(), new AlbumEditorialRequest("A", "dek", "byline", List.of())
+        );
+        AlbumEditorial editorialB = editorialService.upsertAlbumEditorial(
+            albumB.getId(), new AlbumEditorialRequest("B", "dek", "byline", List.of())
+        );
+
+        editorialService.setFeaturated(editorialA.getId());
+        assertThat(editorialSummaryRepository.findFirstByFeaturatedTrue().map(EditorialSummary::getId))
+            .contains(editorialA.getId());
+
+        editorialService.setFeaturated(editorialB.getId());
+        assertThat(editorialSummaryRepository.findFirstByFeaturatedTrue().map(EditorialSummary::getId))
+            .contains(editorialB.getId());
+    }
+
+    @Test
+    void setFeaturated_rejectsUnknownEditorialId() {
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> editorialService.setFeaturated(UUID.randomUUID())
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 }
