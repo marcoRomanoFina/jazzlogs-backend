@@ -27,6 +27,7 @@ import com.jazzlogs.backend.editorial.dto.AlbumEditorialRequest;
 import com.jazzlogs.backend.editorial.dto.ArtistEditorialDto;
 import com.jazzlogs.backend.editorial.dto.ArtistEditorialRequest;
 import com.jazzlogs.backend.editorial.dto.BlockRequest;
+import com.jazzlogs.backend.editorial.dto.CatalogueEditorialDto;
 import com.jazzlogs.backend.editorial.dto.EditorialBlockDto;
 import com.jazzlogs.backend.editorial.dto.EditorialSummaryDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialDto;
@@ -89,17 +90,47 @@ public class EditorialService {
         }
     }
 
+    /**
+     * The archive's free-form search/filter/paginate listing, across every
+     * owner type — backs {@link EditorialController#list}.
+     *
+     * @param type          restricts to one owner type, or {@code null} for every type
+     * @param q             free-text search, matched case-insensitively as
+     *                      a substring against title/owner name; {@code
+     *                      null}/blank means no filter
+     * @param currentUserId used only to compute each result's {@code likedByCurrentUser}
+     * @return the matching page
+     */
     @Transactional(readOnly = true)
-    public Page<EditorialSummaryDto> listEditorials(
+    public Page<CatalogueEditorialDto> listEditorials(
         EditorialOwnerType type, String q, Pageable pageable, UUID currentUserId
     ) {
         String pattern = (q == null || q.isBlank()) ? null : "%" + q.trim().toLowerCase() + "%";
-        Page<EditorialSummary> page = editorialSummaryRepository.search(type, pattern, pageable);
+        Page<CatalogueEditorialRow> page = editorialSummaryRepository.searchLean(type, pattern, pageable);
 
-        List<UUID> ids = page.getContent().stream().map(EditorialSummary::getId).toList();
+        List<UUID> ids = page.getContent().stream().map(CatalogueEditorialRow::id).toList();
         Set<UUID> liked = likeService.hasUserLikedBatch(currentUserId, LikeableEntityType.EDITORIAL, ids);
 
-        return page.map(summary -> toEditorialSummaryDto(summary, liked.contains(summary.getId())));
+        return page.map(row -> toCatalogueEditorialDto(row, liked.contains(row.id())));
+    }
+
+    private CatalogueEditorialDto toCatalogueEditorialDto(CatalogueEditorialRow row, boolean likedByCurrentUser) {
+        return new CatalogueEditorialDto(
+            row.id(),
+            row.type(),
+            row.ownerId(),
+            row.ownerName(),
+            row.ownerImageUrl(),
+            row.contextName(),
+            row.contextId(),
+            row.title(),
+            row.dek(),
+            row.byline(),
+            row.createdAt(),
+            row.logNumber(),
+            row.likeCount(),
+            likedByCurrentUser
+        );
     }
 
     /** {@code COUNT(*)} only — no content, no joins, no like-status lookup. See {@link #listEditorials} for the filtered/paginated version. */

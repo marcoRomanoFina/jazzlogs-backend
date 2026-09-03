@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.jazzlogs.backend.editorial.dto.CatalogueEditorialDto;
 import com.jazzlogs.backend.editorial.dto.EditorialCountResponse;
 import com.jazzlogs.backend.editorial.dto.EditorialSummaryDto;
 import com.jazzlogs.backend.user.UserService;
@@ -55,12 +56,19 @@ public class EditorialController {
         return new EditorialCountResponse(editorialService.countEditorials());
     }
 
-    // Cross-type (album/track/artist) editorial listing, backing both the
-    // "latest editorials" strip (?size=4, no filters) and the full archive
-    // grid (?type=&q=&page=&size=) on the frontend — same resource, just
-    // different query params.
+    /**
+     * The archive's free-form search/filter/paginate listing, across every
+     * owner type — the one place {@code type}/{@code q}/sort genuinely vary
+     * per call. 
+     *
+     * @param type     restricts to one owner type; omitted (or blank) means every type
+     * @param q        case-insensitive substring match against title/owner name; omitted means no filter
+     * @param pageable defaults to {@code size=6}, sorted by {@code createdAt} DESC
+     * @param jwt      the caller, resolved to a user id only to compute {@code likedByCurrentUser}
+     * @return the matching page
+     */
     @GetMapping
-    public Page<EditorialSummaryDto> list(
+    public Page<CatalogueEditorialDto> list(
         @RequestParam(required = false) EditorialOwnerType type,
         @RequestParam(required = false) String q,
         @PageableDefault(size = 6, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
