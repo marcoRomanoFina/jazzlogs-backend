@@ -7,8 +7,12 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
+import jakarta.persistence.EntityManager;
+
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.ai.document.Document;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -59,6 +63,7 @@ public class EditorialService {
     private final EditorialSummaryRepository editorialSummaryRepository;
     private final EmbeddingService embeddingService;
     private final LikeService likeService;
+    private final EntityManager entityManager;
 
     /**
      * Marks {@code editorialId} as THE featurated one, unfeaturating
@@ -181,7 +186,7 @@ public class EditorialService {
             .orElseGet(() -> new AlbumEditorial(album));
 
         editorial.update(request.title(), request.dek(), request.byline());
-        AlbumEditorial saved = albumEditorialRepository.save(editorial);
+        AlbumEditorial saved = saveWithUniqueTitle(() -> albumEditorialRepository.save(editorial));
 
         upsertBlocks(saved, request.blocks());
 
@@ -195,7 +200,7 @@ public class EditorialService {
         TrackEditorial editorial = trackEditorialRepository.findByTrackId(trackId)
             .orElseGet(() -> new TrackEditorial(track));
         editorial.update(request.title(), request.dek(), request.byline());
-        TrackEditorial saved = trackEditorialRepository.save(editorial);
+        TrackEditorial saved = saveWithUniqueTitle(() -> trackEditorialRepository.save(editorial));
 
         upsertBlocks(saved, request.blocks());
 
@@ -210,11 +215,35 @@ public class EditorialService {
             .orElseGet(() -> new ArtistEditorial(artist));
 
         editorial.update(request.title(), request.dek(), request.byline());
-        ArtistEditorial saved = artistEditorialRepository.save(editorial);
+        ArtistEditorial saved = saveWithUniqueTitle(() -> artistEditorialRepository.save(editorial));
 
         upsertBlocks(saved, request.blocks());
 
         return saved;
+    }
+
+    /**
+     * Flushes right after {@code save}, not left to commit time — {@code
+     * uk_editorials_title} (see V20) is what actually rejects a reused
+     * title, but {@code JpaRepository.save} on a new entity only schedules
+     * the INSERT for flush time by default; without an explicit flush here,
+     * the constraint violation would surface outside this method (at
+     * commit, or worse, only after the caller already spent an OpenAI
+     * embedding call in {@link #upsertBlocks}) instead of being caught
+     * below. That flush also means the violation reaches us as the raw
+     * {@code ConstraintViolationException} Hibernate throws, not Spring's
+     * {@code DataIntegrityViolationException} — Spring's exception
+     * translation only wraps repository method calls, not a direct {@code
+     * EntityManager.flush()}, so both are caught here.
+     */
+    private <T extends Editorial> T saveWithUniqueTitle(Supplier<T> save) {
+        try {
+            T saved = save.get();
+            entityManager.flush();
+            return saved;
+        } catch (DataIntegrityViolationException | ConstraintViolationException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Another editorial already uses this title", e);
+        }
     }
 
     @Transactional

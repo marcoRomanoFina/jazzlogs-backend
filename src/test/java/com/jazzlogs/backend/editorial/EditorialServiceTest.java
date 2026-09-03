@@ -167,4 +167,47 @@ class EditorialServiceTest {
         assertThat(page.getContent()).hasSize(1);
         assertThat(page.getContent().get(0).logNumber()).isNull();
     }
+
+    @Test
+    void upsertAlbumEditorial_rejectsDuplicateTitleAcrossDifferentAlbums() {
+        Artist artist = artistRepository.save(new Artist("Unique Title Artist", null, null, null));
+        Album albumA = albumRepository.save(new Album(
+            artist, "Unique Title Album A", null, null, null, 2024, 1, "LOG-UNIQ-A", "LABEL-UNIQ-A",
+            VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
+        ));
+        Album albumB = albumRepository.save(new Album(
+            artist, "Unique Title Album B", null, null, null, 2024, 1, "LOG-UNIQ-B", "LABEL-UNIQ-B",
+            VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
+        ));
+        editorialService.upsertAlbumEditorial(
+            albumA.getId(), new AlbumEditorialRequest("Duplicate Title Test", "dek", "byline", List.of())
+        );
+
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class,
+            () -> editorialService.upsertAlbumEditorial(
+                albumB.getId(), new AlbumEditorialRequest("Duplicate Title Test", "dek", "byline", List.of())
+            )
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
+    void upsertAlbumEditorial_allowsReSavingWithItsOwnUnchangedTitle() {
+        Artist artist = artistRepository.save(new Artist("Resave Title Artist", null, null, null));
+        Album album = albumRepository.save(new Album(
+            artist, "Resave Title Album", null, null, null, 2024, 1, "LOG-RESAVE", "LABEL-RESAVE",
+            VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
+        ));
+        editorialService.upsertAlbumEditorial(
+            album.getId(), new AlbumEditorialRequest("Resave Same Title", "dek", "byline", List.of())
+        );
+
+        AlbumEditorial resaved = editorialService.upsertAlbumEditorial(
+            album.getId(), new AlbumEditorialRequest("Resave Same Title", "new dek", "new byline", List.of())
+        );
+
+        assertThat(resaved.getDek()).isEqualTo("new dek");
+    }
 }
