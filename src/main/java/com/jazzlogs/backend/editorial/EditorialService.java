@@ -7,8 +7,12 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
+import jakarta.persistence.EntityManager;
+
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.ai.document.Document;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
@@ -27,6 +31,7 @@ import com.jazzlogs.backend.editorial.dto.AlbumEditorialRequest;
 import com.jazzlogs.backend.editorial.dto.ArtistEditorialDto;
 import com.jazzlogs.backend.editorial.dto.ArtistEditorialRequest;
 import com.jazzlogs.backend.editorial.dto.BlockRequest;
+import com.jazzlogs.backend.editorial.dto.CatalogueEditorialDto;
 import com.jazzlogs.backend.editorial.dto.EditorialBlockDto;
 import com.jazzlogs.backend.editorial.dto.EditorialSummaryDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialDto;
@@ -58,6 +63,7 @@ public class EditorialService {
     private final EditorialSummaryRepository editorialSummaryRepository;
     private final EmbeddingService embeddingService;
     private final LikeService likeService;
+    private final EntityManager entityManager;
 
     /**
      * Marks {@code editorialId} as THE featurated one, unfeaturating
@@ -89,17 +95,47 @@ public class EditorialService {
         }
     }
 
+    /**
+     * The archive's free-form search/filter/paginate listing, across every
+     * owner type — backs {@link EditorialController#list}.
+     *
+     * @param type          restricts to one owner type, or {@code null} for every type
+     * @param q             free-text search, matched case-insensitively as
+     *                      a substring against title/owner name; {@code
+     *                      null}/blank means no filter
+     * @param currentUserId used only to compute each result's {@code likedByCurrentUser}
+     * @return the matching page
+     */
     @Transactional(readOnly = true)
-    public Page<EditorialSummaryDto> listEditorials(
+    public Page<CatalogueEditorialDto> listEditorials(
         EditorialOwnerType type, String q, Pageable pageable, UUID currentUserId
     ) {
         String pattern = (q == null || q.isBlank()) ? null : "%" + q.trim().toLowerCase() + "%";
-        Page<EditorialSummary> page = editorialSummaryRepository.search(type, pattern, pageable);
+        Page<CatalogueEditorialRow> page = editorialSummaryRepository.searchLean(type, pattern, pageable);
 
-        List<UUID> ids = page.getContent().stream().map(EditorialSummary::getId).toList();
+        List<UUID> ids = page.getContent().stream().map(CatalogueEditorialRow::id).toList();
         Set<UUID> liked = likeService.hasUserLikedBatch(currentUserId, LikeableEntityType.EDITORIAL, ids);
 
-        return page.map(summary -> toEditorialSummaryDto(summary, liked.contains(summary.getId())));
+        return page.map(row -> toCatalogueEditorialDto(row, liked.contains(row.id())));
+    }
+
+    private CatalogueEditorialDto toCatalogueEditorialDto(CatalogueEditorialRow row, boolean likedByCurrentUser) {
+        return new CatalogueEditorialDto(
+            row.id(),
+            row.type(),
+            row.ownerId(),
+            row.ownerName(),
+            row.ownerImageUrl(),
+            row.contextName(),
+            row.contextId(),
+            row.title(),
+            row.dek(),
+            row.byline(),
+            row.createdAt(),
+            row.logNumber(),
+            row.likeCount(),
+            likedByCurrentUser
+        );
     }
 
     /** {@code COUNT(*)} only — no content, no joins, no like-status lookup. See {@link #listEditorials} for the filtered/paginated version. */
@@ -150,7 +186,7 @@ public class EditorialService {
             .orElseGet(() -> new AlbumEditorial(album));
 
         editorial.update(request.title(), request.dek(), request.byline());
-        AlbumEditorial saved = albumEditorialRepository.save(editorial);
+        AlbumEditorial saved = saveWithUniqueTitle(() -> albumEditorialRepository.save(editorial));
 
         upsertBlocks(saved, request.blocks());
 
@@ -164,7 +200,7 @@ public class EditorialService {
         TrackEditorial editorial = trackEditorialRepository.findByTrackId(trackId)
             .orElseGet(() -> new TrackEditorial(track));
         editorial.update(request.title(), request.dek(), request.byline());
-        TrackEditorial saved = trackEditorialRepository.save(editorial);
+        TrackEditorial saved = saveWithUniqueTitle(() -> trackEditorialRepository.save(editorial));
 
         upsertBlocks(saved, request.blocks());
 
@@ -179,11 +215,35 @@ public class EditorialService {
             .orElseGet(() -> new ArtistEditorial(artist));
 
         editorial.update(request.title(), request.dek(), request.byline());
-        ArtistEditorial saved = artistEditorialRepository.save(editorial);
+        ArtistEditorial saved = saveWithUniqueTitle(() -> artistEditorialRepository.save(editorial));
 
         upsertBlocks(saved, request.blocks());
 
         return saved;
+    }
+
+    /**
+     * Flushes right after {@code save}, not left to commit time — {@code
+     * uk_editorials_title} (see V20) is what actually rejects a reused
+     * title, but {@code JpaRepository.save} on a new entity only schedules
+     * the INSERT for flush time by default; without an explicit flush here,
+     * the constraint violation would surface outside this method (at
+     * commit, or worse, only after the caller already spent an OpenAI
+     * embedding call in {@link #upsertBlocks}) instead of being caught
+     * below. That flush also means the violation reaches us as the raw
+     * {@code ConstraintViolationException} Hibernate throws, not Spring's
+     * {@code DataIntegrityViolationException} — Spring's exception
+     * translation only wraps repository method calls, not a direct {@code
+     * EntityManager.flush()}, so both are caught here.
+     */
+    private <T extends Editorial> T saveWithUniqueTitle(Supplier<T> save) {
+        try {
+            T saved = save.get();
+            entityManager.flush();
+            return saved;
+        } catch (DataIntegrityViolationException | ConstraintViolationException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Another editorial already uses this title", e);
+        }
     }
 
     @Transactional

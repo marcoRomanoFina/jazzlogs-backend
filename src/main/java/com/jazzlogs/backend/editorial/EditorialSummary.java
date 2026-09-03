@@ -79,4 +79,8 @@ public class EditorialSummary {
      */
     @Column(name = "context_id")
     private UUID contextId;
+
+    /** The album's catalog/release identifier — the track's own album for a track editorial (one hop away), null for an artist (see V19). */
+    @Column(name = "log_number")
+    private String logNumber;
 }

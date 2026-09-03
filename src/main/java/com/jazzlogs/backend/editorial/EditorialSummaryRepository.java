@@ -24,18 +24,36 @@ public interface EditorialSummaryRepository extends JpaRepository<EditorialSumma
      */
     Optional<EditorialSummary> findFirstByFeaturatedTrue();
 
-    // `pattern` is a pre-built "%...%" string (see EditorialService), rather
-    // than CONCAT('%', :q, '%') inline — Hibernate 6 sometimes fails to infer
-    // a CONCAT bind parameter's type against Postgres and sends it as bytea,
-    // which LOWER() then rejects ("function lower(bytea) does not exist").
+    /**
+     * Backs the Catalogue's free-form filter/search — the only caller that
+     * needs both {@code type} and {@code pattern} to be genuinely optional
+     * at once. A constructor expression, not {@code SELECT s} — this only
+     * selects {@link CatalogueEditorialRow}'s columns, so Postgres never
+     * evaluates {@code preview_text}'s per-row {@code LATERAL} block
+     * lookup (the Catalogue grid doesn't render it) or {@code featurated}/
+     * {@code release_year} for this query.
+     *
+     * @param type    restricts to one owner type, or {@code null} for every type
+     * @param pattern a pre-built {@code "%...%"} string (see {@code
+     *                EditorialService}), rather than {@code CONCAT('%',
+     *                :q, '%')} inline — Hibernate 6 sometimes fails to
+     *                infer a CONCAT bind parameter's type against Postgres
+     *                and sends it as bytea, which {@code LOWER()} then
+     *                rejects ({@code "function lower(bytea) does not exist"})
+     */
     @Query("""
-        SELECT s FROM EditorialSummary s
+        SELECT new com.jazzlogs.backend.editorial.CatalogueEditorialRow(
+            s.id, s.ownerType, s.ownerId, s.ownerName, s.ownerImageUrl,
+            s.contextName, s.contextId, s.title, s.dek, s.byline,
+            s.createdAt, s.logNumber, s.likeCount
+        )
+        FROM EditorialSummary s
         WHERE (:type IS NULL OR s.ownerType = :type)
           AND (:pattern IS NULL
                OR LOWER(s.title) LIKE :pattern
                OR LOWER(s.ownerName) LIKE :pattern)
         """)
-    Page<EditorialSummary> search(
+    Page<CatalogueEditorialRow> searchLean(
         @Param("type") EditorialOwnerType type, @Param("pattern") String pattern, Pageable pageable
     );
 }
