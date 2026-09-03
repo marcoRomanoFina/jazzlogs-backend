@@ -2,7 +2,6 @@ package com.jazzlogs.backend.album;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -16,26 +15,20 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.album.dto.AlbumDetailDto;
-import com.jazzlogs.backend.album.dto.AlbumSpotlightDto;
 import com.jazzlogs.backend.album.dto.ContextTagRequest;
 import com.jazzlogs.backend.album.dto.CreateAlbumRequest;
 import com.jazzlogs.backend.album.dto.MoodTagRequest;
 import com.jazzlogs.backend.album.dto.PersonnelRequest;
-import com.jazzlogs.backend.album.dto.SpotlightTrackDto;
 import com.jazzlogs.backend.album.dto.StyleTagRequest;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
-import com.jazzlogs.backend.editorial.AlbumEditorialRepository;
 import com.jazzlogs.backend.editorial.EditorialService;
-import com.jazzlogs.backend.editorial.TrackEditorialRepository;
 import com.jazzlogs.backend.editorial.dto.AlbumEditorialDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialDto;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.TrackPerformerEntry;
 import com.jazzlogs.backend.graph.TrackPlacement;
 import com.jazzlogs.backend.graph.VocabularyTag;
-import com.jazzlogs.backend.like.LikeService;
-import com.jazzlogs.backend.like.LikeableEntityType;
 import com.jazzlogs.backend.listen.ListenService;
 import com.jazzlogs.backend.note.NoteService;
 import com.jazzlogs.backend.note.dto.NoteDto;
@@ -71,9 +64,6 @@ public class AlbumService {
     private final EditorialService editorialService;
     private final NoteService noteService;
     private final ReviewService reviewService;
-    private final AlbumEditorialRepository albumEditorialRepository;
-    private final TrackEditorialRepository trackEditorialRepository;
-    private final LikeService likeService;
     private final ListenService listenService;
     private final SavedItemService savedItemService;
     private final TrackRatingRepository trackRatingRepository;
@@ -271,70 +261,6 @@ public class AlbumService {
             listenedTrackIds.size(),
             listenService.countAlbumListens(albumId),
             savedItemService.isSaved(currentUserId, SaveableEntityType.ALBUM, albumId)
-        );
-    }
-
-    // Lean cousin of getAlbumDetail, purpose-built for the archive page's
-    // spotlight: no personnel/tags/ratings/notes, and the one Neo4j call it
-    // does make (track placements, for ordering) is a single query rather
-    // than the five per-track ones getAlbumDetail needs for its fuller view.
-    @Transactional(readOnly = true)
-    public AlbumSpotlightDto getAlbumSpotlight(UUID albumId, UUID currentUserId) {
-        Album album = getAlbumOrThrow(albumId);
-
-        AlbumEditorialRepository.EditorialTeaserRow editorialTeaser =
-            albumEditorialRepository.findTeaserByAlbumId(albumId).orElse(null);
-
-        Map<UUID, TrackPlacement> placements = graphService.getTrackPlacements(albumId).stream()
-            .collect(Collectors.toMap(TrackPlacement::trackId, placement -> placement));
-
-        List<TrackEditorialRepository.TrackTeaserRow> trackTeaserRows =
-            trackEditorialRepository.findTeasersByAlbumId(albumId);
-        Map<UUID, TrackEditorialRepository.TrackTeaserRow> trackTeasers = trackTeaserRows.stream()
-            .collect(Collectors.toMap(TrackEditorialRepository.TrackTeaserRow::getTrackId, row -> row));
-
-        // One query for whether the current user liked ANY of these
-        // editorials (the album's plus every track's), instead of one per
-        // editorial.
-        List<UUID> editorialIds = new ArrayList<>(trackTeaserRows.stream()
-            .map(TrackEditorialRepository.TrackTeaserRow::getEditorialId)
-            .toList());
-        if (editorialTeaser != null) {
-            editorialIds.add(editorialTeaser.getId());
-        }
-        Set<UUID> likedEditorialIds = likeService.hasUserLikedBatch(currentUserId, LikeableEntityType.EDITORIAL, editorialIds);
-
-        List<SpotlightTrackDto> tracks = album.getTracks().stream()
-            .filter(track -> trackTeasers.containsKey(track.getId()))
-            .map(track -> {
-                TrackEditorialRepository.TrackTeaserRow teaser = trackTeasers.get(track.getId());
-                TrackPlacement placement = placements.get(track.getId());
-                return new SpotlightTrackDto(
-                    track.getId(),
-                    placement == null ? null : placement.trackNumber(),
-                    track.getName(),
-                    teaser.getTitle(),
-                    teaser.getDek(),
-                    teaser.getLikeCount(),
-                    likedEditorialIds.contains(teaser.getEditorialId())
-                );
-            })
-            .sorted(Comparator.comparing(SpotlightTrackDto::trackNumber, Comparator.nullsLast(Comparator.naturalOrder())))
-            .toList();
-
-        return new AlbumSpotlightDto(
-            album.getId(),
-            album.getArtist().getName(),
-            album.getName(),
-            album.getImageUrl(),
-            album.getReleaseYear(),
-            album.getPostedAt(),
-            editorialTeaser == null ? null : editorialTeaser.getTitle(),
-            editorialTeaser == null ? null : editorialTeaser.getDek(),
-            editorialTeaser == null ? null : editorialTeaser.getByline(),
-            editorialTeaser == null ? 0 : editorialTeaser.getLikeCount(),
-            editorialTeaser != null && likedEditorialIds.contains(editorialTeaser.getId()),
-            tracks
         );
     }
 

@@ -12,10 +12,13 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import jakarta.persistence.EntityManager;
+
+import static org.mockito.Mockito.when;
 
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
@@ -26,7 +29,13 @@ import com.jazzlogs.backend.album.VocalProfile;
 import com.jazzlogs.backend.editorial.dto.AlbumEditorialRequest;
 import com.jazzlogs.backend.editorial.dto.ArtistEditorialRequest;
 import com.jazzlogs.backend.editorial.dto.CatalogueEditorialDto;
+import com.jazzlogs.backend.editorial.dto.LastLogDto;
 import com.jazzlogs.backend.editorial.dto.RecentAlbumEditorialDto;
+import com.jazzlogs.backend.editorial.dto.TrackEditorialRequest;
+import com.jazzlogs.backend.graph.GraphService;
+import com.jazzlogs.backend.graph.TrackPlacement;
+import com.jazzlogs.backend.track.Track;
+import com.jazzlogs.backend.track.TrackRepository;
 
 @SpringBootTest
 @Transactional
@@ -42,6 +51,9 @@ class EditorialServiceTest {
     private AlbumRepository albumRepository;
 
     @Autowired
+    private TrackRepository trackRepository;
+
+    @Autowired
     private EntityManager entityManager;
 
     @Autowired
@@ -49,6 +61,12 @@ class EditorialServiceTest {
 
     @Autowired
     private EditorialSummaryRepository editorialSummaryRepository;
+
+    // GraphService is mocked here — trackNumber lives only in Neo4j (see
+    // Track's own comment), so getLastLog's tests stub getTrackPlacements
+    // directly instead of touching the real Neo4j instance.
+    @MockitoBean
+    private GraphService graphService;
 
     @Test
     void upsertAlbumEditorial_persistsAcrossJoinedInheritanceTables() {
@@ -238,5 +256,57 @@ class EditorialServiceTest {
         assertThat(dto.albumName()).isEqualTo("Recent Test Album");
         assertThat(dto.artistName()).isEqualTo("Recent Test Artist");
         assertThat(dto.logNumber()).isEqualTo("LOG-RECENT-1");
+    }
+
+    @Test
+    void getLastLog_returnsNewestAlbumEditorialWithTracksOrderedByTrackNumber() {
+        Artist artist = artistRepository.save(new Artist("Last Log Artist", null, null, null));
+        Album album = albumRepository.save(new Album(
+            artist, "Last Log Album", null, null, "http://img.example/last-log.jpg", 2023, 1,
+            "LOG-LAST", "LABEL-LAST", VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
+        ));
+        editorialService.upsertAlbumEditorial(
+            album.getId(), new AlbumEditorialRequest("Last Log Editorial", "dek", "byline", List.of())
+        );
+
+        Track trackA = trackRepository.save(new Track(
+            album, null, "Track A", null, null, null, false, null, null, null, null, null, null
+        ));
+        Track trackB = trackRepository.save(new Track(
+            album, null, "Track B", null, null, null, false, null, null, null, null, null, null
+        ));
+        editorialService.upsertTrackEditorial(
+            trackA.getId(), new TrackEditorialRequest("Track A Editorial", "dek A", "byline A", List.of())
+        );
+        editorialService.upsertTrackEditorial(
+            trackB.getId(), new TrackEditorialRequest("Track B Editorial", "dek B", "byline B", List.of())
+        );
+        entityManager.flush();
+
+        // Track B placed first (trackNumber 1) despite being upserted second —
+        // asserts getLastLog sorts by trackNumber, not insertion/query order.
+        when(graphService.getTrackPlacements(album.getId())).thenReturn(List.of(
+            new TrackPlacement(trackA.getId(), 2),
+            new TrackPlacement(trackB.getId(), 1)
+        ));
+
+        // Just-created, so it has the newest possible createdAt — always
+        // the single most recent row here, never flaky.
+        LastLogDto dto = editorialService.getLastLog(UUID.randomUUID()).orElseThrow();
+
+        assertThat(dto.title()).isEqualTo("Last Log Editorial");
+        assertThat(dto.artistName()).isEqualTo("Last Log Artist");
+        assertThat(dto.releaseYear()).isEqualTo(2023);
+        assertThat(dto.imageUrl()).isEqualTo("http://img.example/last-log.jpg");
+        assertThat(dto.tracks()).extracting("title").containsExactly("Track B Editorial", "Track A Editorial");
+        assertThat(dto.tracks()).extracting("trackNumber").containsExactly(1, 2);
+    }
+
+    @Test
+    void getLastLog_returnsEmpty_whenNoAlbumEditorialExists() {
+        editorialRepository.deleteAll();
+        entityManager.flush();
+
+        assertThat(editorialService.getLastLog(UUID.randomUUID())).isEmpty();
     }
 }

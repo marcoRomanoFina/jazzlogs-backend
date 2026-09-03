@@ -20,7 +20,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.jazzlogs.backend.album.dto.AlbumDetailDto;
-import com.jazzlogs.backend.album.dto.AlbumSpotlightDto;
 import com.jazzlogs.backend.album.dto.ContextTagRequest;
 import com.jazzlogs.backend.album.dto.CreateAlbumRequest;
 import com.jazzlogs.backend.album.dto.MoodTagRequest;
@@ -56,13 +55,6 @@ public class AlbumController {
     @GetMapping("/{id}")
     public AlbumDetailDto getAlbum(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
         return albumService.getAlbumDetail(id, currentUserId(jwt));
-    }
-
-    // Lean teaser for the archive page's spotlight — see
-    // AlbumService.getAlbumSpotlight for why this isn't just getAlbum().
-    @GetMapping("/{id}/spotlight")
-    public AlbumSpotlightDto getAlbumSpotlight(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
-        return albumService.getAlbumSpotlight(id, currentUserId(jwt));
     }
 
     // Upserts by spotifyAlbumId — posting the same album again updates it in
