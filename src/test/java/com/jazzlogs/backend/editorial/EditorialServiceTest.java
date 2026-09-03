@@ -26,6 +26,7 @@ import com.jazzlogs.backend.album.VocalProfile;
 import com.jazzlogs.backend.editorial.dto.AlbumEditorialRequest;
 import com.jazzlogs.backend.editorial.dto.ArtistEditorialRequest;
 import com.jazzlogs.backend.editorial.dto.CatalogueEditorialDto;
+import com.jazzlogs.backend.editorial.dto.RecentAlbumEditorialDto;
 
 @SpringBootTest
 @Transactional
@@ -209,5 +210,33 @@ class EditorialServiceTest {
         );
 
         assertThat(resaved.getDek()).isEqualTo("new dek");
+    }
+
+    @Test
+    void getRecentAlbumEditorials_returnsAlbumEditorialShapeWithLogNumber() {
+        Artist artist = artistRepository.save(new Artist("Recent Test Artist", null, null, null));
+        Album album = albumRepository.save(new Album(
+            artist, "Recent Test Album", null, null, "http://img.example/album.jpg", 2024, 1,
+            "LOG-RECENT-1", "LABEL-RECENT", VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
+        ));
+        editorialService.upsertAlbumEditorial(
+            album.getId(), new AlbumEditorialRequest("Recent Test Editorial Title", "dek", "byline", List.of())
+        );
+        entityManager.flush();
+
+        // Just-created, so it has the newest possible createdAt — always
+        // within the top RECENT_ALBUMS_LIMIT results, never flaky here.
+        List<RecentAlbumEditorialDto> recent = editorialService.getRecentAlbumEditorials(UUID.randomUUID());
+
+        RecentAlbumEditorialDto dto = recent.stream()
+            .filter(r -> r.title().equals("Recent Test Editorial Title"))
+            .findFirst()
+            .orElseThrow();
+        assertThat(dto.albumId()).isEqualTo(album.getId());
+        assertThat(dto.artistId()).isEqualTo(artist.getId());
+        assertThat(dto.imageUrl()).isEqualTo("http://img.example/album.jpg");
+        assertThat(dto.albumName()).isEqualTo("Recent Test Album");
+        assertThat(dto.artistName()).isEqualTo("Recent Test Artist");
+        assertThat(dto.logNumber()).isEqualTo("LOG-RECENT-1");
     }
 }
