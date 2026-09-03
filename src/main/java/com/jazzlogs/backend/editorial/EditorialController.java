@@ -23,6 +23,7 @@ import org.springframework.web.server.ResponseStatusException;
 import com.jazzlogs.backend.editorial.dto.CatalogueEditorialDto;
 import com.jazzlogs.backend.editorial.dto.EditorialCountResponse;
 import com.jazzlogs.backend.editorial.dto.EditorialSummaryDto;
+import com.jazzlogs.backend.editorial.dto.LastLogDto;
 import com.jazzlogs.backend.editorial.dto.RecentAlbumEditorialDto;
 import com.jazzlogs.backend.user.UserService;
 
@@ -67,6 +68,19 @@ public class EditorialController {
     @GetMapping("/recent")
     public List<RecentAlbumEditorialDto> recent(@AuthenticationPrincipal Jwt jwt) {
         return editorialService.getRecentAlbumEditorials(userService.resolveFromJwt(jwt).getId());
+    }
+
+    /**
+     * "The Last Log" — see {@link EditorialService#getLastLog}.
+     *
+     * @param jwt the caller, resolved to a user id only to compute {@code likedByCurrentUser}
+     * @return the most recently published album editorial, with its track editorials
+     * @throws ResponseStatusException 404 if no album editorial exists yet
+     */
+    @GetMapping("/last-log")
+    public LastLogDto lastLog(@AuthenticationPrincipal Jwt jwt) {
+        return editorialService.getLastLog(userService.resolveFromJwt(jwt).getId())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No album editorial exists yet"));
     }
 
     /**

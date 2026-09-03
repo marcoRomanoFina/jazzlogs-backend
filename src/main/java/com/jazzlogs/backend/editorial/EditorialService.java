@@ -1,6 +1,7 @@
 package com.jazzlogs.backend.editorial;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,10 +36,14 @@ import com.jazzlogs.backend.editorial.dto.BlockRequest;
 import com.jazzlogs.backend.editorial.dto.CatalogueEditorialDto;
 import com.jazzlogs.backend.editorial.dto.EditorialBlockDto;
 import com.jazzlogs.backend.editorial.dto.EditorialSummaryDto;
+import com.jazzlogs.backend.editorial.dto.LastLogDto;
+import com.jazzlogs.backend.editorial.dto.LastLogTrackDto;
 import com.jazzlogs.backend.editorial.dto.RecentAlbumEditorialDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialRequest;
 import com.jazzlogs.backend.embedding.EmbeddingService;
+import com.jazzlogs.backend.graph.GraphService;
+import com.jazzlogs.backend.graph.TrackPlacement;
 import com.jazzlogs.backend.like.LikeService;
 import com.jazzlogs.backend.like.LikeableEntityType;
 import com.jazzlogs.backend.track.Track;
@@ -65,6 +70,7 @@ public class EditorialService {
     private final EditorialSummaryRepository editorialSummaryRepository;
     private final EmbeddingService embeddingService;
     private final LikeService likeService;
+    private final GraphService graphService;
     private final EntityManager entityManager;
 
     /**
@@ -175,6 +181,60 @@ public class EditorialService {
             row.logNumber(),
             row.likeCount(),
             likedByCurrentUser
+        );
+    }
+
+    /**
+     * "The Last Log" — the archive's other hero slot: the single most
+     * recently published album editorial, together with every track
+     * editorial on that album. {@code trackNumber} comes from Neo4j, not
+     * Postgres — see {@link GraphService#getTrackPlacements} — so a Neo4j
+     * outage fails this call entirely rather than degrading to unordered
+     * tracks; known limitation, not yet worth the added complexity to fix.
+     *
+     * @param currentUserId used to compute {@code likedByCurrentUser} on
+     *                       both the album editorial and each track editorial
+     * @return empty if no album editorial exists yet
+     */
+    @Transactional(readOnly = true)
+    public Optional<LastLogDto> getLastLog(UUID currentUserId) {
+        return editorialSummaryRepository.findLatestAlbum(PageRequest.of(0, 1)).stream()
+            .findFirst()
+            .map(row -> toLastLogDto(row, currentUserId));
+    }
+
+    private LastLogDto toLastLogDto(LastLogEditorialRow row, UUID currentUserId) {
+        List<TrackEditorialRepository.TrackTeaserRow> trackRows =
+            trackEditorialRepository.findTeasersByAlbumId(row.albumId());
+
+        Map<UUID, TrackPlacement> placements = graphService.getTrackPlacements(row.albumId()).stream()
+            .collect(Collectors.toMap(TrackPlacement::trackId, placement -> placement));
+
+        List<UUID> editorialIds = new ArrayList<>(
+            trackRows.stream().map(TrackEditorialRepository.TrackTeaserRow::getEditorialId).toList()
+        );
+        editorialIds.add(row.id());
+        Set<UUID> liked = likeService.hasUserLikedBatch(currentUserId, LikeableEntityType.EDITORIAL, editorialIds);
+
+        List<LastLogTrackDto> tracks = trackRows.stream()
+            .map(t -> {
+                TrackPlacement placement = placements.get(t.getTrackId());
+                return new LastLogTrackDto(
+                    t.getEditorialId(),
+                    placement == null ? null : placement.trackNumber(),
+                    t.getTitle(),
+                    t.getDek(),
+                    t.getLikeCount(),
+                    liked.contains(t.getEditorialId())
+                );
+            })
+            .sorted(Comparator.comparing(LastLogTrackDto::trackNumber, Comparator.nullsLast(Comparator.naturalOrder())))
+            .toList();
+
+        return new LastLogDto(
+            row.id(), row.title(), row.artistName(), row.dek(), row.byline(),
+            row.releaseYear(), row.postedAt(), row.imageUrl(), row.likeCount(),
+            liked.contains(row.id()), tracks
         );
     }
 

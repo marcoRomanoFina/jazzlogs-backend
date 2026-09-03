@@ -76,4 +76,23 @@ public interface EditorialSummaryRepository extends JpaRepository<EditorialSumma
         ORDER BY s.createdAt DESC
         """)
     List<RecentAlbumEditorialRow> findRecentAlbums(Pageable pageable);
+
+    /**
+     * Backs "The Last Log" — the single most recently created album
+     * editorial. Same WHERE/ORDER as {@link #findRecentAlbums}; {@code
+     * pageable} is expected to cap this at one row (there's only ever one
+     * "last" edition), a plain {@code List} rather than {@code Optional}
+     * because Spring Data can't return {@code Optional} from a query capped
+     * by {@code Pageable} alone.
+     */
+    @Query("""
+        SELECT new com.jazzlogs.backend.editorial.LastLogEditorialRow(
+            s.id, s.ownerId, s.title, s.contextName, s.dek, s.byline,
+            s.releaseYear, s.createdAt, s.ownerImageUrl, s.likeCount
+        )
+        FROM EditorialSummary s
+        WHERE s.ownerType = com.jazzlogs.backend.editorial.EditorialOwnerType.ALBUM
+        ORDER BY s.createdAt DESC
+        """)
+    List<LastLogEditorialRow> findLatestAlbum(Pageable pageable);
 }
