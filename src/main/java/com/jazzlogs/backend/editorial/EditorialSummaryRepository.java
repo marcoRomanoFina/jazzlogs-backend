@@ -1,5 +1,6 @@
 package com.jazzlogs.backend.editorial;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -56,4 +57,23 @@ public interface EditorialSummaryRepository extends JpaRepository<EditorialSumma
     Page<CatalogueEditorialRow> searchLean(
         @Param("type") EditorialOwnerType type, @Param("pattern") String pattern, Pageable pageable
     );
+
+    /**
+     * Backs "Recently filed" — always ALBUM (hardcoded in the JPQL, not a
+     * parameter: this endpoint never needs another type), newest-first.
+     * {@code pageable} only supplies the cap (see {@code
+     * EditorialService.RECENT_ALBUMS_LIMIT}) — a plain {@code List} return
+     * type means Spring Data applies it as a {@code LIMIT} without the
+     * extra {@code COUNT(*)} a {@code Page} would run.
+     */
+    @Query("""
+        SELECT new com.jazzlogs.backend.editorial.RecentAlbumEditorialRow(
+            s.id, s.ownerId, s.contextId, s.ownerImageUrl, s.title,
+            s.ownerName, s.contextName, s.dek, s.byline, s.logNumber, s.likeCount
+        )
+        FROM EditorialSummary s
+        WHERE s.ownerType = com.jazzlogs.backend.editorial.EditorialOwnerType.ALBUM
+        ORDER BY s.createdAt DESC
+        """)
+    List<RecentAlbumEditorialRow> findRecentAlbums(Pageable pageable);
 }

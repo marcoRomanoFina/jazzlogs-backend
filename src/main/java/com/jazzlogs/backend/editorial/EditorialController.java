@@ -1,5 +1,6 @@
 package com.jazzlogs.backend.editorial;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -22,6 +23,7 @@ import org.springframework.web.server.ResponseStatusException;
 import com.jazzlogs.backend.editorial.dto.CatalogueEditorialDto;
 import com.jazzlogs.backend.editorial.dto.EditorialCountResponse;
 import com.jazzlogs.backend.editorial.dto.EditorialSummaryDto;
+import com.jazzlogs.backend.editorial.dto.RecentAlbumEditorialDto;
 import com.jazzlogs.backend.user.UserService;
 
 import lombok.AllArgsConstructor;
@@ -54,6 +56,17 @@ public class EditorialController {
     @GetMapping("/count")
     public EditorialCountResponse count() {
         return new EditorialCountResponse(editorialService.countEditorials());
+    }
+
+    /**
+     * "Recently filed" — see {@link EditorialService#getRecentAlbumEditorials}.
+     *
+     * @param jwt the caller, resolved to a user id only to compute {@code likedByCurrentUser}
+     * @return the most recently created album editorials, newest first
+     */
+    @GetMapping("/recent")
+    public List<RecentAlbumEditorialDto> recent(@AuthenticationPrincipal Jwt jwt) {
+        return editorialService.getRecentAlbumEditorials(userService.resolveFromJwt(jwt).getId());
     }
 
     /**

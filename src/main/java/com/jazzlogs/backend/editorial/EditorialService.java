@@ -16,6 +16,7 @@ import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.ai.document.Document;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -34,6 +35,7 @@ import com.jazzlogs.backend.editorial.dto.BlockRequest;
 import com.jazzlogs.backend.editorial.dto.CatalogueEditorialDto;
 import com.jazzlogs.backend.editorial.dto.EditorialBlockDto;
 import com.jazzlogs.backend.editorial.dto.EditorialSummaryDto;
+import com.jazzlogs.backend.editorial.dto.RecentAlbumEditorialDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialRequest;
 import com.jazzlogs.backend.embedding.EmbeddingService;
@@ -132,6 +134,44 @@ public class EditorialService {
             row.dek(),
             row.byline(),
             row.createdAt(),
+            row.logNumber(),
+            row.likeCount(),
+            likedByCurrentUser
+        );
+    }
+
+    /** Not exposed to any client — the fixed size of the "Recently filed" strip. */
+    static final int RECENT_ALBUMS_LIMIT = 10;
+
+    /**
+     * "Recently filed" — the {@link #RECENT_ALBUMS_LIMIT} most recently
+     * created album editorials, newest first.
+     *
+     * @param currentUserId used only to compute each result's {@code likedByCurrentUser}
+     * @return up to {@link #RECENT_ALBUMS_LIMIT} album editorials
+     */
+    @Transactional(readOnly = true)
+    public List<RecentAlbumEditorialDto> getRecentAlbumEditorials(UUID currentUserId) {
+        List<RecentAlbumEditorialRow> rows =
+            editorialSummaryRepository.findRecentAlbums(PageRequest.of(0, RECENT_ALBUMS_LIMIT));
+
+        List<UUID> ids = rows.stream().map(RecentAlbumEditorialRow::id).toList();
+        Set<UUID> liked = likeService.hasUserLikedBatch(currentUserId, LikeableEntityType.EDITORIAL, ids);
+
+        return rows.stream().map(row -> toRecentAlbumEditorialDto(row, liked.contains(row.id()))).toList();
+    }
+
+    private RecentAlbumEditorialDto toRecentAlbumEditorialDto(RecentAlbumEditorialRow row, boolean likedByCurrentUser) {
+        return new RecentAlbumEditorialDto(
+            row.id(),
+            row.albumId(),
+            row.artistId(),
+            row.imageUrl(),
+            row.title(),
+            row.albumName(),
+            row.artistName(),
+            row.dek(),
+            row.byline(),
             row.logNumber(),
             row.likeCount(),
             likedByCurrentUser
