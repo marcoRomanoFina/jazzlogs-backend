@@ -36,6 +36,7 @@ import com.jazzlogs.backend.editorial.dto.BlockRequest;
 import com.jazzlogs.backend.editorial.dto.CatalogueEditorialDto;
 import com.jazzlogs.backend.editorial.dto.EditorialBlockDto;
 import com.jazzlogs.backend.editorial.dto.EditorialSummaryDto;
+import com.jazzlogs.backend.editorial.dto.FeaturedTrackDto;
 import com.jazzlogs.backend.editorial.dto.LastLogDto;
 import com.jazzlogs.backend.editorial.dto.LastLogTrackDto;
 import com.jazzlogs.backend.editorial.dto.RecentAlbumEditorialDto;
@@ -238,6 +239,30 @@ public class EditorialService {
         );
     }
 
+    /**
+     * "Featured Tracks" — up to {@code TrackService.MAX_FEATURED_TRACKS}
+     * admin-curated tracks, any album/artist, newest editorial first.
+     *
+     * @param currentUserId used only to compute each result's {@code likedByCurrentUser}
+     */
+    @Transactional(readOnly = true)
+    public List<FeaturedTrackDto> getFeaturedTracks(UUID currentUserId) {
+        List<FeaturedTrackRow> rows = trackEditorialRepository.findFeatured();
+
+        List<UUID> ids = rows.stream().map(FeaturedTrackRow::id).toList();
+        Set<UUID> liked = likeService.hasUserLikedBatch(currentUserId, LikeableEntityType.EDITORIAL, ids);
+
+        return rows.stream().map(row -> toFeaturedTrackDto(row, liked.contains(row.id()))).toList();
+    }
+
+    private FeaturedTrackDto toFeaturedTrackDto(FeaturedTrackRow row, boolean likedByCurrentUser) {
+        return new FeaturedTrackDto(
+            row.id(), row.title(), row.dek(), row.byline(), row.logNumber(),
+            row.trackName(), row.imageUrl(), row.albumName(), row.albumId(), row.createdAt(), row.likeCount(),
+            likedByCurrentUser
+        );
+    }
+
     /** {@code COUNT(*)} only — no content, no joins, no like-status lookup. See {@link #listEditorials} for the filtered/paginated version. */
     @Transactional(readOnly = true)
     public long countEditorials() {
@@ -398,6 +423,11 @@ public class EditorialService {
         return trackEditorialRepository.findByTrackId(trackId)
             .map(this::toDto)
             .orElse(null);
+    }
+
+    /** For {@code TrackService.setFeatured} — a track needs a {@link TrackEditorial} before it can be featured. */
+    public boolean hasTrackEditorial(UUID trackId) {
+        return trackEditorialRepository.existsByTrackId(trackId);
     }
 
     public Map<UUID, TrackEditorialDto> getTrackEditorialDtosByAlbumId(UUID albumId) {

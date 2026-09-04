@@ -7,6 +7,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -29,6 +30,26 @@ public interface TrackRepository extends JpaRepository<Track, UUID>, SavedItemRe
      */
     @Query("SELECT t.id FROM Track t WHERE t.album.id = :albumId")
     List<UUID> findIdsByAlbumId(@Param("albumId") UUID albumId);
+
+    /** For {@code TrackService.setFeatured}'s cap check — see {@code Track#featured}. */
+    @Query("SELECT COUNT(t) FROM Track t WHERE t.featured = true")
+    long countFeatured();
+
+    /**
+     * Atomic UPDATE, not read-modify-save — same reasoning as {@code
+     * EditorialRepository.markFeaturated}. {@code clearAutomatically = true}:
+     * {@code setFeatured} already has this Track loaded ({@code
+     * getTrackOrThrow}) when this runs, and a bulk UPDATE doesn't touch that
+     * in-memory copy — without this, it'd keep reading as not-featured for
+     * the rest of the transaction.
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE Track t SET t.featured = true WHERE t.id = :id")
+    void markFeatured(@Param("id") UUID id);
+
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE Track t SET t.featured = false WHERE t.id = :id")
+    void unmarkFeatured(@Param("id") UUID id);
 
     @Override
     default Optional<Resolved> resolve(UUID entityId) {

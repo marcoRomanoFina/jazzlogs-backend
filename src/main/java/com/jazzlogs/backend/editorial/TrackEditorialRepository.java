@@ -12,6 +12,8 @@ public interface TrackEditorialRepository extends JpaRepository<TrackEditorial, 
 
     Optional<TrackEditorial> findByTrackId(UUID trackId);
 
+    boolean existsByTrackId(UUID trackId);
+
     // One query for every track editorial on this album (title/dek/byline +
     // blocks), instead of one per track — see AlbumService.getAlbumDetail,
     // which used to call getTrackEditorialDto(trackId) once per track.
@@ -25,11 +27,10 @@ public interface TrackEditorialRepository extends JpaRepository<TrackEditorial, 
         """)
     List<TrackEditorial> findByTrackAlbumId(@Param("albumId") UUID albumId);
 
-    // For the archive page's spotlight — title/dek/likeCount only, keyed by
-    // trackId, no blocks/embeddings (same reasoning as
-    // AlbumEditorialRepository's teaser query). editorialId is needed to
-    // look up likedByCurrentUser via LikeService (it's a different id than
-    // trackId — the editorial's own PK).
+    // For "The Last Log" — title/dek/likeCount only, keyed by trackId, no
+    // blocks/embeddings. editorialId is needed to look up likedByCurrentUser
+    // via LikeService (it's a different id than trackId — the editorial's
+    // own PK).
     @Query("SELECT te.id AS editorialId, t.id AS trackId, te.title AS title, te.dek AS dek, te.likeCount AS likeCount FROM TrackEditorial te JOIN te.track t WHERE t.album.id = :albumId")
     List<TrackTeaserRow> findTeasersByAlbumId(@Param("albumId") UUID albumId);
 
@@ -44,4 +45,24 @@ public interface TrackEditorialRepository extends JpaRepository<TrackEditorial, 
 
         int getLikeCount();
     }
+
+    /**
+     * Backs "Featured Tracks" — {@code Track#featured}, not {@code
+     * Editorial#featurated} (that one's the single hero slot, this is up
+     * to {@code TrackService.MAX_FEATURED_TRACKS}). The inner joins mean a
+     * featured track with no editorial yet silently doesn't appear here —
+     * an admin-workflow concern, not something this query guards against.
+     */
+    @Query("""
+        SELECT new com.jazzlogs.backend.editorial.FeaturedTrackRow(
+            te.id, te.title, te.dek, te.byline, alb.logNumber,
+            t.name, t.imageUrl, alb.name, alb.id, te.createdAt, te.likeCount
+        )
+        FROM TrackEditorial te
+        JOIN te.track t
+        JOIN t.album alb
+        WHERE t.featured = true
+        ORDER BY te.createdAt DESC
+        """)
+    List<FeaturedTrackRow> findFeatured();
 }

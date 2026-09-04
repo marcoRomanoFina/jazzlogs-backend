@@ -26,6 +26,7 @@ import com.jazzlogs.backend.album.dto.ContextTagRequest;
 import com.jazzlogs.backend.album.dto.MoodTagRequest;
 import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.editorial.TrackEditorial;
+import com.jazzlogs.backend.editorial.dto.FeaturedTrackDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialRequest;
 import com.jazzlogs.backend.listen.ListenService;
@@ -110,6 +111,28 @@ public class TrackController {
     public ResponseEntity<Void> markEntryPoint(@PathVariable UUID id, @PathVariable UUID artistId) {
         trackService.markEntryPoint(id, artistId);
         return ResponseEntity.noContent().build();
+    }
+
+    /** Adds this track to the archive's "Featured Tracks" — see {@link TrackService#setFeatured}. */
+    @PostMapping("/{id}/featured")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> setFeatured(@PathVariable UUID id) {
+        trackService.setFeatured(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Removes this track from "Featured Tracks"*/
+    @DeleteMapping("/{id}/featured")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> unsetFeatured(@PathVariable UUID id) {
+        trackService.unsetFeatured(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** "Featured Tracks" — see {@link EditorialService#getFeaturedTracks}. */
+    @GetMapping("/featured")
+    public List<FeaturedTrackDto> featured(@AuthenticationPrincipal Jwt jwt) {
+        return editorialService.getFeaturedTracks(currentUserId(jwt));
     }
 
     @PostMapping("/{id}/listen")

@@ -70,6 +70,8 @@ public class Track {
     @Column(name = "is_standout", nullable = false)
     private boolean standout;
 
+    @Column(nullable = false)
+    private boolean featured;
 
     @Setter
     @Enumerated(EnumType.STRING)
