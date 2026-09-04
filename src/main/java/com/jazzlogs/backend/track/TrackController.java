@@ -112,6 +112,22 @@ public class TrackController {
         return ResponseEntity.noContent().build();
     }
 
+    /** Adds this track to the archive's "Featured Tracks" — see {@link TrackService#setFeatured}. */
+    @PostMapping("/{id}/featured")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> setFeatured(@PathVariable UUID id) {
+        trackService.setFeatured(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Removes this track from "Featured Tracks"*/
+    @DeleteMapping("/{id}/featured")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> unsetFeatured(@PathVariable UUID id) {
+        trackService.unsetFeatured(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/{id}/listen")
     public ResponseEntity<Void> markListened(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
         listenService.markTrackListened(currentUserId(jwt), id);

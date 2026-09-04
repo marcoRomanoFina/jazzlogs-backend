@@ -156,6 +156,37 @@ public class TrackService {
         graphService.markTrackAsEntryPoint(trackId, artistId);
     }
 
+    /** Up to this many tracks can be {@link Track#isFeatured} at once — see {@link #setFeatured}. */
+    static final int MAX_FEATURED_TRACKS = 6;
+
+    /**
+     * Adds {@code trackId} to the archive's curated "Featured Tracks".
+     * The cap is a {@code COUNT(*)} check here, not a DB constraint —
+     * unlike {@code Editorial#featurated}'s "at most 1" (a partial unique
+     * index), "at most 6" isn't expressible that way. Two admins racing
+     * right at the cap could in theory both pass this check and land on 7;
+     * accepted for a low-traffic admin action rather than adding a stored
+     * procedure or advisory lock for it.
+     *
+     * @throws ResponseStatusException 404 if the track doesn't exist, 409
+     *                                  if already at {@link #MAX_FEATURED_TRACKS}
+     */
+    @Transactional
+    public void setFeatured(UUID trackId) {
+        Track track = getTrackOrThrow(trackId);
+        if (!track.isFeatured() && trackRepository.countFeatured() >= MAX_FEATURED_TRACKS) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Already " + MAX_FEATURED_TRACKS + " featured tracks");
+        }
+        trackRepository.markFeatured(trackId);
+    }
+
+    /** Removes {@code trackId} from the "Featured Tracks" strip — a no-op if it wasn't featured. */
+    @Transactional
+    public void unsetFeatured(UUID trackId) {
+        getTrackOrThrow(trackId);
+        trackRepository.unmarkFeatured(trackId);
+    }
+
     public TrackDto toDto(Track track) {
         return toDto(track, graphService.getTrackPlacement(track.getId()));
     }
