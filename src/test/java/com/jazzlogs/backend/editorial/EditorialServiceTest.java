@@ -29,6 +29,7 @@ import com.jazzlogs.backend.album.VocalProfile;
 import com.jazzlogs.backend.editorial.dto.AlbumEditorialRequest;
 import com.jazzlogs.backend.editorial.dto.ArtistEditorialRequest;
 import com.jazzlogs.backend.editorial.dto.CatalogueEditorialDto;
+import com.jazzlogs.backend.editorial.dto.FeaturedTrackDto;
 import com.jazzlogs.backend.editorial.dto.LastLogDto;
 import com.jazzlogs.backend.editorial.dto.RecentAlbumEditorialDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialRequest;
@@ -300,6 +301,44 @@ class EditorialServiceTest {
         assertThat(dto.imageUrl()).isEqualTo("http://img.example/last-log.jpg");
         assertThat(dto.tracks()).extracting("title").containsExactly("Track B Editorial", "Track A Editorial");
         assertThat(dto.tracks()).extracting("trackNumber").containsExactly(1, 2);
+    }
+
+    @Test
+    void getFeaturedTracks_returnsOnlyTracksMarkedFeatured() {
+        // Clears any real featured track first — this test needs a known
+        // starting set, not whatever's actually curated live.
+        entityManager.createQuery("UPDATE Track t SET t.featured = false").executeUpdate();
+
+        Artist artist = artistRepository.save(new Artist("Featured Track Artist", null, null, null));
+        Album album = albumRepository.save(new Album(
+            artist, "Featured Track Album", null, null, null, 2022, 1,
+            "LOG-FEATURED-TRACK", "LABEL-FT", VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
+        ));
+        Track featuredTrack = trackRepository.save(new Track(
+            album, null, "Featured Track", null, null, "http://img.example/featured-track.jpg", false,
+            null, null, null, null, null, null
+        ));
+        Track otherTrack = trackRepository.save(new Track(
+            album, null, "Not Featured Track", null, null, null, false, null, null, null, null, null, null
+        ));
+        editorialService.upsertTrackEditorial(
+            featuredTrack.getId(), new TrackEditorialRequest("Featured Track Editorial", "dek", "byline", List.of())
+        );
+        editorialService.upsertTrackEditorial(
+            otherTrack.getId(), new TrackEditorialRequest("Not Featured Track Editorial", "dek", "byline", List.of())
+        );
+
+        trackRepository.markFeatured(featuredTrack.getId());
+
+        List<FeaturedTrackDto> featured = editorialService.getFeaturedTracks(UUID.randomUUID());
+
+        assertThat(featured).extracting("title").containsExactly("Featured Track Editorial");
+        FeaturedTrackDto dto = featured.get(0);
+        assertThat(dto.trackName()).isEqualTo("Featured Track");
+        assertThat(dto.imageUrl()).isEqualTo("http://img.example/featured-track.jpg");
+        assertThat(dto.albumName()).isEqualTo("Featured Track Album");
+        assertThat(dto.albumId()).isEqualTo(album.getId());
+        assertThat(dto.logNumber()).isEqualTo("LOG-FEATURED-TRACK");
     }
 
     @Test

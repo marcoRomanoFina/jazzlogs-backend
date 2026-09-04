@@ -3,6 +3,7 @@ package com.jazzlogs.backend.track;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -20,6 +21,8 @@ import com.jazzlogs.backend.album.Level;
 import com.jazzlogs.backend.album.VocalProfile;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
+import com.jazzlogs.backend.editorial.EditorialService;
+import com.jazzlogs.backend.editorial.dto.TrackEditorialRequest;
 
 @SpringBootTest
 @Transactional
@@ -36,6 +39,9 @@ class TrackServiceTest {
 
     @Autowired
     private ArtistRepository artistRepository;
+
+    @Autowired
+    private EditorialService editorialService;
 
     @Autowired
     private EntityManager entityManager;
@@ -78,6 +84,18 @@ class TrackServiceTest {
     }
 
     @Test
+    void setFeatured_rejectsTrackWithNoEditorialYet() {
+        Track track = persistTrackWithoutEditorial("No Editorial Track");
+
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> trackService.setFeatured(track.getId())
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(trackRepository.findById(track.getId()).orElseThrow().isFeatured()).isFalse();
+    }
+
+    @Test
     void setFeatured_isIdempotentForAlreadyFeaturedTrack() {
         Track track = persistTrack("Idempotent Featured Track");
         trackService.setFeatured(track.getId());
@@ -106,7 +124,15 @@ class TrackServiceTest {
         assertThat(trackRepository.findById(seventh.getId()).orElseThrow().isFeatured()).isFalse();
     }
 
+    // setFeatured requires a TrackEditorial to already exist — every scenario
+    // here needs one except the dedicated "rejects with no editorial" test.
     private Track persistTrack(String name) {
+        Track track = persistTrackWithoutEditorial(name);
+        editorialService.upsertTrackEditorial(track.getId(), new TrackEditorialRequest(name + " Editorial", "dek", "byline", List.of()));
+        return track;
+    }
+
+    private Track persistTrackWithoutEditorial(String name) {
         Artist artist = artistRepository.save(new Artist("Featured Test Artist " + UUID.randomUUID(), null, null, null));
         Album album = albumRepository.save(new Album(
             artist, "Featured Test Album " + UUID.randomUUID(), null, null, null, 2024, 1,

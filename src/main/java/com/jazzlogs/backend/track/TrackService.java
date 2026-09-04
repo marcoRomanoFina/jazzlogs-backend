@@ -168,12 +168,19 @@ public class TrackService {
      * accepted for a low-traffic admin action rather than adding a stored
      * procedure or advisory lock for it.
      *
-     * @throws ResponseStatusException 404 if the track doesn't exist, 409
-     *                                  if already at {@link #MAX_FEATURED_TRACKS}
+     * @throws ResponseStatusException 404 if the track doesn't exist, 409 if
+     *                                  it has no {@code TrackEditorial} yet
+     *                                  (see {@code EditorialService#getFeaturedTracks} —
+     *                                  a featured track with no editorial
+     *                                  wouldn't show up there at all) or if
+     *                                  already at {@link #MAX_FEATURED_TRACKS}
      */
     @Transactional
     public void setFeatured(UUID trackId) {
         Track track = getTrackOrThrow(trackId);
+        if (!editorialService.hasTrackEditorial(trackId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Track has no editorial yet, can't be featured");
+        }
         if (!track.isFeatured() && trackRepository.countFeatured() >= MAX_FEATURED_TRACKS) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Already " + MAX_FEATURED_TRACKS + " featured tracks");
         }
