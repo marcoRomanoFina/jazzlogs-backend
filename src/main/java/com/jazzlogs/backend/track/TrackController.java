@@ -170,9 +170,21 @@ public class TrackController {
         return noteService.getTrackNotes(id, currentUserId(jwt), PageRequest.of(page, NOTES_PAGE_SIZE));
     }
 
+    /**
+     * The caller's own notes on this track, paginated — see {@link NoteService#getMyTrackNotes}.
+     *
+     * @param id   the track
+     * @param jwt  the caller
+     * @param page 0-based; page size is fixed at {@link #NOTES_PAGE_SIZE}, not client-controlled
+     * @return the caller's notes on this track
+     */
     @GetMapping("/{id}/notes/me")
-    public List<NoteDto> getMyTrackNotes(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
-        return noteService.getMyTrackNotes(id, currentUserId(jwt));
+    public Page<NoteDto> getMyTrackNotes(
+        @PathVariable UUID id,
+        @AuthenticationPrincipal Jwt jwt,
+        @RequestParam(defaultValue = "0") int page
+    ) {
+        return noteService.getMyTrackNotes(id, currentUserId(jwt), PageRequest.of(page, NOTES_PAGE_SIZE));
     }
 
     /** Creates or edits the caller's own rating for this track — see {@link TrackRatingService#upsertRating}. */

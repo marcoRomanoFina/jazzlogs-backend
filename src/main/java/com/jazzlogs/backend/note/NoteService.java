@@ -56,9 +56,20 @@ public class NoteService {
         return notes.map(note -> toDto(note, liked.contains(note.getId()), names.get(note.getUserId())));
     }
 
+    /**
+     * The caller's own notes on this track, oldest first, paginated.
+     *
+     * @param trackId  the track
+     * @param userId   the caller — also whose notes these are
+     * @param pageable page request
+     * @return that user's notes on that track
+     */
     @Transactional(readOnly = true)
-    public List<NoteDto> getMyTrackNotes(UUID trackId, UUID userId) {
-        return toDtos(noteRepository.findByTrackIdAndUserIdOrderByCreatedAtAsc(trackId, userId), userId);
+    public Page<NoteDto> getMyTrackNotes(UUID trackId, UUID userId, Pageable pageable) {
+        Page<Note> notes = noteRepository.findByTrackIdAndUserIdOrderByCreatedAtAsc(trackId, userId, pageable);
+        Set<UUID> liked = likedIds(notes.getContent(), userId);
+        Map<UUID, String> names = namesByUserId(notes.getContent());
+        return notes.map(note -> toDto(note, liked.contains(note.getId()), names.get(note.getUserId())));
     }
 
     /**
@@ -86,24 +97,38 @@ public class NoteService {
             ));
     }
 
-    /** Batch — one hasUserLikedBatch call and one user lookup for the whole list, not one per note. */
-    private List<NoteDto> toDtos(List<Note> notes, UUID currentUserId) {
-        Set<UUID> liked = likedIds(notes, currentUserId);
-        Map<UUID, String> names = namesByUserId(notes);
-        return notes.stream().map(note -> toDto(note, liked.contains(note.getId()), names.get(note.getUserId()))).toList();
-    }
-
+    /**
+     * Which of these notes the viewer has liked, batched into one call.
+     *
+     * @param notes         the notes to check
+     * @param currentUserId the viewer
+     * @return ids of the notes the viewer has liked
+     */
     private Set<UUID> likedIds(List<Note> notes, UUID currentUserId) {
         List<UUID> noteIds = notes.stream().map(Note::getId).toList();
         return likeService.hasUserLikedBatch(currentUserId, LikeableEntityType.NOTE, noteIds);
     }
 
+    /**
+     * Display names for these notes' authors, batched into one lookup.
+     *
+     * @param notes the notes whose authors need a name
+     * @return display name by author user id
+     */
     private Map<UUID, String> namesByUserId(List<Note> notes) {
         List<UUID> userIds = notes.stream().map(Note::getUserId).distinct().toList();
         return userRepository.findAllById(userIds).stream()
             .collect(Collectors.toMap(User::getId, User::getResolvedDisplayName));
     }
 
+    /**
+     * Maps one note to its DTO.
+     *
+     * @param note               the note
+     * @param likedByCurrentUser whether the viewer has liked it
+     * @param userName           the author's display name
+     * @return the mapped DTO
+     */
     private NoteDto toDto(Note note, boolean likedByCurrentUser, String userName) {
         return new NoteDto(
             note.getId(),
