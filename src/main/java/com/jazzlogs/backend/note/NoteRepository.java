@@ -27,11 +27,21 @@ public interface NoteRepository extends LikeableRepository<Note> {
     @Query("SELECT n.likeCount FROM Note n WHERE n.id = :id")
     Optional<Integer> findLikeCount(@Param("id") UUID entityId);
 
-    // Paged, and the requesting user's own notes are pinned to the front of
-    // the ordering (before the createdAt tiebreak) at the SQL level — a track
-    // can accumulate way more notes than fit in memory/a browser tab, so this
-    // has to be LIMIT/OFFSET in the database, not "fetch everything and sort
-    // client-side" (that was the previous, unpaged findByTrackIdOrderByCreatedAtAsc).
+    /**
+     * A track's whole note feed, paginated — the caller's own notes (if any)
+     * always lead, then everyone else's, oldest first.
+     *
+     * <p>Paged, and pinned to the front at the SQL level (before the
+     * createdAt tiebreak) — a track can accumulate way more notes than fit
+     * in memory/a browser tab, so this has to be LIMIT/OFFSET in the
+     * database, not "fetch everything and sort client-side" (that was the
+     * previous, unpaged findByTrackIdOrderByCreatedAtAsc).
+     *
+     * @param trackId       the track
+     * @param currentUserId the viewer, for "mine first"
+     * @param pageable      page request
+     * @return the matching page
+     */
     @Query("SELECT n FROM Note n WHERE n.track.id = :trackId "
         + "ORDER BY CASE WHEN n.user.id = :currentUserId THEN 0 ELSE 1 END, n.createdAt ASC")
     Page<Note> findByTrackIdOrderByMineFirst(

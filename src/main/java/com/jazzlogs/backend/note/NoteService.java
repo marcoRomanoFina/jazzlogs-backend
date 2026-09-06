@@ -48,6 +48,15 @@ public class NoteService {
         noteRepository.delete(note);
     }
 
+    /**
+     * A track's whole note feed, paginated — the caller's own notes first,
+     * then everyone else's.
+     *
+     * @param trackId       the track
+     * @param currentUserId the viewer — "mine first" and each note's likedByCurrentUser
+     * @param pageable      page request
+     * @return the matching page
+     */
     @Transactional(readOnly = true)
     public Page<NoteDto> getTrackNotes(UUID trackId, UUID currentUserId, Pageable pageable) {
         Page<Note> notes = noteRepository.findByTrackIdOrderByMineFirst(trackId, currentUserId, pageable);

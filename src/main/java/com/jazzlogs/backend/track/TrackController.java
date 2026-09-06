@@ -158,9 +158,16 @@ public class TrackController {
         return ResponseEntity.status(HttpStatus.CREATED).body(note);
     }
 
-    // Paged — a track's notes are an unbounded community feed, not something
-    // safe to return in full. size is fixed at NOTES_PAGE_SIZE, not a
-    // client-controlled ?size — only page moves.
+    /**
+     * A track's whole note feed, paginated — see {@link NoteService#getTrackNotes}.
+     * A track's notes are an unbounded community feed, not something safe to
+     * return in full.
+     *
+     * @param id   the track
+     * @param jwt  the caller, for "mine first" and each note's likedByCurrentUser
+     * @param page 0-based; page size is fixed at {@link #NOTES_PAGE_SIZE}, not client-controlled
+     * @return the matching page
+     */
     @GetMapping("/{id}/notes")
     public Page<NoteDto> getTrackNotes(
         @PathVariable UUID id,
