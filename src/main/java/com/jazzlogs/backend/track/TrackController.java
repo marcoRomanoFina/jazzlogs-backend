@@ -152,6 +152,14 @@ public class TrackController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Creates a note on this track — see {@link NoteService#createNote}.
+     *
+     * @param id      the track
+     * @param request the note's own fields
+     * @param jwt     the caller, becomes the note's author
+     * @return the created note
+     */
     @PostMapping("/{id}/notes")
     public ResponseEntity<NoteDto> createNote(@PathVariable UUID id, @Valid @RequestBody CreateNoteRequest request, @AuthenticationPrincipal Jwt jwt) {
         NoteDto note = noteService.createNote(currentUserId(jwt), id, request.title(), request.text(), request.timestampSeconds());

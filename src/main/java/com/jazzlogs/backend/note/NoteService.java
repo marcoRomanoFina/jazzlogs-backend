@@ -32,6 +32,17 @@ public class NoteService {
     private final TrackRepository trackRepository;
     private final LikeService likeService;
 
+    /**
+     * Creates a note on a track. A user can leave several notes on the same
+     * track (different moments) — no uniqueness check here on purpose.
+     *
+     * @param userId           the author
+     * @param trackId          the track being noted
+     * @param title            required
+     * @param text             required
+     * @param timestampSeconds optional — a specific moment in the track this note is about
+     * @return the created note
+     */
     @Transactional
     public NoteDto createNote(UUID userId, UUID trackId, String title, String text, Integer timestampSeconds) {
         User user = getUserOrThrow(userId);
