@@ -52,6 +52,12 @@ public class NoteService {
         return toDto(saved, false, user.getResolvedDisplayName()); // brand new, can't have any likes yet
     }
 
+    /**
+     * Deletes a note — only its own author may.
+     *
+     * @param noteId           the note to delete
+     * @param requestingUserId the caller
+     */
     @Transactional
     public void deleteNote(UUID noteId, UUID requestingUserId) {
         Note note = getNoteOrThrow(noteId);
@@ -164,6 +170,9 @@ public class NoteService {
         );
     }
 
+    /**
+     * @throws ResponseStatusException 403 if {@code requestingUserId} did not author this note
+     */
     private void assertAuthor(Note note, UUID requestingUserId) {
         if (!note.getUserId().equals(requestingUserId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the author can modify this note");
