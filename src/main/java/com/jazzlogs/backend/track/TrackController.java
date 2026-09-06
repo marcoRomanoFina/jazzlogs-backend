@@ -49,6 +49,9 @@ import lombok.AllArgsConstructor;
 @AllArgsConstructor
 public class TrackController {
 
+    /** Fixed server-side, not a client-controlled ?size — see {@link #getTrackNotes}. */
+    private static final int NOTES_PAGE_SIZE = 6;
+
     private final TrackService trackService;
     private final EditorialService editorialService;
     private final ListenService listenService;
@@ -156,16 +159,15 @@ public class TrackController {
     }
 
     // Paged — a track's notes are an unbounded community feed, not something
-    // safe to return in full. Defaults match the frontend's page size so an
-    // omitted ?size still renders sensibly.
+    // safe to return in full. size is fixed at NOTES_PAGE_SIZE, not a
+    // client-controlled ?size — only page moves.
     @GetMapping("/{id}/notes")
     public Page<NoteDto> getTrackNotes(
         @PathVariable UUID id,
         @AuthenticationPrincipal Jwt jwt,
-        @RequestParam(defaultValue = "0") int page,
-        @RequestParam(defaultValue = "6") int size
+        @RequestParam(defaultValue = "0") int page
     ) {
-        return noteService.getTrackNotes(id, currentUserId(jwt), PageRequest.of(page, size));
+        return noteService.getTrackNotes(id, currentUserId(jwt), PageRequest.of(page, NOTES_PAGE_SIZE));
     }
 
     @GetMapping("/{id}/notes/me")

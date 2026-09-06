@@ -28,8 +28,7 @@ import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.user.User;
 
 // One review per (user, album) — DB-enforced via uq_reviews_user_album.
-// ReviewService.upsertReview is the only writer: update in place if one
-// already exists, insert otherwise.
+// ReviewService.createReview/updateReview are the only writers.
 @Entity
 @Table(name = "reviews", uniqueConstraints = @UniqueConstraint(name = "uq_reviews_user_album", columnNames = {"user_id", "album_id"}))
 @Getter
@@ -74,11 +73,15 @@ public class Review {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    public Review(User user, Album album, BigDecimal rating, String text) {
+    // Defensive copy into a mutable HashSet — resolveStandoutTracks can hand
+    // back Set.of() (immutable), and updateReview later does
+    // getStandoutTracks().clear()/addAll() on whatever's stored here.
+    public Review(User user, Album album, BigDecimal rating, String text, Set<Track> standoutTracks) {
         this.user = user;
         this.album = album;
         this.rating = rating;
         this.text = text;
+        this.standoutTracks = new HashSet<>(standoutTracks);
     }
 
     public void update(BigDecimal rating, String text) {
