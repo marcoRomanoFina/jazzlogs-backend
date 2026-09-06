@@ -21,6 +21,14 @@ public class UserService {
     private final GraphService graphService;
     private final Neo4jAsyncSyncExecutor syncExecutor;
 
+    /**
+     * Looks up the user behind {@code jwt} by Supabase user id, creating one
+     * on first login instead of 404ing — every authenticated request goes
+     * through this, so there's no separate signup step.
+     *
+     * @param jwt the caller's validated token
+     * @return the existing or newly-created user, with {@code lastLoginAt}/{@code email} refreshed
+     */
     public User resolveFromJwt(Jwt jwt) {
         UUID supabaseUserId = UUID.fromString(jwt.getSubject());
         String email = jwt.getClaimAsString("email");
