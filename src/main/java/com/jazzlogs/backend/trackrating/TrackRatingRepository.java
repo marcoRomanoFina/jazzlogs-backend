@@ -22,7 +22,7 @@ public interface TrackRatingRepository extends JpaRepository<TrackRating, UUID> 
     Optional<TrackRating> findByUserIdAndTrackId(@Param("userId") UUID userId, @Param("trackId") UUID trackId);
 
     // One query for the current user's rating on every track of an album at
-    // once — AlbumService.getAlbumDetail needs this batched, not one
+    // once — AlbumService.getAlbumTracks needs this batched, not one
     // findByUserIdAndTrackId per track.
     @Query("SELECT tr FROM TrackRating tr WHERE tr.user.id = :userId AND tr.track.id IN :trackIds")
     List<TrackRating> findByUserIdAndTrackIdIn(@Param("userId") UUID userId, @Param("trackIds") List<UUID> trackIds);

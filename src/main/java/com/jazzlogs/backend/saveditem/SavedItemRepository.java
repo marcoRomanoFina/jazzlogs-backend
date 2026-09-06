@@ -19,7 +19,7 @@ public interface SavedItemRepository extends JpaRepository<SavedItem, SavedItemI
         Pageable pageable
     );
 
-    // Batch — AlbumService.getAlbumDetail needs "is this track saved" for
+    // Batch — AlbumService.getAlbumTracks needs "is this track saved" for
     // every track on the album at once, not one existsById per track.
     @Query("SELECT s.id.entityId FROM SavedItem s WHERE s.id.userId = :userId AND s.id.entityType = :entityType AND s.id.entityId IN :entityIds")
     List<UUID> findSavedEntityIds(

@@ -1,6 +1,5 @@
 package com.jazzlogs.backend.track;
 
-import java.util.List;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
@@ -19,7 +18,6 @@ import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialDto;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.TrackPlacement;
-import com.jazzlogs.backend.note.dto.NoteDto;
 import com.jazzlogs.backend.spotify.SpotifyCatalogService;
 import com.jazzlogs.backend.spotify.SpotifyTrackData;
 import com.jazzlogs.backend.track.dto.CreateTrackRequest;
@@ -194,25 +192,19 @@ public class TrackService {
         trackRepository.unmarkFeatured(trackId);
     }
 
-    public TrackDto toDto(Track track) {
-        return toDto(track, graphService.getTrackPlacement(track.getId()));
+    public TrackDto toTrackDto(Track track) {
+        return toTrackDto(track, graphService.getTrackPlacement(track.getId()));
     }
 
-    public TrackDto toDto(Track track, TrackPlacement placement) {
-        return toDto(track, placement, List.of());
+    public TrackDto toTrackDto(Track track, TrackPlacement placement) {
+        return toTrackDto(track, placement, editorialService.getTrackEditorialDto(track.getId()));
     }
 
-    /** myNotes comes pre-fetched (see AlbumService.getAlbumDetail) — no query in here. */
-    public TrackDto toDto(Track track, TrackPlacement placement, List<NoteDto> myNotes) {
-        return toDto(track, placement, myNotes, editorialService.getTrackEditorialDto(track.getId()));
-    }
-
-    /** editorialDto comes pre-fetched too (see AlbumService.getAlbumDetail) — everything else is still one query per track. */
-    public TrackDto toDto(Track track, TrackPlacement placement, List<NoteDto> myNotes, TrackEditorialDto editorialDto) {
+    /** editorialDto comes pre-fetched too (see AlbumService.getAlbumTracks) — everything else is still one query per track. */
+    public TrackDto toTrackDto(Track track, TrackPlacement placement, TrackEditorialDto editorialDto) {
         UUID trackId = track.getId();
-        return toDto(track, new TrackBatchContext(
+        return toTrackDto(track, new TrackBatchContext(
             placement,
-            myNotes,
             editorialDto,
             graphService.getTrackPerformers(trackId),
             graphService.getTrackMoods(trackId),
@@ -229,10 +221,10 @@ public class TrackService {
 
     /**
      * Everything pre-fetched in bulk for a whole album (see
-     * AlbumService.getAlbumDetail) — no queries of any kind in here, unlike
+     * AlbumService.getAlbumTracks) — no queries of any kind in here, unlike
      * the overloads above.
      */
-    public TrackDto toDto(Track track, TrackBatchContext ctx) {
+    public TrackDto toTrackDto(Track track, TrackBatchContext ctx) {
         UUID trackId = track.getId();
         TrackPlacement placement = ctx.placement();
 
@@ -257,7 +249,6 @@ public class TrackService {
             ctx.contexts(),
             ctx.rhythms(),
             ctx.featuredInstruments(),
-            ctx.myNotes(),
             ctx.avgRating(),
             ctx.ratingCount(),
             ctx.myRating(),

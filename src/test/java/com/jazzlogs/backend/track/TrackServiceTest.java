@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import java.util.List;
 import java.util.UUID;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -45,6 +46,14 @@ class TrackServiceTest {
 
     @Autowired
     private EntityManager entityManager;
+
+    // Real, currently-curated tracks can already be at (or near) the cap in
+    // the shared dev DB this suite runs against — every test here needs a
+    // known starting count (0), not whatever's actually featured live.
+    @BeforeEach
+    void clearRealFeaturedTracks() {
+        entityManager.createQuery("UPDATE Track t SET t.featured = false").executeUpdate();
+    }
 
     @Test
     void setFeatured_marksTrackAsFeatured() {
@@ -107,10 +116,6 @@ class TrackServiceTest {
 
     @Test
     void setFeatured_rejectsASeventhTrackOnceAtTheCap() {
-        // Clears every real featured track first — this test needs a known
-        // starting count (0), not whatever's actually curated live.
-        entityManager.createQuery("UPDATE Track t SET t.featured = false").executeUpdate();
-
         for (int i = 0; i < TrackService.MAX_FEATURED_TRACKS; i++) {
             trackService.setFeatured(persistTrack("Cap Track " + i).getId());
         }

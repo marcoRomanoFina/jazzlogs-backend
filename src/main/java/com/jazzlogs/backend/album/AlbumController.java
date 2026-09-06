@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.jazzlogs.backend.album.dto.AlbumDetailDto;
+import com.jazzlogs.backend.album.dto.AlbumHeaderDto;
 import com.jazzlogs.backend.album.dto.ContextTagRequest;
 import com.jazzlogs.backend.album.dto.CreateAlbumRequest;
 import com.jazzlogs.backend.album.dto.MoodTagRequest;
@@ -30,7 +30,6 @@ import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.editorial.dto.AlbumEditorialDto;
 import com.jazzlogs.backend.editorial.dto.AlbumEditorialRequest;
 import com.jazzlogs.backend.review.ReviewService;
-import com.jazzlogs.backend.review.dto.AlbumRatingStats;
 import com.jazzlogs.backend.review.dto.CreateReviewRequest;
 import com.jazzlogs.backend.review.dto.ReviewDto;
 import com.jazzlogs.backend.track.Track;
@@ -52,18 +51,31 @@ public class AlbumController {
     private final ReviewService reviewService;
     private final UserService userService;
 
+    /**
+     * The album page's fast, above-the-fold load — see {@link AlbumService#getAlbumHeader}.
+     *
+     * @param id  the album to load
+     * @param jwt the caller, resolved to a user id only to compute listen/save state
+     * @return the album header
+     */
     @GetMapping("/{id}")
-    public AlbumDetailDto getAlbum(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
-        return albumService.getAlbumDetail(id, currentUserId(jwt));
+    public AlbumHeaderDto getAlbum(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
+        return albumService.getAlbumHeader(id, currentUserId(jwt));
+    }
+
+    /** The album page's track list, fetched separately from the header — see {@link AlbumService#getAlbumTracks}. */
+    @GetMapping("/{id}/tracks")
+    public List<TrackDto> getAlbumTracks(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
+        return albumService.getAlbumTracks(id, currentUserId(jwt));
     }
 
     // Upserts by spotifyAlbumId — posting the same album again updates it in
     // place instead of creating a duplicate. See AlbumService.createOrUpdateAlbum.
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<AlbumDetailDto> createOrUpdateAlbum(@Valid @RequestBody CreateAlbumRequest request, @AuthenticationPrincipal Jwt jwt) {
+    public ResponseEntity<AlbumHeaderDto> createOrUpdateAlbum(@Valid @RequestBody CreateAlbumRequest request, @AuthenticationPrincipal Jwt jwt) {
         Album album = albumService.createOrUpdateAlbum(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(albumService.getAlbumDetail(album.getId(), currentUserId(jwt)));
+        return ResponseEntity.status(HttpStatus.CREATED).body(albumService.getAlbumHeader(album.getId(), currentUserId(jwt)));
     }
 
     // Upserts by spotifyTrackId — posting the same track again updates it in
@@ -72,14 +84,14 @@ public class AlbumController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<TrackDto> createOrUpdateTrack(@PathVariable UUID id, @Valid @RequestBody CreateTrackRequest request) {
         Track track = trackService.createOrUpdateTrack(id, request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(trackService.toDto(track));
+        return ResponseEntity.status(HttpStatus.CREATED).body(trackService.toTrackDto(track));
     }
 
     @PostMapping("/{id}/editorial")
     @PreAuthorize("hasRole('ADMIN')")
     public AlbumEditorialDto upsertEditorial(@PathVariable UUID id, @Valid @RequestBody AlbumEditorialRequest request, @AuthenticationPrincipal Jwt jwt) {
         AlbumEditorial editorial = editorialService.upsertAlbumEditorial(id, request);
-        return editorialService.toDto(editorial, currentUserId(jwt));
+        return editorialService.toAlbumEditorialDto(editorial, currentUserId(jwt));
     }
 
     @PostMapping("/{id}/personnel")
@@ -121,7 +133,7 @@ public class AlbumController {
     // No POST/DELETE /{id}/listen anymore — an album's "listened" state
     // isn't something a user sets directly, it's a consequence of listening
     // to every one of its tracks (POST/DELETE /tracks/{id}/listen), computed
-    // in AlbumService.getAlbumDetail and reconciled by
+    // in AlbumService.getAlbumHeader and reconciled by
     // ListenService.syncAlbumCompletionState.
 
     @PostMapping("/{id}/reviews")
@@ -143,11 +155,6 @@ public class AlbumController {
     @GetMapping("/{id}/reviews/me")
     public ReviewDto getMyReview(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
         return reviewService.getMyReview(id, currentUserId(jwt));
-    }
-
-    @GetMapping("/{id}/rating")
-    public AlbumRatingStats getAlbumRating(@PathVariable UUID id) {
-        return reviewService.getAlbumRatingStats(id);
     }
 
     private UUID currentUserId(Jwt jwt) {

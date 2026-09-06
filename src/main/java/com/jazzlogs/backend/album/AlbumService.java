@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import com.jazzlogs.backend.album.dto.AlbumDetailDto;
+import com.jazzlogs.backend.album.dto.AlbumHeaderDto;
 import com.jazzlogs.backend.album.dto.ContextTagRequest;
 import com.jazzlogs.backend.album.dto.CreateAlbumRequest;
 import com.jazzlogs.backend.album.dto.MoodTagRequest;
@@ -25,13 +25,12 @@ import com.jazzlogs.backend.artist.ArtistRepository;
 import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.editorial.dto.AlbumEditorialDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialDto;
+import com.jazzlogs.backend.graph.AlbumHeaderGraphData;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.TrackPerformerEntry;
 import com.jazzlogs.backend.graph.TrackPlacement;
 import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.listen.ListenService;
-import com.jazzlogs.backend.note.NoteService;
-import com.jazzlogs.backend.note.dto.NoteDto;
 import com.jazzlogs.backend.review.ReviewService;
 import com.jazzlogs.backend.review.dto.AlbumRatingStats;
 import com.jazzlogs.backend.saveditem.SavedItemService;
@@ -62,7 +61,6 @@ public class AlbumService {
     private final SpotifyCatalogService spotifyCatalogService;
     private final TrackService trackService;
     private final EditorialService editorialService;
-    private final NoteService noteService;
     private final ReviewService reviewService;
     private final ListenService listenService;
     private final SavedItemService savedItemService;
@@ -160,76 +158,34 @@ public class AlbumService {
         graphService.replaceContexts(albumId, request.contextCodes());
     }
 
+    /**
+     * The album page's fast, above-the-fold load — everything about the
+     * album except its track list (see {@link #getAlbumTracks}, fetched
+     * separately since it's the expensive part).
+     *
+     * @param albumId       the album to load
+     * @param currentUserId whose listen/save state to include
+     * @return the album header
+     * @throws ResponseStatusException 404 if the album doesn't exist
+     */
     @Transactional(readOnly = true)
-    public AlbumDetailDto getAlbumDetail(UUID albumId, UUID currentUserId) {
+    public AlbumHeaderDto getAlbumHeader(UUID albumId, UUID currentUserId) {
         Album album = getAlbumOrThrow(albumId);
 
         AlbumEditorialDto editorialDto = editorialService.getAlbumEditorialDto(albumId, currentUserId);
-
-        // One query for every track's placement, instead of one per track.
-        Map<UUID, TrackPlacement> placements = graphService.getTrackPlacements(albumId).stream()
-            .collect(Collectors.toMap(TrackPlacement::trackId, placement -> placement));
-
-        // Same idea: one query for every note the current user left anywhere on
-        // this album, instead of one per track.
-        Map<UUID, List<NoteDto>> notesByTrack = noteService.getMyNotesForAlbum(albumId, currentUserId);
-
-        // And again for every track's own editorial, instead of one per track.
-        Map<UUID, TrackEditorialDto> editorialsByTrack = editorialService.getTrackEditorialDtosByAlbumId(albumId);
-
-        // Same idea again, this time for the five Neo4j lookups toDto used to
-        // run once per track (performers, moods, contexts, rhythms, featured
-        // instruments) — this was the real N+1: 5 graph round-trips per
-        // track, not just the one editorial query above.
-        Map<UUID, List<TrackPerformerEntry>> performersByTrack = graphService.getTrackPerformersForAlbum(albumId);
-        Map<UUID, List<VocabularyTag>> moodsByTrack = graphService.getTrackMoodsForAlbum(albumId);
-        Map<UUID, List<VocabularyTag>> contextsByTrack = graphService.getTrackContextsForAlbum(albumId);
-        Map<UUID, List<VocabularyTag>> rhythmsByTrack = graphService.getTrackRhythmsForAlbum(albumId);
-        Map<UUID, List<VocabularyTag>> instrumentsByTrack = graphService.getTrackFeaturedInstrumentsForAlbum(albumId);
-
         AlbumRatingStats ratingStats = reviewService.getAlbumRatingStats(albumId);
 
+        // One round trip for styles+moods+contexts+personnel together,
+        // instead of four separate ones.
+        AlbumHeaderGraphData graphData = graphService.getAlbumHeaderGraphData(albumId);
+
+        // hasListened/listenedTrackCount are derived from per-track listen
+        // state, so this still needs trackIds + one batched listen query —
+        // cheap compared to what getAlbumTracks does with the same ids.
         List<UUID> trackIds = album.getTracks().stream().map(Track::getId).toList();
-
-        // One query for every track's avg/count, instead of one per track —
-        // same batching principle as everything else in this method.
-        Map<UUID, TrackRatingRepository.TrackRatingStats> ratingStatsByTrack = trackRatingRepository
-            .getRatingStatsForTracks(trackIds).stream()
-            .collect(Collectors.toMap(TrackRatingRepository.TrackRatingStats::getTrackId, s -> s));
-
-        // And the current user's own rating on each of those tracks, batched
-        // the same way.
-        Map<UUID, BigDecimal> myRatingByTrack = trackRatingRepository
-            .findByUserIdAndTrackIdIn(currentUserId, trackIds).stream()
-            .collect(Collectors.toMap(tr -> tr.getTrack().getId(), TrackRating::getRating));
-
         Set<UUID> listenedTrackIds = listenService.getListenedTrackIds(currentUserId, trackIds);
-        Set<UUID> savedTrackIds = savedItemService.getSavedEntityIds(currentUserId, SaveableEntityType.TRACK, trackIds);
 
-        List<TrackDto> trackDtos = album.getTracks().stream()
-            .map(track -> {
-                UUID trackId = track.getId();
-                TrackRatingRepository.TrackRatingStats stats = ratingStatsByTrack.get(trackId);
-                return trackService.toDto(track, new TrackBatchContext(
-                    placements.get(trackId),
-                    notesByTrack.getOrDefault(trackId, List.of()),
-                    editorialsByTrack.get(trackId),
-                    performersByTrack.getOrDefault(trackId, List.of()),
-                    moodsByTrack.getOrDefault(trackId, List.of()),
-                    contextsByTrack.getOrDefault(trackId, List.of()),
-                    rhythmsByTrack.getOrDefault(trackId, List.of()),
-                    instrumentsByTrack.getOrDefault(trackId, List.of()),
-                    stats == null ? null : stats.getAvgRating(),
-                    stats == null ? 0 : stats.getCount(),
-                    myRatingByTrack.get(trackId),
-                    listenedTrackIds.contains(trackId),
-                    savedTrackIds.contains(trackId)
-                ));
-            })
-            .sorted(Comparator.comparing(TrackDto::trackNumber, Comparator.nullsLast(Comparator.naturalOrder())))
-            .toList();
-
-        return new AlbumDetailDto(
+        return new AlbumHeaderDto(
             album.getId(),
             album.getArtist().getId(),
             album.getArtist().getName(),
@@ -248,20 +204,91 @@ public class AlbumService {
             album.getPostedAt(),
             album.getInstagramPermalink(),
             editorialDto,
-            trackDtos,
-            graphService.getStyles(albumId),
-            graphService.getMoods(albumId),
-            graphService.getContexts(albumId),
-            graphService.getPersonnel(albumId),
+            graphData.styles(),
+            graphData.moods(),
+            graphData.contexts(),
+            graphData.personnel(),
             ratingStats.avgRating(),
             ratingStats.count(),
-            // Derived live from the same listenedTrackIds used for the track
-            // rows above, not a separately-set flag — see AlbumDetailDto.
+            // Derived live from the same listenedTrackIds computed above, not
+            // a separately-set flag.
             !trackIds.isEmpty() && listenedTrackIds.size() == trackIds.size(),
             listenedTrackIds.size(),
             listenService.countAlbumListens(albumId),
             savedItemService.isSaved(currentUserId, SaveableEntityType.ALBUM, albumId)
         );
+    }
+
+    /**
+     * The album page's track list — every track, tags, personnel, ratings,
+     * listen/save state, all batched per-album rather than per-track (see
+     * the comments through this method for why each lookup is shaped the
+     * way it is). Notes are NOT batched here — see {@code TrackDto}'s own
+     * Javadoc. The expensive half of the old combined detail load — see
+     * {@link #getAlbumHeader} for the fast half.
+     *
+     * @param currentUserId whose ratings/listen/save state to include
+     * @throws ResponseStatusException 404 if the album doesn't exist
+     */
+    @Transactional(readOnly = true)
+    public List<TrackDto> getAlbumTracks(UUID albumId, UUID currentUserId) {
+        Album album = getAlbumOrThrow(albumId);
+
+        // One query for every track's placement, instead of one per track.
+        Map<UUID, TrackPlacement> placements = graphService.getTrackPlacements(albumId).stream()
+            .collect(Collectors.toMap(TrackPlacement::trackId, placement -> placement));
+
+        // One query for every track's own editorial, instead of one per track.
+        Map<UUID, TrackEditorialDto> editorialsByTrack = editorialService.getTrackEditorialDtosByAlbumId(albumId);
+
+        // Same idea again, this time for the five Neo4j lookups toDto used to
+        // run once per track (performers, moods, contexts, rhythms, featured
+        // instruments) — this was the real N+1: 5 graph round-trips per
+        // track, not just the one editorial query above.
+        Map<UUID, List<TrackPerformerEntry>> performersByTrack = graphService.getTrackPerformersForAlbum(albumId);
+        Map<UUID, List<VocabularyTag>> moodsByTrack = graphService.getTrackMoodsForAlbum(albumId);
+        Map<UUID, List<VocabularyTag>> contextsByTrack = graphService.getTrackContextsForAlbum(albumId);
+        Map<UUID, List<VocabularyTag>> rhythmsByTrack = graphService.getTrackRhythmsForAlbum(albumId);
+        Map<UUID, List<VocabularyTag>> instrumentsByTrack = graphService.getTrackFeaturedInstrumentsForAlbum(albumId);
+
+        List<UUID> trackIds = album.getTracks().stream().map(Track::getId).toList();
+
+        // One query for every track's avg/count, instead of one per track —
+        // same batching principle as everything else in this method.
+        Map<UUID, TrackRatingRepository.TrackRatingStats> ratingStatsByTrack = trackRatingRepository
+            .getRatingStatsForTracks(trackIds).stream()
+            .collect(Collectors.toMap(TrackRatingRepository.TrackRatingStats::getTrackId, s -> s));
+
+        // And the current user's own rating on each of those tracks, batched
+        // the same way.
+        Map<UUID, BigDecimal> myRatingByTrack = trackRatingRepository
+            .findByUserIdAndTrackIdIn(currentUserId, trackIds).stream()
+            .collect(Collectors.toMap(tr -> tr.getTrack().getId(), TrackRating::getRating));
+
+        Set<UUID> listenedTrackIds = listenService.getListenedTrackIds(currentUserId, trackIds);
+        Set<UUID> savedTrackIds = savedItemService.getSavedEntityIds(currentUserId, SaveableEntityType.TRACK, trackIds);
+
+        return album.getTracks().stream()
+            .map(track -> {
+                UUID trackId = track.getId();
+                TrackRatingRepository.TrackRatingStats stats = ratingStatsByTrack.get(trackId);
+                return trackService.toTrackDto(track, new TrackBatchContext(
+                    placements.get(trackId),
+                    editorialsByTrack.get(trackId),
+                    performersByTrack.getOrDefault(trackId, List.of()),
+                    moodsByTrack.getOrDefault(trackId, List.of()),
+                    contextsByTrack.getOrDefault(trackId, List.of()),
+                    rhythmsByTrack.getOrDefault(trackId, List.of()),
+                    instrumentsByTrack.getOrDefault(trackId, List.of()),
+                    stats == null ? null : stats.getAvgRating(),
+                    stats == null ? 0 : stats.getCount(),
+                    myRatingByTrack.get(trackId),
+                    listenedTrackIds.contains(trackId),
+                    savedTrackIds.contains(trackId)
+                ));
+            })
+            .sorted(Comparator.comparing(TrackDto::trackNumber, Comparator.nullsLast(Comparator.naturalOrder())))
+            .toList();
     }
 
     private Album getAlbumOrThrow(UUID albumId) {

@@ -7,18 +7,18 @@ import com.jazzlogs.backend.editorial.dto.TrackEditorialDto;
 import com.jazzlogs.backend.graph.TrackPerformerEntry;
 import com.jazzlogs.backend.graph.TrackPlacement;
 import com.jazzlogs.backend.graph.VocabularyTag;
-import com.jazzlogs.backend.note.dto.NoteDto;
 
 /**
  * Everything TrackService.toDto needs for one track, pre-fetched in bulk for
- * a whole album — see AlbumService.getAlbumDetail, which batches each of
- * these (placement, notes, editorial, performers, moods, contexts, rhythms,
+ * a whole album — see AlbumService.getAlbumTracks, which batches each of
+ * these (placement, editorial, performers, moods, contexts, rhythms,
  * featured instruments, rating stats, my rating) in one query per album
- * instead of N per track.
+ * instead of N per track. Notes are NOT here — they're their own paginated
+ * per-track endpoint (GET /tracks/{id}/notes), not something this bulk
+ * album-tracks load batches.
  */
 public record TrackBatchContext(
     TrackPlacement placement,
-    List<NoteDto> myNotes,
     TrackEditorialDto editorial,
     List<TrackPerformerEntry> performers,
     List<VocabularyTag> moods,

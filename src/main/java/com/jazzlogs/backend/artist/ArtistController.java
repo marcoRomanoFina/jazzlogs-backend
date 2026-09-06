@@ -85,6 +85,6 @@ public class ArtistController {
     @PreAuthorize("hasRole('ADMIN')")
     public ArtistEditorialDto upsertEditorial(@PathVariable UUID id, @Valid @RequestBody ArtistEditorialRequest request) {
         ArtistEditorial editorial = editorialService.upsertArtistEditorial(id, request);
-        return editorialService.toDto(editorial);
+        return editorialService.toArtistEditorialDto(editorial);
     }
 }

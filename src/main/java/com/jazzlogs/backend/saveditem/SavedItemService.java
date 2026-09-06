@@ -70,6 +70,12 @@ public class SavedItemService {
         savedItemRepository.deleteByUserIdAndEntityTypeAndEntityId(userId, entityType, entityId);
     }
 
+    /**
+     * @param userId     whose saved items to check
+     * @param entityType what {@code entityId} is (album, track, ...)
+     * @param entityId   the entity to check
+     * @return whether this user has saved this entity
+     */
     @Transactional(readOnly = true)
     public boolean isSaved(UUID userId, SaveableEntityType entityType, UUID entityId) {
         return savedItemRepository.existsById(new SavedItemId(userId, entityType, entityId));

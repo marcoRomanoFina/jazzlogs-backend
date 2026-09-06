@@ -62,24 +62,6 @@ public class NoteService {
     }
 
     /**
-     * For AlbumService.getAlbumDetail — one query for every note the current
-     * user left across the whole album, grouped by trackId, so each TrackDto
-     * can be built without a per-track query.
-     */
-    @Transactional(readOnly = true)
-    public Map<UUID, List<NoteDto>> getMyNotesForAlbum(UUID albumId, UUID currentUserId) {
-        List<Note> notes = noteRepository.findByUserAndAlbum(currentUserId, albumId);
-        Set<UUID> liked = likedIds(notes, currentUserId);
-        Map<UUID, String> names = namesByUserId(notes);
-
-        return notes.stream()
-            .collect(Collectors.groupingBy(
-                note -> note.getTrack().getId(),
-                Collectors.mapping(note -> toDto(note, liked.contains(note.getId()), names.get(note.getUserId())), Collectors.toList())
-            ));
-    }
-
-    /**
      * For ReviewService — every note any of `authorUserIds` left on this
      * album's tracks, grouped by author, as full NoteDtos (not a lean
      * summary) so the frontend can render and open them exactly like the

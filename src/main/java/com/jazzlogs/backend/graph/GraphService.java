@@ -220,36 +220,61 @@ public class GraphService {
         replaceTags("Album", albumId, "PERFECT_FOR", "Context", contextCodes);
     }
 
-    public List<VocabularyTag> getStyles(UUID albumId) {
-        return getTags("Album", albumId, "BELONGS_TO", "Style");
-    }
-
-    public List<VocabularyTag> getMoods(UUID albumId) {
-        return getTags("Album", albumId, "EVOKES_MOOD", "Mood");
-    }
-
-    public List<VocabularyTag> getContexts(UUID albumId) {
-        return getTags("Album", albumId, "PERFECT_FOR", "Context");
-    }
-
+    /**
+     * Styles/moods/contexts/personnel for the album header, in a single
+     * round trip — these used to be four separate {@code getStyles}/{@code
+     * getMoods}/{@code getContexts}/{@code getPersonnel} calls (four
+     * queries) before {@code AlbumService#getAlbumHeader} became its own
+     * fast endpoint, at which point four round trips for one header
+     * response was worth collapsing into one.
+     *
+     * @param albumId the album to read
+     * @return empty lists (not null) for anything the album has none of, including
+     *         when the album node itself isn't in Neo4j at all
+     */
     @SuppressWarnings("unchecked")
-    public List<AlbumPersonnelEntry> getPersonnel(UUID albumId) {
-        return read("read personnel for album=" + albumId, () ->
+    public AlbumHeaderGraphData getAlbumHeaderGraphData(UUID albumId) {
+        return read("read header graph data for album=" + albumId, () ->
             neo4jClient.query("""
-                    MATCH (ar:Artist)-[r:LEADER_OF|SIDEMAN_ON]->(al:Album {id: $albumId})
-                    RETURN ar.id AS artistId, ar.name AS artistName, type(r) AS relType, r.instruments AS instruments
+                    MATCH (al:Album {id: $albumId})
+                    OPTIONAL MATCH (al)-[:BELONGS_TO]->(style:Style)
+                    WITH al, collect(DISTINCT style.label) AS styleLabels
+                    OPTIONAL MATCH (al)-[:EVOKES_MOOD]->(mood:Mood)
+                    WITH al, styleLabels, collect(DISTINCT mood.label) AS moodLabels
+                    OPTIONAL MATCH (al)-[:PERFECT_FOR]->(context:Context)
+                    WITH al, styleLabels, moodLabels, collect(DISTINCT context.label) AS contextLabels
+                    OPTIONAL MATCH (ar:Artist)-[r:LEADER_OF|SIDEMAN_ON]->(al)
+                    WITH styleLabels, moodLabels, contextLabels,
+                         collect(DISTINCT CASE WHEN ar IS NULL THEN NULL
+                             ELSE {artistId: ar.id, artistName: ar.name, relType: type(r), instruments: r.instruments} END) AS personnelRaw
+                    RETURN
+                        [x IN styleLabels WHERE x IS NOT NULL] AS styles,
+                        [x IN moodLabels WHERE x IS NOT NULL] AS moods,
+                        [x IN contextLabels WHERE x IS NOT NULL] AS contexts,
+                        [p IN personnelRaw WHERE p IS NOT NULL] AS personnel
                     """)
                 .bind(albumId.toString()).to("albumId")
                 .fetch()
-                .all()
-                .stream()
-                .map(row -> new AlbumPersonnelEntry(
-                    UUID.fromString((String) row.get("artistId")),
-                    (String) row.get("artistName"),
-                    "LEADER_OF".equals(row.get("relType")) ? "LEADER" : "SIDEMAN",
-                    row.get("instruments") == null ? List.of() : (List<String>) row.get("instruments")
+                .one()
+                .map(row -> new AlbumHeaderGraphData(
+                    (List<String>) row.get("styles"),
+                    (List<String>) row.get("moods"),
+                    (List<String>) row.get("contexts"),
+                    toPersonnelEntries((List<Map<String, Object>>) row.get("personnel"))
                 ))
-                .toList());
+                .orElse(new AlbumHeaderGraphData(List.of(), List.of(), List.of(), List.of())));
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<AlbumPersonnelEntry> toPersonnelEntries(List<Map<String, Object>> maps) {
+        return maps.stream()
+            .map(m -> new AlbumPersonnelEntry(
+                UUID.fromString((String) m.get("artistId")),
+                (String) m.get("artistName"),
+                "LEADER_OF".equals(m.get("relType")) ? "LEADER" : "SIDEMAN",
+                m.get("instruments") == null ? List.of() : (List<String>) m.get("instruments")
+            ))
+            .toList();
     }
 
     // --- Track relationships ---
@@ -386,7 +411,7 @@ public class GraphService {
     /**
      * Every track's moods/contexts/rhythms/featured-instruments/performers
      * across a whole album, keyed by trackId — one query each instead of
-     * five queries per track (see AlbumService.getAlbumDetail, which used to
+     * five queries per track (see AlbumService.getAlbumTracks, which used to
      * call getTrackMoods/getTrackContexts/getTrackRhythms/
      * getTrackFeaturedInstruments/getTrackPerformers once per track).
      */
@@ -452,7 +477,7 @@ public class GraphService {
 
     /**
      * Every track's placement within its album, keyed by trackId — one query for
-     * the whole album instead of one per track (see AlbumService.getAlbumDetail).
+     * the whole album instead of one per track (see AlbumService.getAlbumTracks).
      */
     public List<TrackPlacement> getTrackPlacements(UUID albumId) {
         return read("read track placements for album=" + albumId, () ->
