@@ -60,6 +60,7 @@ public class User {
         this.status = UserStatus.ACTIVE;
     }
 
+    /** @param email from the JWT claim; only overwrites the stored one when present. */
     public void recordLogin(String email) {
         this.lastLoginAt = Instant.now();
         if (email != null) {

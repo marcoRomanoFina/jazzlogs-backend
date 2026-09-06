@@ -15,6 +15,10 @@ public class UserController {
 
     private final UserService userService;
 
+    /**
+     * @param jwt the caller — auto-provisioned on first login, see {@link UserService#resolveFromJwt}
+     * @return the current user
+     */
     @GetMapping("/me")
     public UserResponse me(@AuthenticationPrincipal Jwt jwt) {
         User user = userService.resolveFromJwt(jwt);
