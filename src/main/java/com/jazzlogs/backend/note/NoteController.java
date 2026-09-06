@@ -25,6 +25,12 @@ public class NoteController {
     private final NoteService noteService;
     private final UserService userService;
 
+    /**
+     * Deletes a note — see {@link NoteService#deleteNote}.
+     *
+     * @param id  the note to delete
+     * @param jwt the caller — must be the note's author
+     */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteNote(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
         noteService.deleteNote(id, currentUserId(jwt));

@@ -27,11 +27,21 @@ public interface NoteRepository extends LikeableRepository<Note> {
     @Query("SELECT n.likeCount FROM Note n WHERE n.id = :id")
     Optional<Integer> findLikeCount(@Param("id") UUID entityId);
 
-    // Paged, and the requesting user's own notes are pinned to the front of
-    // the ordering (before the createdAt tiebreak) at the SQL level — a track
-    // can accumulate way more notes than fit in memory/a browser tab, so this
-    // has to be LIMIT/OFFSET in the database, not "fetch everything and sort
-    // client-side" (that was the previous, unpaged findByTrackIdOrderByCreatedAtAsc).
+    /**
+     * A track's whole note feed, paginated — the caller's own notes (if any)
+     * always lead, then everyone else's, oldest first.
+     *
+     * <p>Paged, and pinned to the front at the SQL level (before the
+     * createdAt tiebreak) — a track can accumulate way more notes than fit
+     * in memory/a browser tab, so this has to be LIMIT/OFFSET in the
+     * database, not "fetch everything and sort client-side" (that was the
+     * previous, unpaged findByTrackIdOrderByCreatedAtAsc).
+     *
+     * @param trackId       the track
+     * @param currentUserId the viewer, for "mine first"
+     * @param pageable      page request
+     * @return the matching page
+     */
     @Query("SELECT n FROM Note n WHERE n.track.id = :trackId "
         + "ORDER BY CASE WHEN n.user.id = :currentUserId THEN 0 ELSE 1 END, n.createdAt ASC")
     Page<Note> findByTrackIdOrderByMineFirst(
@@ -40,14 +50,26 @@ public interface NoteRepository extends LikeableRepository<Note> {
         Pageable pageable
     );
 
-    // Explicit JPQL, not a derived findByTrackIdAndUserId... — Note also has a
-    // convenience getUserId() (delegating to user.getId()), and Spring Data's
-    // property-path resolver picks that plain method up as if "userId" were
-    // its own mapped attribute, generating invalid JPQL ("Could not resolve
-    // attribute 'userId' of Note") instead of drilling into the user
-    // association. Spelling out user.id sidesteps the ambiguity entirely.
+    /**
+     * One user's own notes on one track, oldest first, paginated.
+     *
+     * <p>Explicit JPQL, not a derived findByTrackIdAndUserId... — Note also
+     * has a convenience getUserId() (delegating to user.getId()), and Spring
+     * Data's property-path resolver picks that plain method up as if
+     * "userId" were its own mapped attribute, generating invalid JPQL
+     * ("Could not resolve attribute 'userId' of Note") instead of drilling
+     * into the user association. Spelling out user.id sidesteps the
+     * ambiguity entirely.
+     *
+     * @param trackId  the track
+     * @param userId   the author
+     * @param pageable page request
+     * @return that user's notes on that track, oldest first
+     */
     @Query("SELECT n FROM Note n WHERE n.track.id = :trackId AND n.user.id = :userId ORDER BY n.createdAt ASC")
-    List<Note> findByTrackIdAndUserIdOrderByCreatedAtAsc(@Param("trackId") UUID trackId, @Param("userId") UUID userId);
+    Page<Note> findByTrackIdAndUserIdOrderByCreatedAtAsc(
+        @Param("trackId") UUID trackId, @Param("userId") UUID userId, Pageable pageable
+    );
 
     // For NoteService.getNotesByAuthorsForAlbum (used by ReviewService) — one
     // query for every note behind a whole batch of reviews (a full album

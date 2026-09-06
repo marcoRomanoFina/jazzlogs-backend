@@ -152,15 +152,30 @@ public class TrackController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Creates a note on this track — see {@link NoteService#createNote}.
+     *
+     * @param id      the track
+     * @param request the note's own fields
+     * @param jwt     the caller, becomes the note's author
+     * @return the created note
+     */
     @PostMapping("/{id}/notes")
     public ResponseEntity<NoteDto> createNote(@PathVariable UUID id, @Valid @RequestBody CreateNoteRequest request, @AuthenticationPrincipal Jwt jwt) {
         NoteDto note = noteService.createNote(currentUserId(jwt), id, request.title(), request.text(), request.timestampSeconds());
         return ResponseEntity.status(HttpStatus.CREATED).body(note);
     }
 
-    // Paged — a track's notes are an unbounded community feed, not something
-    // safe to return in full. size is fixed at NOTES_PAGE_SIZE, not a
-    // client-controlled ?size — only page moves.
+    /**
+     * A track's whole note feed, paginated — see {@link NoteService#getTrackNotes}.
+     * A track's notes are an unbounded community feed, not something safe to
+     * return in full.
+     *
+     * @param id   the track
+     * @param jwt  the caller, for "mine first" and each note's likedByCurrentUser
+     * @param page 0-based; page size is fixed at {@link #NOTES_PAGE_SIZE}, not client-controlled
+     * @return the matching page
+     */
     @GetMapping("/{id}/notes")
     public Page<NoteDto> getTrackNotes(
         @PathVariable UUID id,
@@ -170,9 +185,21 @@ public class TrackController {
         return noteService.getTrackNotes(id, currentUserId(jwt), PageRequest.of(page, NOTES_PAGE_SIZE));
     }
 
+    /**
+     * The caller's own notes on this track, paginated — see {@link NoteService#getMyTrackNotes}.
+     *
+     * @param id   the track
+     * @param jwt  the caller
+     * @param page 0-based; page size is fixed at {@link #NOTES_PAGE_SIZE}, not client-controlled
+     * @return the caller's notes on this track
+     */
     @GetMapping("/{id}/notes/me")
-    public List<NoteDto> getMyTrackNotes(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
-        return noteService.getMyTrackNotes(id, currentUserId(jwt));
+    public Page<NoteDto> getMyTrackNotes(
+        @PathVariable UUID id,
+        @AuthenticationPrincipal Jwt jwt,
+        @RequestParam(defaultValue = "0") int page
+    ) {
+        return noteService.getMyTrackNotes(id, currentUserId(jwt), PageRequest.of(page, NOTES_PAGE_SIZE));
     }
 
     /** Creates or edits the caller's own rating for this track — see {@link TrackRatingService#upsertRating}. */

@@ -57,6 +57,13 @@ public class Note {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    /**
+     * @param user             the author
+     * @param track            the track being noted
+     * @param title            required
+     * @param text             required
+     * @param timestampSeconds optional — a specific moment in the track this note is about
+     */
     public Note(User user, Track track, String title, String text, Integer timestampSeconds) {
         this.user = user;
         this.track = track;
