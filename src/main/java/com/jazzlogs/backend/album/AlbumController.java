@@ -5,6 +5,8 @@ import java.util.UUID;
 
 import jakarta.validation.Valid;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -17,6 +19,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.jazzlogs.backend.album.dto.AlbumHeaderDto;
@@ -44,6 +47,9 @@ import lombok.AllArgsConstructor;
 @RequestMapping("/albums")
 @AllArgsConstructor
 public class AlbumController {
+
+    /** Fixed server-side, not a client-controlled ?size — see {@link #getAlbumReviews}. */
+    private static final int REVIEWS_PAGE_SIZE = 6;
 
     private final AlbumService albumService;
     private final TrackService trackService;
@@ -162,20 +168,38 @@ public class AlbumController {
         return reviewService.updateReview(currentUserId(jwt), id, request.rating(), request.text(), request.standoutTrackIds());
     }
 
+    /**
+     * Deletes the caller's own review of this album — see {@link ReviewService#deleteReview}.
+     *
+     * @param id  the album being reviewed
+     * @param jwt the caller
+     */
     @DeleteMapping("/{id}/reviews")
     public ResponseEntity<Void> deleteReview(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
         reviewService.deleteReview(currentUserId(jwt), id);
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * The album's reviews, paginated — the caller's own review (if any)
+     * always leads, then everyone else's newest first. Same shape as
+     * {@code TrackController#getTrackNotes}; the frontend uses page 0's
+     * first item (if its {@code userId} matches the caller) to know
+     * whether to {@link #createReview} or {@link #updateReview} — there's
+     * no separate "my review" endpoint anymore.
+     *
+     * @param id   the album
+     * @param jwt  the caller, resolved to a user id for "mine first" and each review's {@code likedByCurrentUser}
+     * @param page 0-based; page size is fixed at {@link #REVIEWS_PAGE_SIZE}, not client-controlled
+     * @return the matching page
+     */
     @GetMapping("/{id}/reviews")
-    public List<ReviewDto> getAlbumReviews(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
-        return reviewService.getAlbumReviews(id, currentUserId(jwt));
-    }
-
-    @GetMapping("/{id}/reviews/me")
-    public ReviewDto getMyReview(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
-        return reviewService.getMyReview(id, currentUserId(jwt));
+    public Page<ReviewDto> getAlbumReviews(
+        @PathVariable UUID id,
+        @AuthenticationPrincipal Jwt jwt,
+        @RequestParam(defaultValue = "0") int page
+    ) {
+        return reviewService.getAlbumReviews(id, currentUserId(jwt), PageRequest.of(page, REVIEWS_PAGE_SIZE));
     }
 
     private UUID currentUserId(Jwt jwt) {

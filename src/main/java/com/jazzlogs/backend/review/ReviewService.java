@@ -11,6 +11,8 @@ import java.util.stream.Collectors;
 
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -77,18 +79,21 @@ public class ReviewService {
     @Transactional
     public ReviewDto createReview(UUID userId, UUID albumId, BigDecimal rating, String text, List<UUID> standoutTrackIds) {
         assertValidRating(rating);
-        User user = getUserOrThrow(userId);
-        Album album = getAlbumOrThrow(albumId);
-        Set<Track> standoutTracks = resolveStandoutTracks(albumId, standoutTrackIds);
 
+        // Checked first, before the 3 queries below — no point fetching
+        // user/album/standout tracks if this call is going to 409 anyway.
         if (reviewRepository.findByUserIdAndAlbumId(userId, albumId).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Already reviewed this album — use PUT to edit it");
         }
 
+        User user = getUserOrThrow(userId);
+        Album album = getAlbumOrThrow(albumId);
+        Set<Track> standoutTracks = resolveStandoutTracks(albumId, standoutTrackIds);
+
         Review review = new Review(user, album, rating, text, standoutTracks);
         Review saved = saveNewReview(review);
 
-        return finishUpsert(saved, userId, albumId, standoutTrackIds);
+        return finishUpsert(saved, userId, albumId, standoutTrackIds, user.getResolvedDisplayName());
     }
 
     /**
@@ -116,7 +121,7 @@ public class ReviewService {
         review.getStandoutTracks().addAll(standoutTracks);
         Review saved = reviewRepository.save(review);
 
-        return finishUpsert(saved, userId, albumId, standoutTrackIds);
+        return finishUpsert(saved, userId, albumId, standoutTrackIds, saved.getUser().getResolvedDisplayName());
     }
 
     /**
@@ -146,13 +151,21 @@ public class ReviewService {
      * the row itself is saved: sync to Neo4j, fetch notes, project to the
      * response DTO.
      *
-     * @param standoutTrackIds the caller's original input, not {@code
-     *                         saved.getStandoutTracks()} — that's a lazy
-     *                         collection and {@code saved} is detached by
-     *                         the time this runs in some call paths
+     * @param standoutTrackIds the caller's original input as plain ids —
+     *                         only for the Neo4j sync call, which wants ids,
+     *                         not entities. {@code saved.getStandoutTracks()}
+     *                         (used below for the DTO) is a different shape
+     *                         for a different consumer, not a substitute for
+     *                         this — both callers already have it fetched
+     *                         (one just built it, the other fetch-joined it),
+     *                         so reading it here is free either way.
+     * @param userName         pre-resolved by the caller (who already has
+     *                         the {@code User} in hand one way or another) —
+     *                         avoids a second {@code findById} on a row this
+     *                         same transaction already loaded
      * @return {@code saved} projected into the response shape
      */
-    private ReviewDto finishUpsert(Review saved, UUID userId, UUID albumId, List<UUID> standoutTrackIds) {
+    private ReviewDto finishUpsert(Review saved, UUID userId, UUID albumId, List<UUID> standoutTrackIds, String userName) {
         List<UUID> standoutTrackIdsForGraph = standoutTrackIds == null
             ? List.of()
             : List.copyOf(new HashSet<>(standoutTrackIds));
@@ -161,7 +174,8 @@ public class ReviewService {
 
         List<NoteDto> notes = notesFor(userId, albumId);
         boolean liked = likeService.hasUserLiked(userId, LikeableEntityType.REVIEW, saved.getId());
-        return toDto(saved, liked, getUserOrThrow(userId).getResolvedDisplayName(), notes);
+        List<StandoutTrackDto> standoutTrackDtos = toStandoutTrackDtos(saved.getStandoutTracks());
+        return toDto(saved, liked, userName, notes, standoutTrackDtos);
     }
 
     /**
@@ -217,7 +231,13 @@ public class ReviewService {
         );
     }
 
-    /** Idempotent — does nothing if the user had no review on this album. */
+    /**
+     * Deletes {@code userId}'s own review of {@code albumId} — idempotent,
+     * does nothing if they had no review on this album.
+     *
+     * @param userId  the reviewer
+     * @param albumId the album whose review to delete
+     */
     @Transactional
     public void deleteReview(UUID userId, UUID albumId) {
         reviewRepository.findByUserIdAndAlbumId(userId, albumId).ifPresent(reviewRepository::delete);
@@ -235,28 +255,46 @@ public class ReviewService {
         return new AlbumRatingStats(stats.getAvgRating(), stats.getCount());
     }
 
+    /**
+     * The album's reviews, paginated — the caller's own review (if any)
+     * always leads, then everyone else's newest first. Same "mine first"
+     * idea as {@code NoteService.getTrackNotes}; unlike notes there's at
+     * most one "mine" row here (one review per user per album), so it's
+     * always exactly the first item of page 0 or nothing.
+     *
+     * @param currentUserId used for "mine first" and each review's {@code likedByCurrentUser}
+     * @return the matching page
+     */
     @Transactional(readOnly = true)
-    public List<ReviewDto> getAlbumReviews(UUID albumId, UUID currentUserId) {
-        List<Review> reviews = reviewRepository.findByAlbumIdWithStandoutTracks(albumId);
+    public Page<ReviewDto> getAlbumReviews(UUID albumId, UUID currentUserId, Pageable pageable) {
+        Page<Review> page = reviewRepository.findByAlbumIdOrderByMineFirst(albumId, currentUserId, pageable);
+        List<Review> reviews = page.getContent();
+
+        Map<UUID, List<StandoutTrackDto>> standoutTracks = standoutTracksFor(reviews);
         Set<UUID> liked = likedIds(reviews, currentUserId);
         Map<UUID, String> names = namesByUserId(reviews);
         Map<UUID, List<NoteDto>> notes = notesByUserId(reviews, albumId, currentUserId);
-        return reviews.stream()
-            .map(review -> toDto(
-                review,
-                liked.contains(review.getId()),
-                names.get(review.getUserId()),
-                notes.getOrDefault(review.getUserId(), List.of())
-            ))
-            .toList();
+
+        return page.map(review -> toDto(
+            review,
+            liked.contains(review.getId()),
+            names.get(review.getUserId()),
+            notes.getOrDefault(review.getUserId(), List.of()),
+            standoutTracks.getOrDefault(review.getId(), List.of())
+        ));
     }
 
-    @Transactional(readOnly = true)
-    public ReviewDto getMyReview(UUID albumId, UUID userId) {
-        Review review = reviewRepository.findByUserIdAndAlbumId(userId, albumId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "You haven't reviewed this album"));
-        boolean liked = likeService.hasUserLiked(userId, LikeableEntityType.REVIEW, review.getId());
-        return toDto(review, liked, getUserOrThrow(userId).getResolvedDisplayName(), notesFor(userId, albumId));
+    /** Batched — one query for every review's standout tracks on this page, not one lazy load per review. */
+    private Map<UUID, List<StandoutTrackDto>> standoutTracksFor(List<Review> reviews) {
+        List<UUID> reviewIds = reviews.stream().map(Review::getId).toList();
+        if (reviewIds.isEmpty()) {
+            return Map.of();
+        }
+        return reviewRepository.findStandoutTracksForReviews(reviewIds).stream()
+            .collect(Collectors.groupingBy(
+                ReviewRepository.StandoutTrackRow::getReviewId,
+                Collectors.mapping(row -> new StandoutTrackDto(row.getTrackId(), row.getTrackName()), Collectors.toList())
+            ));
     }
 
     private Map<UUID, String> namesByUserId(List<Review> reviews) {
@@ -340,15 +378,17 @@ public class ReviewService {
             .getOrDefault(userId, List.of());
     }
 
+    private static List<StandoutTrackDto> toStandoutTrackDtos(Set<Track> tracks) {
+        return tracks.stream().map(track -> new StandoutTrackDto(track.getId(), track.getName())).toList();
+    }
+
     /**
-     * @param userName pre-resolved (batched for a list, looked up directly for a single review) — not read off {@code review} itself
+     * @param userName       pre-resolved (batched for a list, looked up directly for a single review) — not read off {@code review} itself
+     * @param standoutTracks pre-resolved too — never {@code review.getStandoutTracks()} directly, so callers control
+     *                       whether that comes from a single fetched-join row or a batched lookup across a page
      * @return {@code review} projected into the response shape
      */
-    private ReviewDto toDto(Review review, boolean likedByCurrentUser, String userName, List<NoteDto> notes) {
-        List<StandoutTrackDto> standoutTracks = review.getStandoutTracks().stream()
-            .map(track -> new StandoutTrackDto(track.getId(), track.getName()))
-            .toList();
-
+    private ReviewDto toDto(Review review, boolean likedByCurrentUser, String userName, List<NoteDto> notes, List<StandoutTrackDto> standoutTracks) {
         return new ReviewDto(
             review.getId(),
             review.getAlbum().getId(),
