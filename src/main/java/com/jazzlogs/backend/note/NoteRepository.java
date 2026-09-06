@@ -49,17 +49,12 @@ public interface NoteRepository extends LikeableRepository<Note> {
     @Query("SELECT n FROM Note n WHERE n.track.id = :trackId AND n.user.id = :userId ORDER BY n.createdAt ASC")
     List<Note> findByTrackIdAndUserIdOrderByCreatedAtAsc(@Param("trackId") UUID trackId, @Param("userId") UUID userId);
 
-    // For AlbumService.getAlbumDetail — one query for every note the current
-    // user left on any track of this album, instead of one per track.
-    @Query("SELECT n FROM Note n WHERE n.user.id = :userId AND n.track.album.id = :albumId")
-    List<Note> findByUserAndAlbum(@Param("userId") UUID userId, @Param("albumId") UUID albumId);
-
     // For NoteService.getNotesByAuthorsForAlbum (used by ReviewService) — one
     // query for every note behind a whole batch of reviews (a full album
     // review list, not one query per review). JOIN FETCH n.track is harmless
-    // over-fetching here, not load-bearing like findByUserAndAlbum above —
-    // NoteDto only ever reads note.getTrack().getId(), which the lazy proxy
-    // already knows from its own FK column without a query.
+    // over-fetching here, not load-bearing — NoteDto only ever reads
+    // note.getTrack().getId(), which the lazy proxy already knows from its
+    // own FK column without a query.
     @Query("SELECT n FROM Note n JOIN FETCH n.track WHERE n.track.album.id = :albumId AND n.user.id IN :userIds")
     List<Note> findByAlbumIdAndUserIdIn(@Param("albumId") UUID albumId, @Param("userIds") Collection<UUID> userIds);
 }

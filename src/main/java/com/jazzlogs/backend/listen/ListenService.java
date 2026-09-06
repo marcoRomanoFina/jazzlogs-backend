@@ -78,6 +78,8 @@ public class ListenService {
      * AlbumController's old POST/DELETE /albums/{id}/listen are gone. Its
      * "listened" state is purely a consequence of every one of its tracks
      * being listened, reconciled here after every mark/unmark.
+     *
+     * @throws ResponseStatusException 404 if the track doesn't exist
      */
     @Transactional
     public void markTrackListened(UUID userId, UUID trackId) {
@@ -94,7 +96,11 @@ public class ListenService {
         }
     }
 
-    /** Same completion reconciliation as the mark side — see markTrackListened. */
+    /**
+     * Same completion reconciliation as the mark side — see {@link #markTrackListened}.
+     *
+     * @throws ResponseStatusException 404 if the track doesn't exist
+     */
     @Transactional
     public void unmarkTrackListened(UUID userId, UUID trackId) {
         Track track = getTrackOrThrow(trackId);
@@ -104,7 +110,7 @@ public class ListenService {
 
     /**
      * Reconciles the album-level listens row (used for countAlbumListens'
-     * stat and the Neo4j mirror — AlbumService.getAlbumDetail computes the
+     * stat and the Neo4j mirror — AlbumService.getAlbumHeader computes the
      * user-facing "hasListened" flag itself, live, from track completion,
      * precisely so it can't go stale relative to this) to whether every
      * track on the album is currently listened by this user: inserts +
@@ -152,15 +158,26 @@ public class ListenService {
         );
     }
 
-    // Total plays across every user — the album editorial page's "LISTENINGS"
-    // stat, not a per-user check.
+    /**
+     * Total plays across every user — the album editorial page's
+     * "LISTENINGS" stat, not a per-user check.
+     *
+     * @param albumId the album to count
+     * @return how many users have listened to the whole album
+     */
     @Transactional(readOnly = true)
     public long countAlbumListens(UUID albumId) {
         return listenRepository.countByEntityTypeAndEntityIdIn(ListenableEntityType.ALBUM, List.of(albumId));
     }
 
-    // Batch — AlbumService.getAlbumDetail needs this for every track on the
-    // album at once, not one existsById per track.
+    /**
+     * Batch — AlbumService.getAlbumHeader/getAlbumTracks both need this for
+     * every track on the album at once, not one existsById per track.
+     *
+     * @param userId   whose listens to check
+     * @param trackIds the tracks to check
+     * @return the subset of {@code trackIds} this user has listened to
+     */
     @Transactional(readOnly = true)
     public Set<UUID> getListenedTrackIds(UUID userId, List<UUID> trackIds) {
         return new HashSet<>(listenRepository.findListenedEntityIds(userId, ListenableEntityType.TRACK, trackIds));

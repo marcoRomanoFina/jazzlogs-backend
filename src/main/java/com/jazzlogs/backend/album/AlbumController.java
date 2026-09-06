@@ -30,7 +30,6 @@ import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.editorial.dto.AlbumEditorialDto;
 import com.jazzlogs.backend.editorial.dto.AlbumEditorialRequest;
 import com.jazzlogs.backend.review.ReviewService;
-import com.jazzlogs.backend.review.dto.AlbumRatingStats;
 import com.jazzlogs.backend.review.dto.CreateReviewRequest;
 import com.jazzlogs.backend.review.dto.ReviewDto;
 import com.jazzlogs.backend.track.Track;
@@ -52,14 +51,19 @@ public class AlbumController {
     private final ReviewService reviewService;
     private final UserService userService;
 
-    // The album's fast, above-the-fold load — track list is its own endpoint
-    // below, fetched separately since it's the expensive part.
+    /**
+     * The album page's fast, above-the-fold load — see {@link AlbumService#getAlbumHeader}.
+     *
+     * @param id  the album to load
+     * @param jwt the caller, resolved to a user id only to compute listen/save state
+     * @return the album header
+     */
     @GetMapping("/{id}")
     public AlbumHeaderDto getAlbum(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
         return albumService.getAlbumHeader(id, currentUserId(jwt));
     }
 
-    // Split out of the old combined detail endpoint — see AlbumService.getAlbumTracks.
+    /** The album page's track list, fetched separately from the header — see {@link AlbumService#getAlbumTracks}. */
     @GetMapping("/{id}/tracks")
     public List<TrackDto> getAlbumTracks(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
         return albumService.getAlbumTracks(id, currentUserId(jwt));
@@ -80,14 +84,14 @@ public class AlbumController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<TrackDto> createOrUpdateTrack(@PathVariable UUID id, @Valid @RequestBody CreateTrackRequest request) {
         Track track = trackService.createOrUpdateTrack(id, request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(trackService.toDto(track));
+        return ResponseEntity.status(HttpStatus.CREATED).body(trackService.toTrackDto(track));
     }
 
     @PostMapping("/{id}/editorial")
     @PreAuthorize("hasRole('ADMIN')")
     public AlbumEditorialDto upsertEditorial(@PathVariable UUID id, @Valid @RequestBody AlbumEditorialRequest request, @AuthenticationPrincipal Jwt jwt) {
         AlbumEditorial editorial = editorialService.upsertAlbumEditorial(id, request);
-        return editorialService.toDto(editorial, currentUserId(jwt));
+        return editorialService.toAlbumEditorialDto(editorial, currentUserId(jwt));
     }
 
     @PostMapping("/{id}/personnel")
@@ -151,11 +155,6 @@ public class AlbumController {
     @GetMapping("/{id}/reviews/me")
     public ReviewDto getMyReview(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
         return reviewService.getMyReview(id, currentUserId(jwt));
-    }
-
-    @GetMapping("/{id}/rating")
-    public AlbumRatingStats getAlbumRating(@PathVariable UUID id) {
-        return reviewService.getAlbumRatingStats(id);
     }
 
     private UUID currentUserId(Jwt jwt) {

@@ -15,7 +15,7 @@ public interface TrackEditorialRepository extends JpaRepository<TrackEditorial, 
     boolean existsByTrackId(UUID trackId);
 
     // One query for every track editorial on this album (title/dek/byline +
-    // blocks), instead of one per track — see AlbumService.getAlbumDetail,
+    // blocks), instead of one per track — see AlbumService.getAlbumTracks,
     // which used to call getTrackEditorialDto(trackId) once per track.
     // DISTINCT is needed because the blocks fetch join otherwise duplicates
     // each TrackEditorial row once per block.

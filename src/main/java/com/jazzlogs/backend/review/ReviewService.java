@@ -169,6 +169,12 @@ public class ReviewService {
         reviewRepository.findByUserIdAndAlbumId(userId, albumId).ifPresent(reviewRepository::delete);
     }
 
+    /**
+     * Average rating and review count across every user's review of this album — not per-track.
+     *
+     * @param albumId the album to aggregate
+     * @return the stats, {@code avgRating} is {@code null} if the album has no reviews
+     */
     @Transactional(readOnly = true)
     public AlbumRatingStats getAlbumRatingStats(UUID albumId) {
         ReviewRepository.RatingStats stats = reviewRepository.getRatingStats(albumId);

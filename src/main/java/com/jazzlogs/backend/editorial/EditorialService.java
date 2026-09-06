@@ -413,15 +413,20 @@ public class EditorialService {
         return editorial.getBlocks();
     }
 
+    /**
+     * @param albumId       the album whose editorial to look up
+     * @param currentUserId used only to compute {@code likedByCurrentUser} on the result
+     * @return the album's own editorial, {@code null} if none written yet
+     */
     public AlbumEditorialDto getAlbumEditorialDto(UUID albumId, UUID currentUserId) {
         return albumEditorialRepository.findByAlbumId(albumId)
-            .map(editorial -> toDto(editorial, currentUserId))
+            .map(editorial -> toAlbumEditorialDto(editorial, currentUserId))
             .orElse(null);
     }
 
     public TrackEditorialDto getTrackEditorialDto(UUID trackId) {
         return trackEditorialRepository.findByTrackId(trackId)
-            .map(this::toDto)
+            .map(this::toTrackEditorialDto)
             .orElse(null);
     }
 
@@ -432,16 +437,16 @@ public class EditorialService {
 
     public Map<UUID, TrackEditorialDto> getTrackEditorialDtosByAlbumId(UUID albumId) {
         return trackEditorialRepository.findByTrackAlbumId(albumId).stream()
-            .collect(Collectors.toMap(te -> te.getTrack().getId(), this::toDto));
+            .collect(Collectors.toMap(te -> te.getTrack().getId(), this::toTrackEditorialDto));
     }
 
     public ArtistEditorialDto getArtistEditorialDto(UUID artistId) {
         return artistEditorialRepository.findByArtistId(artistId)
-            .map(this::toDto)
+            .map(this::toArtistEditorialDto)
             .orElse(null);
     }
 
-    public AlbumEditorialDto toDto(AlbumEditorial editorial, UUID currentUserId) {
+    public AlbumEditorialDto toAlbumEditorialDto(AlbumEditorial editorial, UUID currentUserId) {
         UUID editorialId = editorial.getId();
         return new AlbumEditorialDto(
             editorialId,
@@ -454,13 +459,13 @@ public class EditorialService {
         );
     }
 
-    public TrackEditorialDto toDto(TrackEditorial editorial) {
+    public TrackEditorialDto toTrackEditorialDto(TrackEditorial editorial) {
         return new TrackEditorialDto(
             editorial.getTitle(), editorial.getDek(), editorial.getByline(), blocksOf(editorial)
         );
     }
 
-    public ArtistEditorialDto toDto(ArtistEditorial editorial) {
+    public ArtistEditorialDto toArtistEditorialDto(ArtistEditorial editorial) {
         return new ArtistEditorialDto(
             editorial.getTitle(), editorial.getDek(), editorial.getByline(), blocksOf(editorial)
         );

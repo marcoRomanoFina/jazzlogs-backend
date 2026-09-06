@@ -25,13 +25,12 @@ import com.jazzlogs.backend.artist.ArtistRepository;
 import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.editorial.dto.AlbumEditorialDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialDto;
+import com.jazzlogs.backend.graph.AlbumHeaderGraphData;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.TrackPerformerEntry;
 import com.jazzlogs.backend.graph.TrackPlacement;
 import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.listen.ListenService;
-import com.jazzlogs.backend.note.NoteService;
-import com.jazzlogs.backend.note.dto.NoteDto;
 import com.jazzlogs.backend.review.ReviewService;
 import com.jazzlogs.backend.review.dto.AlbumRatingStats;
 import com.jazzlogs.backend.saveditem.SavedItemService;
@@ -62,7 +61,6 @@ public class AlbumService {
     private final SpotifyCatalogService spotifyCatalogService;
     private final TrackService trackService;
     private final EditorialService editorialService;
-    private final NoteService noteService;
     private final ReviewService reviewService;
     private final ListenService listenService;
     private final SavedItemService savedItemService;
@@ -160,8 +158,16 @@ public class AlbumService {
         graphService.replaceContexts(albumId, request.contextCodes());
     }
 
-    // Split out of the old combined getAlbumDetail — this half is the fast,
-    // above-the-fold part; getAlbumTracks below is the expensive half.
+    /**
+     * The album page's fast, above-the-fold load — everything about the
+     * album except its track list (see {@link #getAlbumTracks}, fetched
+     * separately since it's the expensive part).
+     *
+     * @param albumId       the album to load
+     * @param currentUserId whose listen/save state to include
+     * @return the album header
+     * @throws ResponseStatusException 404 if the album doesn't exist
+     */
     @Transactional(readOnly = true)
     public AlbumHeaderDto getAlbumHeader(UUID albumId, UUID currentUserId) {
         Album album = getAlbumOrThrow(albumId);
@@ -169,6 +175,13 @@ public class AlbumService {
         AlbumEditorialDto editorialDto = editorialService.getAlbumEditorialDto(albumId, currentUserId);
         AlbumRatingStats ratingStats = reviewService.getAlbumRatingStats(albumId);
 
+        // One round trip for styles+moods+contexts+personnel together,
+        // instead of four separate ones.
+        AlbumHeaderGraphData graphData = graphService.getAlbumHeaderGraphData(albumId);
+
+        // hasListened/listenedTrackCount are derived from per-track listen
+        // state, so this still needs trackIds + one batched listen query —
+        // cheap compared to what getAlbumTracks does with the same ids.
         List<UUID> trackIds = album.getTracks().stream().map(Track::getId).toList();
         Set<UUID> listenedTrackIds = listenService.getListenedTrackIds(currentUserId, trackIds);
 
@@ -191,10 +204,10 @@ public class AlbumService {
             album.getPostedAt(),
             album.getInstagramPermalink(),
             editorialDto,
-            graphService.getStyles(albumId),
-            graphService.getMoods(albumId),
-            graphService.getContexts(albumId),
-            graphService.getPersonnel(albumId),
+            graphData.styles(),
+            graphData.moods(),
+            graphData.contexts(),
+            graphData.personnel(),
             ratingStats.avgRating(),
             ratingStats.count(),
             // Derived live from the same listenedTrackIds computed above, not
@@ -206,7 +219,17 @@ public class AlbumService {
         );
     }
 
-    // The expensive half of the old combined getAlbumDetail — see getAlbumHeader above.
+    /**
+     * The album page's track list — every track, tags, personnel, ratings,
+     * listen/save state, all batched per-album rather than per-track (see
+     * the comments through this method for why each lookup is shaped the
+     * way it is). Notes are NOT batched here — see {@code TrackDto}'s own
+     * Javadoc. The expensive half of the old combined detail load — see
+     * {@link #getAlbumHeader} for the fast half.
+     *
+     * @param currentUserId whose ratings/listen/save state to include
+     * @throws ResponseStatusException 404 if the album doesn't exist
+     */
     @Transactional(readOnly = true)
     public List<TrackDto> getAlbumTracks(UUID albumId, UUID currentUserId) {
         Album album = getAlbumOrThrow(albumId);
@@ -215,11 +238,7 @@ public class AlbumService {
         Map<UUID, TrackPlacement> placements = graphService.getTrackPlacements(albumId).stream()
             .collect(Collectors.toMap(TrackPlacement::trackId, placement -> placement));
 
-        // Same idea: one query for every note the current user left anywhere on
-        // this album, instead of one per track.
-        Map<UUID, List<NoteDto>> notesByTrack = noteService.getMyNotesForAlbum(albumId, currentUserId);
-
-        // And again for every track's own editorial, instead of one per track.
+        // One query for every track's own editorial, instead of one per track.
         Map<UUID, TrackEditorialDto> editorialsByTrack = editorialService.getTrackEditorialDtosByAlbumId(albumId);
 
         // Same idea again, this time for the five Neo4j lookups toDto used to
@@ -253,9 +272,8 @@ public class AlbumService {
             .map(track -> {
                 UUID trackId = track.getId();
                 TrackRatingRepository.TrackRatingStats stats = ratingStatsByTrack.get(trackId);
-                return trackService.toDto(track, new TrackBatchContext(
+                return trackService.toTrackDto(track, new TrackBatchContext(
                     placements.get(trackId),
-                    notesByTrack.getOrDefault(trackId, List.of()),
                     editorialsByTrack.get(trackId),
                     performersByTrack.getOrDefault(trackId, List.of()),
                     moodsByTrack.getOrDefault(trackId, List.of()),

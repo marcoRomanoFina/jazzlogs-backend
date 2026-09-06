@@ -60,7 +60,7 @@ public class TrackController {
     @PreAuthorize("hasRole('ADMIN')")
     public TrackEditorialDto upsertEditorial(@PathVariable UUID id, @Valid @RequestBody TrackEditorialRequest request) {
         TrackEditorial editorial = editorialService.upsertTrackEditorial(id, request);
-        return editorialService.toDto(editorial);
+        return editorialService.toTrackEditorialDto(editorial);
     }
 
     @PostMapping("/{id}/performers")
@@ -135,12 +135,14 @@ public class TrackController {
         return editorialService.getFeaturedTracks(currentUserId(jwt));
     }
 
+    /** Marks this track listened for the caller — see {@link ListenService#markTrackListened}. */
     @PostMapping("/{id}/listen")
     public ResponseEntity<Void> markListened(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
         listenService.markTrackListened(currentUserId(jwt), id);
         return ResponseEntity.noContent().build();
     }
 
+    /** Unmarks this track listened for the caller — see {@link ListenService#unmarkTrackListened}. */
     @DeleteMapping("/{id}/listen")
     public ResponseEntity<Void> unmarkListened(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
         listenService.unmarkTrackListened(currentUserId(jwt), id);
@@ -171,6 +173,7 @@ public class TrackController {
         return noteService.getMyTrackNotes(id, currentUserId(jwt));
     }
 
+    /** Creates or edits the caller's own rating for this track — see {@link TrackRatingService#upsertRating}. */
     @PostMapping("/{id}/ratings")
     public TrackRatingDto upsertRating(@PathVariable UUID id, @Valid @RequestBody CreateTrackRatingRequest request, @AuthenticationPrincipal Jwt jwt) {
         return trackRatingService.upsertRating(currentUserId(jwt), id, request.rating());

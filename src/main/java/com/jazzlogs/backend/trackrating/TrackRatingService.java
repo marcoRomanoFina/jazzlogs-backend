@@ -51,6 +51,15 @@ public class TrackRatingService {
     private final Neo4jAsyncSyncExecutor syncExecutor;
     private final PlatformTransactionManager transactionManager;
 
+    /**
+     * Creates or edits {@code userId}'s own rating for {@code trackId} — one
+     * rating per user per track. Syncs to Neo4j after commit; see {@link
+     * #syncRatingToGraph}.
+     *
+     * @throws ResponseStatusException 400 if {@code rating} is missing, out
+     *                                  of [1, 5], or not a multiple of 0.5;
+     *                                  404 if the user or track don't exist
+     */
     public TrackRatingDto upsertRating(UUID userId, UUID trackId, BigDecimal rating) {
         assertValidRating(rating);
 
