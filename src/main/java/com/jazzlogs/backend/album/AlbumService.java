@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import com.jazzlogs.backend.album.dto.AlbumDetailDto;
+import com.jazzlogs.backend.album.dto.AlbumHeaderDto;
 import com.jazzlogs.backend.album.dto.ContextTagRequest;
 import com.jazzlogs.backend.album.dto.CreateAlbumRequest;
 import com.jazzlogs.backend.album.dto.MoodTagRequest;
@@ -160,11 +160,56 @@ public class AlbumService {
         graphService.replaceContexts(albumId, request.contextCodes());
     }
 
+    // Split out of the old combined getAlbumDetail — this half is the fast,
+    // above-the-fold part; getAlbumTracks below is the expensive half.
     @Transactional(readOnly = true)
-    public AlbumDetailDto getAlbumDetail(UUID albumId, UUID currentUserId) {
+    public AlbumHeaderDto getAlbumHeader(UUID albumId, UUID currentUserId) {
         Album album = getAlbumOrThrow(albumId);
 
         AlbumEditorialDto editorialDto = editorialService.getAlbumEditorialDto(albumId, currentUserId);
+        AlbumRatingStats ratingStats = reviewService.getAlbumRatingStats(albumId);
+
+        List<UUID> trackIds = album.getTracks().stream().map(Track::getId).toList();
+        Set<UUID> listenedTrackIds = listenService.getListenedTrackIds(currentUserId, trackIds);
+
+        return new AlbumHeaderDto(
+            album.getId(),
+            album.getArtist().getId(),
+            album.getArtist().getName(),
+            album.getName(),
+            album.getSpotifyAlbumId(),
+            album.getSpotifyUrl(),
+            album.getImageUrl(),
+            album.getReleaseYear(),
+            album.getTotalTracks(),
+            album.getLogNumber(),
+            album.getLabel(),
+            album.getVocalProfile(),
+            album.getEnergy(),
+            album.getMoodIntensity(),
+            album.getAccessibility(),
+            album.getPostedAt(),
+            album.getInstagramPermalink(),
+            editorialDto,
+            graphService.getStyles(albumId),
+            graphService.getMoods(albumId),
+            graphService.getContexts(albumId),
+            graphService.getPersonnel(albumId),
+            ratingStats.avgRating(),
+            ratingStats.count(),
+            // Derived live from the same listenedTrackIds computed above, not
+            // a separately-set flag.
+            !trackIds.isEmpty() && listenedTrackIds.size() == trackIds.size(),
+            listenedTrackIds.size(),
+            listenService.countAlbumListens(albumId),
+            savedItemService.isSaved(currentUserId, SaveableEntityType.ALBUM, albumId)
+        );
+    }
+
+    // The expensive half of the old combined getAlbumDetail — see getAlbumHeader above.
+    @Transactional(readOnly = true)
+    public List<TrackDto> getAlbumTracks(UUID albumId, UUID currentUserId) {
+        Album album = getAlbumOrThrow(albumId);
 
         // One query for every track's placement, instead of one per track.
         Map<UUID, TrackPlacement> placements = graphService.getTrackPlacements(albumId).stream()
@@ -187,8 +232,6 @@ public class AlbumService {
         Map<UUID, List<VocabularyTag>> rhythmsByTrack = graphService.getTrackRhythmsForAlbum(albumId);
         Map<UUID, List<VocabularyTag>> instrumentsByTrack = graphService.getTrackFeaturedInstrumentsForAlbum(albumId);
 
-        AlbumRatingStats ratingStats = reviewService.getAlbumRatingStats(albumId);
-
         List<UUID> trackIds = album.getTracks().stream().map(Track::getId).toList();
 
         // One query for every track's avg/count, instead of one per track —
@@ -206,7 +249,7 @@ public class AlbumService {
         Set<UUID> listenedTrackIds = listenService.getListenedTrackIds(currentUserId, trackIds);
         Set<UUID> savedTrackIds = savedItemService.getSavedEntityIds(currentUserId, SaveableEntityType.TRACK, trackIds);
 
-        List<TrackDto> trackDtos = album.getTracks().stream()
+        return album.getTracks().stream()
             .map(track -> {
                 UUID trackId = track.getId();
                 TrackRatingRepository.TrackRatingStats stats = ratingStatsByTrack.get(trackId);
@@ -228,40 +271,6 @@ public class AlbumService {
             })
             .sorted(Comparator.comparing(TrackDto::trackNumber, Comparator.nullsLast(Comparator.naturalOrder())))
             .toList();
-
-        return new AlbumDetailDto(
-            album.getId(),
-            album.getArtist().getId(),
-            album.getArtist().getName(),
-            album.getName(),
-            album.getSpotifyAlbumId(),
-            album.getSpotifyUrl(),
-            album.getImageUrl(),
-            album.getReleaseYear(),
-            album.getTotalTracks(),
-            album.getLogNumber(),
-            album.getLabel(),
-            album.getVocalProfile(),
-            album.getEnergy(),
-            album.getMoodIntensity(),
-            album.getAccessibility(),
-            album.getPostedAt(),
-            album.getInstagramPermalink(),
-            editorialDto,
-            trackDtos,
-            graphService.getStyles(albumId),
-            graphService.getMoods(albumId),
-            graphService.getContexts(albumId),
-            graphService.getPersonnel(albumId),
-            ratingStats.avgRating(),
-            ratingStats.count(),
-            // Derived live from the same listenedTrackIds used for the track
-            // rows above, not a separately-set flag — see AlbumDetailDto.
-            !trackIds.isEmpty() && listenedTrackIds.size() == trackIds.size(),
-            listenedTrackIds.size(),
-            listenService.countAlbumListens(albumId),
-            savedItemService.isSaved(currentUserId, SaveableEntityType.ALBUM, albumId)
-        );
     }
 
     private Album getAlbumOrThrow(UUID albumId) {
