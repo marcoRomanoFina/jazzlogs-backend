@@ -126,8 +126,9 @@ public class TrackRatingService {
     }
 
     /**
-     * Ahead of the DB's CHECK constraint on purpose — same rule, but a clear
-     * 400 here beats a raw constraint-violation error from the insert.
+     * The DB has no CHECK constraint enforcing this — {@code rating} is only
+     * {@code numeric(2,1) NOT NULL}, no range or step check — so this is the
+     * only thing stopping a bad value from being saved.
      */
     private void assertValidRating(BigDecimal rating) {
         if (rating == null) {

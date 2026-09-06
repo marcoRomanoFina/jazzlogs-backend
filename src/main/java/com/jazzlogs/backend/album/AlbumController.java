@@ -136,9 +136,30 @@ public class AlbumController {
     // in AlbumService.getAlbumHeader and reconciled by
     // ListenService.syncAlbumCompletionState.
 
+    /**
+     * Creates the caller's own review of this album — see {@link ReviewService#createReview}.
+     *
+     * @param id      the album being reviewed
+     * @param request the review's own fields
+     * @param jwt     the caller
+     * @return the created review
+     */
     @PostMapping("/{id}/reviews")
-    public ReviewDto upsertReview(@PathVariable UUID id, @Valid @RequestBody CreateReviewRequest request, @AuthenticationPrincipal Jwt jwt) {
-        return reviewService.upsertReview(currentUserId(jwt), id, request.rating(), request.text(), request.standoutTrackIds());
+    public ReviewDto createReview(@PathVariable UUID id, @Valid @RequestBody CreateReviewRequest request, @AuthenticationPrincipal Jwt jwt) {
+        return reviewService.createReview(currentUserId(jwt), id, request.rating(), request.text(), request.standoutTrackIds());
+    }
+
+    /**
+     * Edits the caller's own existing review of this album — see {@link ReviewService#updateReview}.
+     *
+     * @param id      the album being reviewed
+     * @param request the review's own fields — a full replace, not a partial patch
+     * @param jwt     the caller
+     * @return the updated review
+     */
+    @PutMapping("/{id}/reviews")
+    public ReviewDto updateReview(@PathVariable UUID id, @Valid @RequestBody CreateReviewRequest request, @AuthenticationPrincipal Jwt jwt) {
+        return reviewService.updateReview(currentUserId(jwt), id, request.rating(), request.text(), request.standoutTrackIds());
     }
 
     @DeleteMapping("/{id}/reviews")

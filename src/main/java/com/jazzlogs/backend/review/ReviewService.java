@@ -9,13 +9,14 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
+
+import jakarta.persistence.EntityManager;
 
 import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.album.AlbumRepository;
@@ -44,16 +45,6 @@ public class ReviewService {
     private static final BigDecimal MIN_RATING = BigDecimal.ONE;
     private static final BigDecimal MAX_RATING = new BigDecimal("5");
 
-    // Same read-then-write race as TrackRatingService.MAX_UPSERT_ATTEMPTS,
-    // same fix, same reasoning: findByUserIdAndAlbumId-then-save can
-    // double-INSERT if two requests write your first review on this album
-    // at once (e.g. posting, then immediately editing before the first
-    // request lands). uq_reviews_user_album lets only one through and fails
-    // the other with DataIntegrityViolationException; one retry is provably
-    // enough since the loser's retry is guaranteed to find the winner's row
-    // and do a plain UPDATE instead.
-    private static final int MAX_UPSERT_ATTEMPTS = 3;
-
     private final ReviewRepository reviewRepository;
     private final UserRepository userRepository;
     private final AlbumRepository albumRepository;
@@ -62,63 +53,115 @@ public class ReviewService {
     private final LikeService likeService;
     private final GraphService graphService;
     private final Neo4jAsyncSyncExecutor syncExecutor;
-    private final PlatformTransactionManager transactionManager;
+    private final EntityManager entityManager;
 
-    public ReviewDto upsertReview(UUID userId, UUID albumId, BigDecimal rating, String text, List<UUID> standoutTrackIds) {
+    /**
+     * Creates {@code userId}'s review of {@code albumId} — fails if one
+     * already exists (see {@link #updateReview} to edit it instead). One
+     * review per user per album, enforced by {@code uq_reviews_user_album}.
+     *
+     * @param userId           the reviewer
+     * @param albumId          the album being reviewed
+     * @param rating           1 to 5, in 0.5 steps
+     * @param text             optional — a rating alone is a valid review
+     * @param standoutTrackIds optional; every id must exist and belong to {@code albumId}
+     * @return the created review
+     * @throws ResponseStatusException 400 if {@code rating} is missing, out
+     *                                  of range, or not a 0.5 step; 400 if
+     *                                  any {@code standoutTrackIds} entry
+     *                                  doesn't exist or belongs to a
+     *                                  different album; 404 if the user or
+     *                                  album don't exist; 409 if this user
+     *                                  already has a review of this album
+     */
+    @Transactional
+    public ReviewDto createReview(UUID userId, UUID albumId, BigDecimal rating, String text, List<UUID> standoutTrackIds) {
         assertValidRating(rating);
+        User user = getUserOrThrow(userId);
+        Album album = getAlbumOrThrow(albumId);
+        Set<Track> standoutTracks = resolveStandoutTracks(albumId, standoutTrackIds);
 
-        Review saved = upsertWithRetry(userId, albumId, rating, text, standoutTrackIds);
+        if (reviewRepository.findByUserIdAndAlbumId(userId, albumId).isPresent()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Already reviewed this album — use PUT to edit it");
+        }
 
-        // Derived from the input (already validated/deduped by
-        // resolveStandoutTracks inside the transaction), not
-        // saved.getStandoutTracks() — that's a lazy collection and `saved`
-        // is detached now that the transaction which fetched it has closed.
+        Review review = new Review(user, album, rating, text, standoutTracks);
+        Review saved = saveNewReview(review);
+
+        return finishUpsert(saved, userId, albumId, standoutTrackIds);
+    }
+
+    /**
+     * Edits {@code userId}'s existing review of {@code albumId} — full
+     * replace of rating/text/standout tracks, not a partial patch.
+     *
+     * @param userId           the reviewer
+     * @param albumId          the album being reviewed
+     * @param rating           1 to 5, in 0.5 steps
+     * @param text             optional — a rating alone is a valid review
+     * @param standoutTrackIds optional; every id must exist and belong to {@code albumId}; replaces the previous set entirely
+     * @return the updated review
+     * @throws ResponseStatusException 400 (same as {@link #createReview}); 404 if this user has no review of this album yet
+     */
+    @Transactional
+    public ReviewDto updateReview(UUID userId, UUID albumId, BigDecimal rating, String text, List<UUID> standoutTrackIds) {
+        assertValidRating(rating);
+        Set<Track> standoutTracks = resolveStandoutTracks(albumId, standoutTrackIds);
+
+        Review review = reviewRepository.findByUserIdAndAlbumId(userId, albumId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "You haven't reviewed this album yet"));
+
+        review.update(rating, text);
+        review.getStandoutTracks().clear();
+        review.getStandoutTracks().addAll(standoutTracks);
+        Review saved = reviewRepository.save(review);
+
+        return finishUpsert(saved, userId, albumId, standoutTrackIds);
+    }
+
+    /**
+     * Flushes right after {@code save}, not left to commit time —
+     * {@code uk_reviews_user_album} is what actually rejects a duplicate,
+     * but {@code JpaRepository.save} on a new entity only schedules the
+     * INSERT for flush time by default; without an explicit flush here, a
+     * genuine race (two creates landing at once, both past the
+     * pre-check above) would surface outside this method instead of being
+     * caught as a clean 409. Same reasoning as
+     * {@code EditorialService#saveWithUniqueTitle}.
+     *
+     * @throws ResponseStatusException 409 if this user already has a review of this album
+     */
+    private Review saveNewReview(Review review) {
+        try {
+            Review saved = reviewRepository.save(review);
+            entityManager.flush();
+            return saved;
+        } catch (DataIntegrityViolationException | ConstraintViolationException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Already reviewed this album — use PUT to edit it", e);
+        }
+    }
+
+    /**
+     * The part {@link #createReview} and {@link #updateReview} share once
+     * the row itself is saved: sync to Neo4j, fetch notes, project to the
+     * response DTO.
+     *
+     * @param standoutTrackIds the caller's original input, not {@code
+     *                         saved.getStandoutTracks()} — that's a lazy
+     *                         collection and {@code saved} is detached by
+     *                         the time this runs in some call paths
+     * @return {@code saved} projected into the response shape
+     */
+    private ReviewDto finishUpsert(Review saved, UUID userId, UUID albumId, List<UUID> standoutTrackIds) {
         List<UUID> standoutTrackIdsForGraph = standoutTrackIds == null
             ? List.of()
             : List.copyOf(new HashSet<>(standoutTrackIds));
         syncRatingToGraph(userId, albumId, saved.getRating(), saved.getUpdatedAt());
         syncHighlightedTracksToGraph(userId, albumId, standoutTrackIdsForGraph);
 
-        List<NoteDto> notes = notesFor(userId, albumId, userId);
+        List<NoteDto> notes = notesFor(userId, albumId);
         boolean liked = likeService.hasUserLiked(userId, LikeableEntityType.REVIEW, saved.getId());
         return toDto(saved, liked, getUserOrThrow(userId).getResolvedDisplayName(), notes);
-    }
-
-    /**
-     * Each attempt runs in its own fresh transaction — a transaction that
-     * already threw is aborted and can't be reused for the retry's queries,
-     * so this can't be a single @Transactional method with a try/catch
-     * inside it (same shape as TrackRatingService.upsertWithRetry). user,
-     * album, and the standout tracks are all re-looked-up per attempt
-     * (cheap, by primary key / a small IN query) rather than fetched once
-     * outside the loop, so nothing here is a detached entity carried across
-     * transactions.
-     */
-    private Review upsertWithRetry(UUID userId, UUID albumId, BigDecimal rating, String text, List<UUID> standoutTrackIds) {
-        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
-        DataIntegrityViolationException lastFailure = null;
-
-        for (int attempt = 0; attempt < MAX_UPSERT_ATTEMPTS; attempt++) {
-            try {
-                return txTemplate.execute(status -> {
-                    User user = getUserOrThrow(userId);
-                    Album album = getAlbumOrThrow(albumId);
-                    Set<Track> standoutTracks = resolveStandoutTracks(albumId, standoutTrackIds);
-
-                    Review review = reviewRepository.findByUserIdAndAlbumId(userId, albumId)
-                        .orElseGet(() -> new Review(user, album, rating, text));
-
-                    review.update(rating, text);
-                    review.getStandoutTracks().clear();
-                    review.getStandoutTracks().addAll(standoutTracks);
-
-                    return reviewRepository.save(review);
-                });
-            } catch (DataIntegrityViolationException e) {
-                lastFailure = e;
-            }
-        }
-        throw lastFailure;
     }
 
     /**
@@ -126,6 +169,8 @@ public class ReviewService {
      * ListenService's syncAlbumListenedToGraph: Postgres is already committed
      * by the time this runs, so a graph failure here is logged and swallowed,
      * never rolled back or surfaced to the caller.
+     *
+     * @param ratedAt when the review was created/last updated
      */
     private void syncRatingToGraph(UUID userId, UUID albumId, BigDecimal rating, Instant ratedAt) {
         syncExecutor.sync(
@@ -135,7 +180,11 @@ public class ReviewService {
         );
     }
 
-    /** Same fire-and-forget contract as syncRatingToGraph. */
+    /**
+     * Same fire-and-forget contract as {@link #syncRatingToGraph}.
+     *
+     * @param standoutTrackIds replaces the full HIGHLIGHTED set for this user/album — not additive
+     */
     private void syncHighlightedTracksToGraph(UUID userId, UUID albumId, List<UUID> standoutTrackIds) {
         syncExecutor.sync(
             SyncFailureEntityType.REVIEW_HIGHLIGHTED,
@@ -144,8 +193,12 @@ public class ReviewService {
         );
     }
 
-    // Values stored as canonical Strings — see SyncFailure's payload contract
-    // and ReviewRatedSyncRetryHandler/ReviewHighlightedSyncRetryHandler.
+    /**
+     * Values stored as canonical Strings — see SyncFailure's payload contract
+     * and ReviewRatedSyncRetryHandler.
+     *
+     * @return the {@code SyncFailure} payload for a REVIEW_RATED retry
+     */
     private Map<String, Object> ratedPayload(UUID userId, UUID albumId, BigDecimal rating, Instant ratedAt) {
         return Map.of(
             "userId", userId.toString(),
@@ -155,6 +208,7 @@ public class ReviewService {
         );
     }
 
+    /** @return the {@code SyncFailure} payload for a REVIEW_HIGHLIGHTED retry — see {@link #ratedPayload} */
     private Map<String, Object> highlightedPayload(UUID userId, UUID albumId, List<UUID> trackIds) {
         return Map.of(
             "userId", userId.toString(),
@@ -202,7 +256,7 @@ public class ReviewService {
         Review review = reviewRepository.findByUserIdAndAlbumId(userId, albumId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "You haven't reviewed this album"));
         boolean liked = likeService.hasUserLiked(userId, LikeableEntityType.REVIEW, review.getId());
-        return toDto(review, liked, getUserOrThrow(userId).getResolvedDisplayName(), notesFor(userId, albumId, userId));
+        return toDto(review, liked, getUserOrThrow(userId).getResolvedDisplayName(), notesFor(userId, albumId));
     }
 
     private Map<UUID, String> namesByUserId(List<Review> reviews) {
@@ -211,7 +265,14 @@ public class ReviewService {
             .collect(Collectors.toMap(User::getId, User::getResolvedDisplayName));
     }
 
-    /** Every id must exist AND belong to this exact album — a track from another album can't be a standout here. */
+    /**
+     * Every id must exist AND belong to this exact album — a track from
+     * another album can't be a standout here.
+     *
+     * @param standoutTrackIds {@code null}/empty means no standout tracks
+     * @return the resolved tracks, deduplicated
+     * @throws ResponseStatusException 400 if any id doesn't exist or belongs to a different album
+     */
     private Set<Track> resolveStandoutTracks(UUID albumId, List<UUID> standoutTrackIds) {
         if (standoutTrackIds == null || standoutTrackIds.isEmpty()) {
             return Set.of();
@@ -230,6 +291,13 @@ public class ReviewService {
         return new HashSet<>(tracks);
     }
 
+    /**
+     * The DB has no CHECK constraint enforcing this — {@code rating} is only
+     * {@code numeric(2,1) NOT NULL}, no range or step check — so this is the
+     * only thing stopping a bad value from being saved.
+     *
+     * @throws ResponseStatusException 400 if {@code rating} is missing, out of [1, 5], or not a multiple of 0.5
+     */
     private void assertValidRating(BigDecimal rating) {
         if (rating == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "rating is required");
@@ -260,12 +328,22 @@ public class ReviewService {
         return noteService.getNotesByAuthorsForAlbum(albumId, authorUserIds, currentUserId);
     }
 
-    /** Single-reviewer case (upsertReview/getMyReview) — same call, one-element author list. */
-    private List<NoteDto> notesFor(UUID authorUserId, UUID albumId, UUID currentUserId) {
-        return noteService.getNotesByAuthorsForAlbum(albumId, List.of(authorUserId), currentUserId)
-            .getOrDefault(authorUserId, List.of());
+    /**
+     * The "my own review" case (create/update/getMyReview) — author and
+     * viewer are always the same person here, unlike {@link #notesByUserId}
+     * (a whole album's reviews, one fixed viewer browsing many authors).
+     *
+     * @return {@code userId}'s own notes on this album, empty if none
+     */
+    private List<NoteDto> notesFor(UUID userId, UUID albumId) {
+        return noteService.getNotesByAuthorsForAlbum(albumId, List.of(userId), userId)
+            .getOrDefault(userId, List.of());
     }
 
+    /**
+     * @param userName pre-resolved (batched for a list, looked up directly for a single review) — not read off {@code review} itself
+     * @return {@code review} projected into the response shape
+     */
     private ReviewDto toDto(Review review, boolean likedByCurrentUser, String userName, List<NoteDto> notes) {
         List<StandoutTrackDto> standoutTracks = review.getStandoutTracks().stream()
             .map(track -> new StandoutTrackDto(track.getId(), track.getName()))
