@@ -92,7 +92,12 @@ public class LikeService {
     }
 
     /**
-     * Idempotent — does nothing if the like didn't exist.
+     * Unlikes an entity on the caller's behalf. Idempotent — does nothing if
+     * the like didn't exist.
+     *
+     * @param userId     who is unliking it
+     * @param entityType which kind of entity
+     * @param entityId   that entity's own id
      */
     @Transactional
     public void removeLike(UUID userId, LikeableEntityType entityType, UUID entityId) {

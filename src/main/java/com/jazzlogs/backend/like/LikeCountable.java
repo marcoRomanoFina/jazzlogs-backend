@@ -14,6 +14,7 @@ public interface LikeCountable {
     /** Atomic {@code likeCount + 1} — not read-modify-save. */
     void incrementLikeCount(UUID entityId);
 
+    /** Atomic {@code GREATEST(likeCount - 1, 0)} — not read-modify-save, and never goes negative. */
     void decrementLikeCount(UUID entityId);
 
     /**
