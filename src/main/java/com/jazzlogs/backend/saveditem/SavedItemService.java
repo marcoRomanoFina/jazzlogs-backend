@@ -114,9 +114,16 @@ public class SavedItemService {
     }
 
     /**
+     * The caller's saved items of one type, paginated, newest first.
      * entityType is required — a single page is always one entity_type, so
      * display data resolves in exactly one batch query (via
-     * SavedItemResolver.resolveBatch), not one per row and not a per-type grouping.
+     * {@link SavedItemResolver#resolveBatch}), not one per row and not a
+     * per-type grouping.
+     *
+     * @param userId     the caller
+     * @param entityType which kind of entity to list
+     * @param pageable   page request
+     * @return the matching page
      */
     @Transactional(readOnly = true)
     public Page<SavedItemSummary> list(UUID userId, SaveableEntityType entityType, Pageable pageable) {
@@ -128,13 +135,21 @@ public class SavedItemService {
         return page.map(item -> toSummary(item, entityType, resolved));
     }
 
-    // The underlying entity may have been deleted after being saved — a missing
-    // entry in resolvedById degrades to a summary with null display fields
-    // instead of failing the whole page for one stale row.
+    /**
+     * Maps one saved item to its display summary. The underlying entity may
+     * have been deleted after being saved — a missing entry in
+     * {@code resolvedById} degrades to a summary with null display fields
+     * instead of failing the whole page for one stale row.
+     *
+     * @param savedItem    the saved item
+     * @param entityType   which kind of entity it is
+     * @param resolvedById display data by entity id, from {@link SavedItemResolver#resolveBatch}
+     * @return the mapped summary
+     */
     private SavedItemSummary toSummary(SavedItem savedItem, SaveableEntityType entityType, Map<UUID, SavedItemResolver.Resolved> resolvedById) {
         UUID entityId = savedItem.getId().entityId();
-        SavedItemResolver.Resolved resolved = resolvedById.getOrDefault(entityId, new SavedItemResolver.Resolved(null, null, null));
-        return new SavedItemSummary(entityId, entityType, resolved.name(), resolved.imageUrl(), resolved.url(), savedItem.getCreatedAt());
+        SavedItemResolver.Resolved resolved = resolvedById.getOrDefault(entityId, new SavedItemResolver.Resolved(null, null));
+        return new SavedItemSummary(entityId, entityType, resolved.name(), resolved.imageUrl(), savedItem.getCreatedAt());
     }
 
     /** @throws ResponseStatusException 404 if no entity of that type/id exists */

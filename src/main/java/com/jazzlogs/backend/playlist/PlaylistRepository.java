@@ -48,6 +48,6 @@ public interface PlaylistRepository extends LikeableRepository<Playlist>, SavedI
     }
 
     private static Resolved toResolved(Playlist playlist) {
-        return new Resolved(playlist.getTitle(), playlist.getCoverImageUrl(), playlist.getSpotifyUrl());
+        return new Resolved(playlist.getTitle(), playlist.getCoverImageUrl());
     }
 }

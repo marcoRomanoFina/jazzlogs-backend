@@ -24,9 +24,14 @@ public interface SavedItemResolver {
      */
     Optional<Resolved> resolve(UUID entityId);
 
-    // Default falls back to one resolve() per id — override with a real
-    // findAllById-backed batch query (see AlbumRepository/TrackRepository) to
-    // avoid SavedItemService.list() doing one query per row.
+    /**
+     * Default falls back to one {@link #resolve} per id — override with a
+     * real findAllById-backed batch query (see AlbumRepository/TrackRepository)
+     * to avoid {@code SavedItemService.list()} doing one query per row.
+     *
+     * @param entityIds the entities to resolve
+     * @return display data by entity id, missing an entry for any id that doesn't exist
+     */
     default Map<UUID, Resolved> resolveBatch(List<UUID> entityIds) {
         Map<UUID, Resolved> resolved = new HashMap<>();
         for (UUID entityId : entityIds) {
@@ -35,6 +40,12 @@ public interface SavedItemResolver {
         return resolved;
     }
 
-    record Resolved(String name, String imageUrl, String url) {
+    /**
+     * One entity's display data for a saved-item summary.
+     *
+     * @param name     display name
+     * @param imageUrl cover/thumbnail
+     */
+    record Resolved(String name, String imageUrl) {
     }
 }
