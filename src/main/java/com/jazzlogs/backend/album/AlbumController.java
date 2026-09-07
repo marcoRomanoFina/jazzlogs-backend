@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.jazzlogs.backend.album.dto.AlbumHeaderDto;
 import com.jazzlogs.backend.album.dto.ContextTagRequest;
+import com.jazzlogs.backend.album.dto.CoverColorRequest;
 import com.jazzlogs.backend.album.dto.CreateAlbumRequest;
 import com.jazzlogs.backend.album.dto.MoodTagRequest;
 import com.jazzlogs.backend.album.dto.PersonnelRequest;
@@ -133,6 +134,31 @@ public class AlbumController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> replaceContexts(@PathVariable UUID id, @RequestBody ContextTagRequest request) {
         albumService.replaceContexts(id, request);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Sets the album's curated cover color — see {@link AlbumService#setCoverColor}.
+     *
+     * @param id      the album
+     * @param request the color to set
+     */
+    @PutMapping("/{id}/cover-color")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> setCoverColor(@PathVariable UUID id, @Valid @RequestBody CoverColorRequest request) {
+        albumService.setCoverColor(id, request);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Clears the album's curated cover color — see {@link AlbumService#clearCoverColor}.
+     *
+     * @param id the album
+     */
+    @DeleteMapping("/{id}/cover-color")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> clearCoverColor(@PathVariable UUID id) {
+        albumService.clearCoverColor(id);
         return ResponseEntity.noContent().build();
     }
 
