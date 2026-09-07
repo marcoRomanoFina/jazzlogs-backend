@@ -101,6 +101,14 @@ public class AlbumController {
         return editorialService.toAlbumEditorialDto(editorial, currentUserId(jwt));
     }
 
+    /**
+     * Adds this artist to the album's personnel — {@code LEADER_OF} or
+     * {@code SIDEMAN_ON} in Neo4j depending on {@code request.role()} — see
+     * {@link AlbumService#addPersonnel}.
+     *
+     * @param id      the album
+     * @param request the artist, role (LEADER/SIDEMAN), and instruments played
+     */
     @PostMapping("/{id}/personnel")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> addPersonnel(@PathVariable UUID id, @RequestBody PersonnelRequest request) {

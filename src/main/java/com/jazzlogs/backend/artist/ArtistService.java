@@ -116,6 +116,18 @@ public class ArtistService {
         graphService.replaceArtistContexts(artistId, request.contextCodes());
     }
 
+    /**
+     * Curates a {@code SIMILAR_TO} edge from this artist to another — see
+     * {@link #getSimilarArtists}, which reads it back. Unidirectional by
+     * default ({@code artistId -> similarArtistId} only); {@code
+     * request.bidirectional()} also creates the reverse edge, since
+     * "similar" is usually mutual but the curated {@code reason} might not
+     * read the same way in reverse.
+     *
+     * @param artistId the artist
+     * @param request  the similar artist, an optional curated reason, and whether to also create the reverse edge
+     * @throws ResponseStatusException 404 if either artist doesn't exist
+     */
     public void addSimilarArtist(UUID artistId, SimilarArtistRequest request) {
         getArtistOrThrow(artistId);
         getArtistOrThrow(request.similarArtistId());

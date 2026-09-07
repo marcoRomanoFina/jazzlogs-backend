@@ -94,6 +94,16 @@ public class GraphService {
                 .run());
     }
 
+    /**
+     * Creates/updates the {@code LEADER_OF} edge from an artist to an
+     * album, recording which instruments they played on it — {@code
+     * MERGE}d, so calling this again for the same pair just replaces
+     * {@code instruments} instead of duplicating the edge.
+     *
+     * @param artistId    the leading artist
+     * @param albumId     the album
+     * @param instruments instruments this artist played on the album
+     */
     public void setAlbumLeader(UUID artistId, UUID albumId, List<String> instruments) {
         write("set LEADER_OF artist=" + artistId + " album=" + albumId, () ->
             neo4jClient.query("""
@@ -107,6 +117,16 @@ public class GraphService {
                 .run());
     }
 
+    /**
+     * Creates/updates the {@code SIDEMAN_ON} edge from an artist to an
+     * album, recording which instruments they played on it — see {@link
+     * #getSidemanAlbumIds}, which reads it back. {@code MERGE}d, same as
+     * {@link #setAlbumLeader}.
+     *
+     * @param artistId    the sideman
+     * @param albumId     the album
+     * @param instruments instruments this artist played on the album
+     */
     public void addSideman(UUID artistId, UUID albumId, List<String> instruments) {
         write("add SIDEMAN_ON artist=" + artistId + " album=" + albumId, () ->
             neo4jClient.query("""
@@ -631,7 +651,18 @@ public class GraphService {
         replaceTags("Artist", artistId, "PERFECT_FOR", "Context", contextCodes);
     }
 
-    /** Unidirectional by default (a1 -> a2 only); pass bidirectional=true to also create a2 -> a1. */
+    /**
+     * Creates/updates the {@code SIMILAR_TO} edge from one artist to
+     * another, with a curated {@code reason} — see {@link
+     * #getSimilarArtists}, which reads it back. Unidirectional by default
+     * ({@code artistId -> similarArtistId} only); {@code bidirectional=true}
+     * also creates the reverse edge with the same {@code reason}.
+     *
+     * @param artistId        the artist
+     * @param similarArtistId the similar artist
+     * @param reason          the curated reason, shown as-is on both edges if bidirectional
+     * @param bidirectional   whether to also create the reverse edge
+     */
     public void addSimilarArtist(UUID artistId, UUID similarArtistId, String reason, boolean bidirectional) {
         write("add SIMILAR_TO artist=" + artistId + " similar=" + similarArtistId, () -> {
             neo4jClient.query("""

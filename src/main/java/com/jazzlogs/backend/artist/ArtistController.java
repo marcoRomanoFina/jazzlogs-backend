@@ -150,6 +150,13 @@ public class ArtistController {
         return artistService.getSimilarArtists(id, PageRequest.of(page, SIMILAR_ARTISTS_PAGE_SIZE));
     }
 
+    /**
+     * Curates this artist as similar to another — see {@link
+     * ArtistService#addSimilarArtist}.
+     *
+     * @param id      the artist
+     * @param request the similar artist, an optional curated reason, and whether to also create the reverse edge
+     */
     @PostMapping("/{id}/similar")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> addSimilarArtist(@PathVariable UUID id, @RequestBody SimilarArtistRequest request) {

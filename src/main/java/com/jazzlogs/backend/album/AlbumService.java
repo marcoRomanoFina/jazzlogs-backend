@@ -121,6 +121,18 @@ public class AlbumService {
         return album;
     }
 
+    /**
+     * Adds this artist to the album's personnel as either the leader
+     * ({@code LEADER_OF}) or a sideman ({@code SIDEMAN_ON}) — an
+     * admin-curated Neo4j edge, unrelated to {@code Album.artist} (the
+     * single leading artist enforced in Postgres; not cross-checked here).
+     * {@code MERGE}d on the graph side, so re-posting the same
+     * artist/album/role pair updates {@code instruments} instead of
+     * duplicating the edge.
+     *
+     * @param albumId the album
+     * @param request the artist, role (LEADER/SIDEMAN), and instruments played
+     */
     public void addPersonnel(UUID albumId, PersonnelRequest request) {
         getAlbumOrThrow(albumId);
         getArtistOrThrow(request.artistId());
