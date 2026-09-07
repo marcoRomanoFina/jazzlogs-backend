@@ -3,12 +3,15 @@ package com.jazzlogs.backend.like;
 import java.util.Optional;
 import java.util.UUID;
 
-// Implemented by each likeable entity's repository (EditorialRepository, and
-// ReviewRepository/PlaylistRepository/NoteRepository/SeriesRepository once
-// those entities exist) so LikeService can dispatch increment/decrement/read
-// through a Map<LikeableEntityType, LikeableRepository<?>> instead of a switch.
+/**
+ * Implemented by each likeable entity's repository (EditorialRepository,
+ * ReviewRepository, PlaylistRepository, NoteRepository, SeriesRepository) so
+ * {@link LikeService} can dispatch increment/decrement/read through a
+ * {@code Map<LikeableEntityType, LikeableRepository<?>>} instead of a switch.
+ */
 public interface LikeCountable {
 
+    /** Atomic {@code likeCount + 1} — not read-modify-save. */
     void incrementLikeCount(UUID entityId);
 
     void decrementLikeCount(UUID entityId);

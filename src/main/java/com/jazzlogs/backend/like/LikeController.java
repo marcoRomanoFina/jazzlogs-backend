@@ -33,6 +33,13 @@ public class LikeController {
     private final LikeService likeService;
     private final UserService userService;
 
+    /**
+     * Likes an entity on the caller's behalf — see {@link LikeService#addLike}.
+     *
+     * @param request which entity to like
+     * @param jwt      the caller
+     * @return 201 if this call created the like, 200 if the caller had already liked it
+     */
     @PostMapping
     public ResponseEntity<Void> addLike(@Valid @RequestBody LikeRequest request, @AuthenticationPrincipal Jwt jwt) {
         UUID userId = userService.resolveFromJwt(jwt).getId();
