@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -13,6 +14,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+
+import jakarta.persistence.EntityManager;
 
 import com.jazzlogs.backend.album.AlbumRepository;
 import com.jazzlogs.backend.playlist.PlaylistRepository;
@@ -24,15 +27,19 @@ public class SavedItemService {
 
     private final SavedItemRepository savedItemRepository;
     private final Map<SaveableEntityType, SavedItemResolver> resolvers;
+    private final EntityManager entityManager;
 
-    // Add a resolver param + a resolvers entry per new saveable type — no
-    // switch to touch, existence-checking (save) and display-data resolution
-    // (list) both dispatch off this one map.
+    /**
+     * Add a resolver param + a resolvers entry per new saveable type — no
+     * switch to touch, existence-checking (save) and display-data
+     * resolution (list) both dispatch off this one map.
+     */
     public SavedItemService(
         SavedItemRepository savedItemRepository,
         AlbumRepository albumRepository,
         TrackRepository trackRepository,
-        PlaylistRepository playlistRepository
+        PlaylistRepository playlistRepository,
+        EntityManager entityManager
     ) {
         this.savedItemRepository = savedItemRepository;
         this.resolvers = Map.of(
@@ -40,11 +47,17 @@ public class SavedItemService {
             SaveableEntityType.TRACK, trackRepository,
             SaveableEntityType.PLAYLIST, playlistRepository
         );
+        this.entityManager = entityManager;
     }
 
     /**
-     * Idempotent — returns true if this call created the save, false if the
-     * user had already saved this entity (no-op, not an error).
+     * Saves an entity on the caller's behalf. Idempotent — saving something
+     * already saved is a no-op, not an error.
+     *
+     * @param userId     who is saving it
+     * @param entityType which kind of entity
+     * @param entityId   that entity's own id
+     * @return true if this call created the save, false if the user had already saved it
      */
     @Transactional
     public boolean save(UUID userId, SaveableEntityType entityType, UUID entityId) {
@@ -55,9 +68,16 @@ public class SavedItemService {
             return false;
         }
         try {
+            // flush() forces the INSERT to run right here instead of at
+            // commit time — same reasoning as LikeService.addLike. Both
+            // exception types: flush() bypasses Spring's repository-method
+            // AOP exception translation, so the raw Hibernate
+            // ConstraintViolationException surfaces here, not Spring's
+            // DataIntegrityViolationException.
             savedItemRepository.save(new SavedItem(id));
+            entityManager.flush();
             return true;
-        } catch (DataIntegrityViolationException concurrentSave) {
+        } catch (DataIntegrityViolationException | ConstraintViolationException concurrentSave) {
             // Another request inserted the same save between our exists() check
             // and save() — the end state is identical, so this is still success.
             return false;
@@ -110,12 +130,16 @@ public class SavedItemService {
         return new SavedItemSummary(entityId, entityType, resolved.name(), resolved.imageUrl(), resolved.url(), savedItem.getCreatedAt());
     }
 
+    /** @throws ResponseStatusException 404 if no entity of that type/id exists */
     private void assertEntityExists(SaveableEntityType entityType, UUID entityId) {
         if (resolver(entityType).resolve(entityId).isEmpty()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, entityType + " not found: " + entityId);
         }
     }
 
+    /**
+     * @throws ResponseStatusException 501 if this entityType has no entry in {@link #resolvers} yet
+     */
     private SavedItemResolver resolver(SaveableEntityType entityType) {
         SavedItemResolver resolver = resolvers.get(entityType);
         if (resolver == null) {

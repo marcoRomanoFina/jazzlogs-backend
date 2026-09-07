@@ -1,6 +1,7 @@
 package com.jazzlogs.backend.saveditem;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.UUID;
 
@@ -8,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.album.AlbumRepository;
@@ -81,6 +83,14 @@ class SavedItemServiceTest {
         assertThat(firstSave).isTrue();
         assertThat(secondSave).isFalse();
         assertThat(exists(user.getId(), SaveableEntityType.ALBUM, album.getId())).isTrue();
+    }
+
+    @Test
+    void save_rejectsMissingEntity() {
+        User user = persistUser();
+
+        assertThatThrownBy(() -> savedItemService.save(user.getId(), SaveableEntityType.ALBUM, UUID.randomUUID()))
+            .isInstanceOf(ResponseStatusException.class);
     }
 
     @Test

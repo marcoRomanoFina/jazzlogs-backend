@@ -38,6 +38,13 @@ public class SavedItemController {
     private final SavedItemService savedItemService;
     private final UserService userService;
 
+    /**
+     * Saves an entity on the caller's behalf — see {@link SavedItemService#save}.
+     *
+     * @param request which entity to save
+     * @param jwt     the caller
+     * @return 201 if this call created the save, 200 if the caller had already saved it
+     */
     @PostMapping
     public ResponseEntity<Void> save(@Valid @RequestBody SaveItemRequest request, @AuthenticationPrincipal Jwt jwt) {
         boolean created = savedItemService.save(currentUserId(jwt), request.entityType(), request.entityId());

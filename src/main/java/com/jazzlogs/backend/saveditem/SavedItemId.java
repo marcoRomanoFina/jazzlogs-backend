@@ -7,6 +7,13 @@ import jakarta.persistence.Embeddable;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 
+/**
+ * Composite key for a saved item — one user saving one entity, at most once.
+ *
+ * @param userId     who saved it
+ * @param entityType which kind of entity
+ * @param entityId   that entity's own id
+ */
 @Embeddable
 public record SavedItemId(
     @Column(name = "user_id") UUID userId,

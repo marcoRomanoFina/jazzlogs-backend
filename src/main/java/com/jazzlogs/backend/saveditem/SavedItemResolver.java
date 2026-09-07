@@ -6,16 +6,22 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
-// Implemented by each saveable entity's repository (AlbumRepository,
-// TrackRepository, and PlaylistRepository once that entity exists) so
-// SavedItemService can both check existence and resolve display data through a
-// single Map<SaveableEntityType, SavedItemResolver> — same shape as
-// LikeableRepository/LikeCountable for likes, just resolving display data
-// instead of a counter.
+/**
+ * Implemented by each saveable entity's repository (AlbumRepository,
+ * TrackRepository, and PlaylistRepository once that entity exists) so
+ * {@link SavedItemService} can both check existence and resolve display data
+ * through a single {@code Map<SaveableEntityType, SavedItemResolver>} — same
+ * shape as LikeableRepository/LikeCountable for likes, just resolving
+ * display data instead of a counter.
+ */
 public interface SavedItemResolver {
 
-    // Empty if entityId doesn't exist — SavedItemService treats that as
-    // "not found" on save, and "stale row, degrade gracefully" on list.
+    /**
+     * @param entityId the entity to resolve
+     * @return its display data, empty if entityId doesn't exist —
+     *         SavedItemService treats that as "not found" on save, and
+     *         "stale row, degrade gracefully" on list
+     */
     Optional<Resolved> resolve(UUID entityId);
 
     // Default falls back to one resolve() per id — override with a real

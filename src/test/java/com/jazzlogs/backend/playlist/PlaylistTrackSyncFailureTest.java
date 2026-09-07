@@ -10,6 +10,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.jazzlogs.backend.album.Album;
@@ -25,14 +26,17 @@ import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackRepository;
 
 /**
- * Real GraphService here (not mocked, unlike PlaylistServiceTest) — no live
- * Neo4j in this test environment (bolt://localhost:7687 with a placeholder
- * password, see src/test/resources/application.properties), so every graph
- * call here genuinely fails and exercises the fire-and-forget path: the
- * calling method must still return normally, and the failure must land in
- * sync_failures for the retry worker to pick up later.
+ * Real GraphService here (not mocked, unlike PlaylistServiceTest) — pointed
+ * at an unreachable port (not the shared test Neo4j config, which now uses
+ * the container's real password so every other context can authenticate
+ * cleanly) so every graph call here genuinely fails and exercises the
+ * fire-and-forget path: the calling method must still return normally, and
+ * the failure must land in sync_failures for the retry worker to pick up
+ * later. A connection failure, not an auth failure — doesn't risk Neo4j's
+ * own brute-force lockout the way a bad password would.
  */
 @SpringBootTest
+@TestPropertySource(properties = "spring.neo4j.uri=bolt://localhost:1")
 @Transactional
 class PlaylistTrackSyncFailureTest {
 
