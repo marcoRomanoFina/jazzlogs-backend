@@ -33,6 +33,13 @@ public class LikeController {
     private final LikeService likeService;
     private final UserService userService;
 
+    /**
+     * Likes an entity on the caller's behalf — see {@link LikeService#addLike}.
+     *
+     * @param request which entity to like
+     * @param jwt      the caller
+     * @return 201 if this call created the like, 200 if the caller had already liked it
+     */
     @PostMapping
     public ResponseEntity<Void> addLike(@Valid @RequestBody LikeRequest request, @AuthenticationPrincipal Jwt jwt) {
         UUID userId = userService.resolveFromJwt(jwt).getId();
@@ -40,6 +47,13 @@ public class LikeController {
         return ResponseEntity.status(created ? HttpStatus.CREATED : HttpStatus.OK).build();
     }
 
+    /**
+     * Unlikes an entity on the caller's behalf — see {@link LikeService#removeLike}.
+     *
+     * @param entityType which kind of entity
+     * @param entityId   that entity's own id
+     * @param jwt        the caller
+     */
     @DeleteMapping
     public ResponseEntity<Void> removeLike(
         @RequestParam LikeableEntityType entityType,
@@ -51,11 +65,26 @@ public class LikeController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * How many likes an entity has — see {@link LikeService#countLikes}.
+     *
+     * @param entityType which kind of entity
+     * @param entityId   that entity's own id
+     * @return its like count
+     */
     @GetMapping("/count")
     public LikeCountResponse countLikes(@RequestParam LikeableEntityType entityType, @RequestParam UUID entityId) {
         return new LikeCountResponse(likeService.countLikes(entityType, entityId));
     }
 
+    /**
+     * Whether the caller has liked an entity — see {@link LikeService#hasUserLiked}.
+     *
+     * @param entityType which kind of entity
+     * @param entityId   that entity's own id
+     * @param jwt        the caller
+     * @return whether the caller has liked it
+     */
     @GetMapping("/me")
     public LikedResponse hasLiked(
         @RequestParam LikeableEntityType entityType,

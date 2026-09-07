@@ -6,11 +6,14 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+
+import jakarta.persistence.EntityManager;
 
 import com.jazzlogs.backend.editorial.EditorialRepository;
 import com.jazzlogs.backend.note.NoteRepository;
@@ -23,17 +26,21 @@ public class LikeService {
 
     private final LikeRepository likeRepository;
     private final Map<LikeableEntityType, LikeableRepository<?>> repositories;
+    private final EntityManager entityManager;
 
-    // Add a repository param + a repositories entry per new likeable type as
-    // each one gets built — no switch to touch, existence-checking/counting/
-    // increment/decrement all dispatch off this one map.
+    /**
+     * Add a repository param + a repositories entry per new likeable type as
+     * each one gets built — no switch to touch, existence-checking/counting/
+     * increment/decrement all dispatch off this one map.
+     */
     public LikeService(
         LikeRepository likeRepository,
         EditorialRepository editorialRepository,
         NoteRepository noteRepository,
         ReviewRepository reviewRepository,
         PlaylistRepository playlistRepository,
-        SeriesRepository seriesRepository
+        SeriesRepository seriesRepository,
+        EntityManager entityManager
     ) {
         this.likeRepository = likeRepository;
         this.repositories = Map.of(
@@ -43,11 +50,17 @@ public class LikeService {
             LikeableEntityType.PLAYLIST, playlistRepository,
             LikeableEntityType.SERIES, seriesRepository
         );
+        this.entityManager = entityManager;
     }
 
     /**
-     * Idempotent — returns true if this call created the like, false if the user
-     * had already liked this entity (no-op, not an error).
+     * Likes an entity on the caller's behalf. Idempotent — liking something
+     * already liked is a no-op, not an error.
+     *
+     * @param userId     who is liking it
+     * @param entityType which kind of entity
+     * @param entityId   that entity's own id
+     * @return true if this call created the like, false if the user had already liked it
      */
     @Transactional
     public boolean addLike(UUID userId, LikeableEntityType entityType, UUID entityId) {
@@ -58,8 +71,17 @@ public class LikeService {
             return false;
         }
         try {
+            // flush() forces the INSERT to run right here instead of at
+            // commit time — without it, save() alone just queues the insert,
+            // and a race with another request would blow up much later (at
+            // commit, well outside this try/catch) instead of being caught
+            // below. Both exception types: flush() bypasses Spring's
+            // repository-method AOP exception translation, so the raw
+            // Hibernate ConstraintViolationException surfaces here, not
+            // Spring's DataIntegrityViolationException.
             likeRepository.save(new Like(id));
-        } catch (DataIntegrityViolationException concurrentLike) {
+            entityManager.flush();
+        } catch (DataIntegrityViolationException | ConstraintViolationException concurrentLike) {
             // Another request inserted the same like between our exists() check
             // and save() — the end state is identical, so this is still success,
             // and that request already incremented the counter.
@@ -70,7 +92,12 @@ public class LikeService {
     }
 
     /**
-     * Idempotent — does nothing if the like didn't exist.
+     * Unlikes an entity on the caller's behalf. Idempotent — does nothing if
+     * the like didn't exist.
+     *
+     * @param userId     who is unliking it
+     * @param entityType which kind of entity
+     * @param entityId   that entity's own id
      */
     @Transactional
     public void removeLike(UUID userId, LikeableEntityType entityType, UUID entityId) {
@@ -80,13 +107,30 @@ public class LikeService {
         }
     }
 
-  
+    /**
+     * How many likes an entity has. 0 both for a genuinely unliked entity
+     * and for an entityType with no repository wired up yet — unlike
+     * {@link #addLike}, this is a read with nothing to reject, so it
+     * degrades quietly instead of throwing.
+     *
+     * @param entityType which kind of entity
+     * @param entityId   that entity's own id
+     * @return its like count
+     */
     @Transactional(readOnly = true)
     public long countLikes(LikeableEntityType entityType, UUID entityId) {
         LikeableRepository<?> repository = repositories.get(entityType);
         return repository == null ? 0 : repository.findLikeCount(entityId).orElse(0);
     }
 
+    /**
+     * Whether a user has liked an entity.
+     *
+     * @param userId     the user to check
+     * @param entityType which kind of entity
+     * @param entityId   that entity's own id
+     * @return true if that user has liked it
+     */
     @Transactional(readOnly = true)
     public boolean hasUserLiked(UUID userId, LikeableEntityType entityType, UUID entityId) {
         return likeRepository.existsById(new LikeId(userId, entityType, entityId));
@@ -104,12 +148,16 @@ public class LikeService {
         return new HashSet<>(likeRepository.findLikedEntityIds(userId, entityType, entityIds));
     }
 
+    /** @throws ResponseStatusException 404 if no entity of that type/id exists */
     private void assertEntityExists(LikeableEntityType entityType, UUID entityId) {
         if (!repository(entityType).existsById(entityId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, entityType + " not found: " + entityId);
         }
     }
 
+    /**
+     * @throws ResponseStatusException 501 if this entityType has no entry in {@link #repositories} yet
+     */
     private LikeableRepository<?> repository(LikeableEntityType entityType) {
         LikeableRepository<?> repository = repositories.get(entityType);
         if (repository == null) {

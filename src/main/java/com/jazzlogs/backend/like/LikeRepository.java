@@ -22,8 +22,14 @@ public interface LikeRepository extends JpaRepository<Like, LikeId> {
         @Param("entityIds") List<UUID> entityIds
     );
 
-    // Returns rows deleted (0 or 1, since the composite id is unique) so callers
-    // know whether to decrement the entity's counter.
+    /**
+     * Deletes a user's like of an entity, if it exists.
+     *
+     * @param userId     the user
+     * @param entityType which kind of entity
+     * @param entityId   that entity's own id
+     * @return rows deleted (0 or 1, since the composite id is unique) — callers use this to know whether to decrement the entity's counter
+     */
     @Modifying
     @Query("DELETE FROM Like l WHERE l.id.userId = :userId AND l.id.entityType = :entityType AND l.id.entityId = :entityId")
     int deleteByUserIdAndEntityTypeAndEntityId(
