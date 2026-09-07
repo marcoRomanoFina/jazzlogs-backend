@@ -63,7 +63,7 @@ public interface TrackRepository extends JpaRepository<Track, UUID>, SavedItemRe
     }
 
     private static Resolved toResolved(Track track) {
-        return new Resolved(track.getName(), track.getImageUrl(), track.getSpotifyUrl());
+        return new Resolved(track.getName(), track.getImageUrl());
     }
 
     /**

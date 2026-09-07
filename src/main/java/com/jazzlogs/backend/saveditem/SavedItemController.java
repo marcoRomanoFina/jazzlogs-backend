@@ -38,12 +38,26 @@ public class SavedItemController {
     private final SavedItemService savedItemService;
     private final UserService userService;
 
+    /**
+     * Saves an entity on the caller's behalf — see {@link SavedItemService#save}.
+     *
+     * @param request which entity to save
+     * @param jwt     the caller
+     * @return 201 if this call created the save, 200 if the caller had already saved it
+     */
     @PostMapping
     public ResponseEntity<Void> save(@Valid @RequestBody SaveItemRequest request, @AuthenticationPrincipal Jwt jwt) {
         boolean created = savedItemService.save(currentUserId(jwt), request.entityType(), request.entityId());
         return ResponseEntity.status(created ? HttpStatus.CREATED : HttpStatus.OK).build();
     }
 
+    /**
+     * Unsaves an entity on the caller's behalf — see {@link SavedItemService#remove}.
+     *
+     * @param entityType which kind of entity
+     * @param entityId   that entity's own id
+     * @param jwt        the caller
+     */
     @DeleteMapping
     public ResponseEntity<Void> remove(
         @RequestParam SaveableEntityType entityType,
@@ -54,11 +68,19 @@ public class SavedItemController {
         return ResponseEntity.noContent().build();
     }
 
-    // type is required — SavedItemService.list resolves display data in one
-    // batch query for a single entity_type; no "all types" mode. No sort
-    // default here either: SavedItemRepository's query already hardcodes
-    // ORDER BY created_at DESC, a Pageable-driven Sort on top would get
-    // appended after it redundantly.
+    /**
+     * The caller's saved items of one type, paginated — see {@link SavedItemService#list}.
+     * type is required — {@code SavedItemService.list} resolves display data
+     * in one batch query for a single entity_type; no "all types" mode. No
+     * sort default either: {@code SavedItemRepository}'s query already
+     * hardcodes {@code ORDER BY created_at DESC}, a Pageable-driven Sort on
+     * top would get appended after it redundantly.
+     *
+     * @param type     which kind of entity to list
+     * @param pageable page request
+     * @param jwt      the caller
+     * @return the matching page
+     */
     @GetMapping
     public Page<SavedItemSummary> list(
         @RequestParam(name = "type") SaveableEntityType type,
@@ -68,6 +90,14 @@ public class SavedItemController {
         return savedItemService.list(currentUserId(jwt), type, pageable);
     }
 
+    /**
+     * Whether the caller has saved an entity — see {@link SavedItemService#isSaved}.
+     *
+     * @param entityType which kind of entity
+     * @param entityId   that entity's own id
+     * @param jwt        the caller
+     * @return whether the caller has saved it
+     */
     @GetMapping("/me")
     public SavedResponse isSaved(
         @RequestParam SaveableEntityType entityType,

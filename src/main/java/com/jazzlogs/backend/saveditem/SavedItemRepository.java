@@ -28,9 +28,17 @@ public interface SavedItemRepository extends JpaRepository<SavedItem, SavedItemI
         @Param("entityIds") List<UUID> entityIds
     );
 
-    // Returns rows deleted (0 or 1, since the composite id is unique) — used by
-    // both SavedItemService.remove and ListenService's auto-remove hook, both
-    // of which need this to no-op silently when the row doesn't exist.
+    /**
+     * Deletes a user's saved item, if it exists. Used by both
+     * {@link SavedItemService#remove} and {@code ListenService}'s
+     * auto-remove hook, both of which need this to no-op silently when the
+     * row doesn't exist.
+     *
+     * @param userId     the user
+     * @param entityType which kind of entity
+     * @param entityId   that entity's own id
+     * @return rows deleted (0 or 1, since the composite id is unique)
+     */
     @Modifying
     @Query("DELETE FROM SavedItem s WHERE s.id.userId = :userId AND s.id.entityType = :entityType AND s.id.entityId = :entityId")
     int deleteByUserIdAndEntityTypeAndEntityId(

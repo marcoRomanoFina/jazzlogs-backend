@@ -33,7 +33,7 @@ public interface ArtistRepository extends JpaRepository<Artist, UUID>, SavedItem
     }
 
     private static Resolved toResolved(Artist artist) {
-        return new Resolved(artist.getName(), artist.getImageUrl(), artist.getSpotifyUrl());
+        return new Resolved(artist.getName(), artist.getImageUrl());
     }
 
     /**

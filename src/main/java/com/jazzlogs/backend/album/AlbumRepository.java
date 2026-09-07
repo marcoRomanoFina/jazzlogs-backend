@@ -33,7 +33,7 @@ public interface AlbumRepository extends JpaRepository<Album, UUID>, SavedItemRe
     }
 
     private static Resolved toResolved(Album album) {
-        return new Resolved(album.getName(), album.getImageUrl(), album.getSpotifyUrl());
+        return new Resolved(album.getName(), album.getImageUrl());
     }
 
     /**
