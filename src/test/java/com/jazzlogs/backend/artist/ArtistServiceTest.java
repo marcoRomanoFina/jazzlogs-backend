@@ -24,12 +24,14 @@ import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.album.AlbumRepository;
 import com.jazzlogs.backend.album.Level;
 import com.jazzlogs.backend.album.VocalProfile;
+import com.jazzlogs.backend.artist.dto.ArtistTagsDto;
 import com.jazzlogs.backend.artist.dto.ArtistHeaderDto;
 import com.jazzlogs.backend.artist.dto.EssentialListeningAlbumDto;
 import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.editorial.dto.AlbumEditorialRequest;
 import com.jazzlogs.backend.editorial.dto.ArtistEditorialRequest;
 import com.jazzlogs.backend.graph.GraphService;
+import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.like.LikeService;
 import com.jazzlogs.backend.like.LikeableEntityType;
 import com.jazzlogs.backend.review.ReviewService;
@@ -178,6 +180,29 @@ class ArtistServiceTest {
         assertThat(ratedDto.dek()).isEqualTo("A great dek");
         assertThat(bareDto.avgRating()).isNull();
         assertThat(bareDto.dek()).isNull();
+    }
+
+    @Test
+    void getArtistTags_rejectsUnknownArtist() {
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> artistService.getArtistTags(UUID.randomUUID())
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void getArtistTags_assemblesEveryGraphLookup() {
+        Artist artist = persistArtist("Tags Test Artist");
+        when(graphService.getArtistInstruments(artist.getId())).thenReturn(List.of(new VocabularyTag("PIANO", "Piano")));
+        when(graphService.getArtistStyles(artist.getId())).thenReturn(List.of(new VocabularyTag("HARD_BOP", "Hard Bop")));
+        when(graphService.getArtistContexts(artist.getId())).thenReturn(List.of(new VocabularyTag("LATE_NIGHT", "Late Night")));
+
+        ArtistTagsDto dto = artistService.getArtistTags(artist.getId());
+
+        assertThat(dto.instruments()).extracting(VocabularyTag::code).containsExactly("PIANO");
+        assertThat(dto.styles()).extracting(VocabularyTag::code).containsExactly("HARD_BOP");
+        assertThat(dto.contexts()).extracting(VocabularyTag::code).containsExactly("LATE_NIGHT");
     }
 
     private Artist persistArtist(String name) {

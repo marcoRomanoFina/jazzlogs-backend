@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.jazzlogs.backend.album.dto.ContextTagRequest;
 import com.jazzlogs.backend.album.dto.StyleTagRequest;
+import com.jazzlogs.backend.artist.dto.ArtistTagsDto;
 import com.jazzlogs.backend.artist.dto.ArtistHeaderDto;
 import com.jazzlogs.backend.artist.dto.CreateArtistRequest;
 import com.jazzlogs.backend.artist.dto.EssentialListeningAlbumDto;
@@ -57,6 +58,17 @@ public class ArtistController {
     @GetMapping("/{id}")
     public ArtistHeaderDto getArtist(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
         return artistService.getArtistHeader(id, currentUserId(jwt));
+    }
+
+    /**
+     * The artist's Neo4j-derived tags — see {@link ArtistService#getArtistTags}.
+     *
+     * @param id the artist to load
+     * @return the artist's instrument/style/context tags
+     */
+    @GetMapping("/{id}/tags")
+    public ArtistTagsDto getArtistTags(@PathVariable UUID id) {
+        return artistService.getArtistTags(id);
     }
 
     // Upserts by spotifyArtistId when given — posting the same artist again
