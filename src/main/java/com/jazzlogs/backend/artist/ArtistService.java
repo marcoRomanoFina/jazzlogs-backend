@@ -18,6 +18,7 @@ import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.album.AlbumRepository;
 import com.jazzlogs.backend.album.dto.ContextTagRequest;
 import com.jazzlogs.backend.album.dto.StyleTagRequest;
+import com.jazzlogs.backend.artist.dto.ArtistTagsDto;
 import com.jazzlogs.backend.artist.dto.ArtistHeaderDto;
 import com.jazzlogs.backend.artist.dto.CreateArtistRequest;
 import com.jazzlogs.backend.artist.dto.EssentialListeningAlbumDto;
@@ -185,6 +186,25 @@ public class ArtistService {
             album.getArtist().getId(),
             album.getArtist().getName()
         ));
+    }
+
+    /**
+     * The artist's Neo4j-derived tags. Similar artists and appearances live
+     * on their own separate endpoints, not here.
+     *
+     * @param artistId the artist
+     * @return the artist's instrument/style/context tags
+     * @throws ResponseStatusException 404 if the artist doesn't exist
+     */
+    @Transactional(readOnly = true)
+    public ArtistTagsDto getArtistTags(UUID artistId) {
+        getArtistOrThrow(artistId);
+
+        return new ArtistTagsDto(
+            graphService.getArtistInstruments(artistId),
+            graphService.getArtistStyles(artistId),
+            graphService.getArtistContexts(artistId)
+        );
     }
 
     private Artist getArtistOrThrow(UUID artistId) {
