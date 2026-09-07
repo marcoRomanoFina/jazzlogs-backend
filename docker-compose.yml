@@ -1,0 +1,59 @@
+# Local infra this app needs beyond Postgres/Neo4j credentials themselves —
+# see README's "Running locally" section. `docker compose up -d` gets both
+# services going; the app then just needs DATABASE_URL/NEO4J_URI (and the
+# rest of .env) pointed at them.
+#
+# name: pins the project name (and therefore the volume/container prefix)
+# regardless of which directory this file gets run from — without it,
+# `docker compose up` from a differently-named checkout directory would
+# create a second, empty set of volumes instead of reusing these.
+name: jazzlogs
+
+services:
+  postgres:
+    # pgvector/pgvector, not plain postgres — the base image doesn't bundle
+    # the vector extension's binaries at all, so `CREATE EXTENSION vector`
+    # (see docker/postgres/init) has nothing to load either way.
+    image: pgvector/pgvector:pg17
+    container_name: jazzlogs-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      # Host port 5433, not 5432 — leaves room for a native (non-Docker)
+      # Postgres already bound to 5432/localhost on the host.
+      - "5433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  neo4j:
+    image: neo4j:5.26
+    container_name: jazzlogs-neo4j
+    environment:
+      NEO4J_AUTH: ${NEO4J_AUTH:-neo4j/jazzlogs-dev-password}
+      NEO4J_server_memory_heap_initial__size: ${NEO4J_HEAP_INITIAL_SIZE:-512m}
+      NEO4J_server_memory_heap_max__size: ${NEO4J_HEAP_MAX_SIZE:-512m}
+      NEO4J_server_memory_pagecache_size: ${NEO4J_PAGECACHE_SIZE:-512m}
+    ports:
+      - "${NEO4J_HTTP_PORT:-7474}:7474"
+      - "${NEO4J_BOLT_PORT:-7687}:7687"
+    volumes:
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -a bolt://localhost:7687 -u neo4j -p \"$${NEO4J_AUTH#*/}\" \"RETURN 1;\" || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+volumes:
+  postgres-data:
+  neo4j-data:
+  neo4j-logs:
