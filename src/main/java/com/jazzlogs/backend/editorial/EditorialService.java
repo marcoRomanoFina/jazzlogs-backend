@@ -440,9 +440,9 @@ public class EditorialService {
             .collect(Collectors.toMap(te -> te.getTrack().getId(), this::toTrackEditorialDto));
     }
 
-    public ArtistEditorialDto getArtistEditorialDto(UUID artistId) {
+    public ArtistEditorialDto getArtistEditorialDto(UUID artistId, UUID currentUserId) {
         return artistEditorialRepository.findByArtistId(artistId)
-            .map(this::toArtistEditorialDto)
+            .map(editorial -> toArtistEditorialDto(editorial, currentUserId))
             .orElse(null);
     }
 
@@ -465,9 +465,16 @@ public class EditorialService {
         );
     }
 
-    public ArtistEditorialDto toArtistEditorialDto(ArtistEditorial editorial) {
+    public ArtistEditorialDto toArtistEditorialDto(ArtistEditorial editorial, UUID currentUserId) {
+        UUID editorialId = editorial.getId();
         return new ArtistEditorialDto(
-            editorial.getTitle(), editorial.getDek(), editorial.getByline(), blocksOf(editorial)
+            editorialId,
+            editorial.getTitle(),
+            editorial.getDek(),
+            editorial.getByline(),
+            blocksOf(editorial),
+            editorial.getLikeCount(),
+            likeService.hasUserLiked(currentUserId, LikeableEntityType.EDITORIAL, editorialId)
         );
     }
 

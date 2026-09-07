@@ -10,7 +10,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.album.dto.ContextTagRequest;
 import com.jazzlogs.backend.album.dto.StyleTagRequest;
-import com.jazzlogs.backend.artist.dto.ArtistDetailDto;
+import com.jazzlogs.backend.artist.dto.ArtistHeaderDto;
 import com.jazzlogs.backend.artist.dto.CreateArtistRequest;
 import com.jazzlogs.backend.artist.dto.SimilarArtistRequest;
 import com.jazzlogs.backend.editorial.EditorialService;
@@ -107,23 +107,27 @@ public class ArtistService {
         graphService.addSimilarArtist(artistId, request.similarArtistId(), request.reason(), bidirectional);
     }
 
+    /**
+     * The artist editorial page's header — the artist's own fields plus its
+     * editorial. Nothing from Neo4j (instruments/styles/contexts/similar
+     * artists/appearances) — those live on a separate, more expensive endpoint.
+     *
+     * @param artistId      the artist to load
+     * @param currentUserId whose like state to include for the artist's own editorial
+     * @return the artist header
+     * @throws ResponseStatusException 404 if the artist doesn't exist
+     */
     @Transactional(readOnly = true)
-    public ArtistDetailDto getArtistDetail(UUID artistId) {
+    public ArtistHeaderDto getArtistHeader(UUID artistId, UUID currentUserId) {
         Artist artist = getArtistOrThrow(artistId);
 
-        return new ArtistDetailDto(
+        return new ArtistHeaderDto(
             artist.getId(),
             artist.getName(),
             artist.getSpotifyArtistId(),
             artist.getSpotifyUrl(),
             artist.getImageUrl(),
-            editorialService.getArtistEditorialDto(artistId),
-            graphService.getArtistInstruments(artistId),
-            graphService.getArtistStyles(artistId),
-            graphService.getArtistContexts(artistId),
-            graphService.getSimilarArtists(artistId),
-            graphService.getArtistAlbumAppearances(artistId),
-            graphService.getArtistTrackAppearances(artistId)
+            editorialService.getArtistEditorialDto(artistId, currentUserId)
         );
     }
 
