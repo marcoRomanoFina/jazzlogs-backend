@@ -137,6 +137,22 @@ public class ArtistService {
     }
 
     /**
+     * Removes the {@code SIMILAR_TO} edge from this artist to another — see
+     * {@link #addSimilarArtist}. {@code bidirectional} also removes the
+     * reverse edge, if one exists.
+     *
+     * @param artistId        the artist
+     * @param similarArtistId the similar artist
+     * @param bidirectional   whether to also remove the reverse edge
+     * @throws ResponseStatusException 404 if either artist doesn't exist
+     */
+    public void removeSimilarArtist(UUID artistId, UUID similarArtistId, boolean bidirectional) {
+        getArtistOrThrow(artistId);
+        getArtistOrThrow(similarArtistId);
+        graphService.removeSimilarArtist(artistId, similarArtistId, bidirectional);
+    }
+
+    /**
      * The artist editorial page's header — the artist's own fields plus its
      * editorial. Nothing from Neo4j (instruments/styles/contexts/similar
      * artists/appearances) — those live on a separate, more expensive endpoint.

@@ -11,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -161,6 +162,25 @@ public class ArtistController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> addSimilarArtist(@PathVariable UUID id, @RequestBody SimilarArtistRequest request) {
         artistService.addSimilarArtist(id, request);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Removes the {@code SIMILAR_TO} edge from this artist to another — see
+     * {@link ArtistService#removeSimilarArtist}.
+     *
+     * @param id              the artist
+     * @param similarArtistId the similar artist
+     * @param bidirectional   whether to also remove the reverse edge, if one exists
+     */
+    @DeleteMapping("/{id}/similar/{similarArtistId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> removeSimilarArtist(
+        @PathVariable UUID id,
+        @PathVariable UUID similarArtistId,
+        @RequestParam(defaultValue = "false") boolean bidirectional
+    ) {
+        artistService.removeSimilarArtist(id, similarArtistId, bidirectional);
         return ResponseEntity.noContent().build();
     }
 

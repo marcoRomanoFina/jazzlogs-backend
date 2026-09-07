@@ -2,6 +2,7 @@ package com.jazzlogs.backend.artist;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -282,6 +283,28 @@ class ArtistServiceTest {
         assertThat(page.getContent()).extracting(SimilarArtistDto::name).containsExactly("Alpha Artist", "Zeta Artist");
         assertThat(page.getContent().get(0).reason()).isEqualTo("Same label, same era");
         assertThat(page.getContent().get(1).reason()).isEqualTo("Same rhythm section");
+    }
+
+    @Test
+    void removeSimilarArtist_removesUnidirectionalByDefault() {
+        Artist artist = persistArtist("Remove Similar Test Artist");
+        Artist similar = persistArtist("Remove Similar Test Similar Artist");
+
+        artistService.removeSimilarArtist(artist.getId(), similar.getId(), false);
+
+        verify(graphService).removeSimilarArtist(artist.getId(), similar.getId(), false);
+    }
+
+    @Test
+    void removeSimilarArtist_rejectsUnknownArtist() {
+        Artist similar = persistArtist("Known Similar Test Artist");
+
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class,
+            () -> artistService.removeSimilarArtist(UUID.randomUUID(), similar.getId(), false)
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     @Test

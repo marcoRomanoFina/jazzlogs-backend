@@ -148,6 +148,26 @@ public class AlbumService {
     }
 
     /**
+     * Removes this artist from the album's personnel — {@code role} says
+     * which edge to remove, since an artist could in theory have both a
+     * {@code LEADER_OF} and a {@code SIDEMAN_ON} edge to the same album.
+     *
+     * @param albumId  the album
+     * @param artistId the artist
+     * @param role     which edge to remove (LEADER/SIDEMAN)
+     */
+    public void removePersonnel(UUID albumId, UUID artistId, PersonnelRole role) {
+        getAlbumOrThrow(albumId);
+        getArtistOrThrow(artistId);
+
+        if (role == PersonnelRole.LEADER) {
+            graphService.removeAlbumLeader(artistId, albumId);
+        } else {
+            graphService.removeSideman(artistId, albumId);
+        }
+    }
+
+    /**
      * Marks this album as a good entry point into an artist — see {@code
      * ArtistService#getEssentialListening}.
      *

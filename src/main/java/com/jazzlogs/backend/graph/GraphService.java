@@ -141,6 +141,42 @@ public class GraphService {
     }
 
     /**
+     * Removes the {@code LEADER_OF} edge from an artist to an album, if it
+     * exists — a no-op otherwise.
+     *
+     * @param artistId the leading artist
+     * @param albumId  the album
+     */
+    public void removeAlbumLeader(UUID artistId, UUID albumId) {
+        write("remove LEADER_OF artist=" + artistId + " album=" + albumId, () ->
+            neo4jClient.query("""
+                    MATCH (ar:Artist {id: $artistId})-[l:LEADER_OF]->(al:Album {id: $albumId})
+                    DELETE l
+                    """)
+                .bind(artistId.toString()).to("artistId")
+                .bind(albumId.toString()).to("albumId")
+                .run());
+    }
+
+    /**
+     * Removes the {@code SIDEMAN_ON} edge from an artist to an album, if it
+     * exists — a no-op otherwise.
+     *
+     * @param artistId the sideman
+     * @param albumId  the album
+     */
+    public void removeSideman(UUID artistId, UUID albumId) {
+        write("remove SIDEMAN_ON artist=" + artistId + " album=" + albumId, () ->
+            neo4jClient.query("""
+                    MATCH (ar:Artist {id: $artistId})-[s:SIDEMAN_ON]->(al:Album {id: $albumId})
+                    DELETE s
+                    """)
+                .bind(artistId.toString()).to("artistId")
+                .bind(albumId.toString()).to("albumId")
+                .run());
+    }
+
+    /**
      * Creates the {@code ENTRY_POINT_TO} edge from an album to an artist —
      * see {@link #getEntryPointAlbumIds}, which reads it back.
      *
@@ -684,6 +720,39 @@ public class GraphService {
                     .bind(artistId.toString()).to("artistId")
                     .bind(similarArtistId.toString()).to("similarArtistId")
                     .bind(reason).to("reason")
+                    .run();
+            }
+        });
+    }
+
+    /**
+     * Removes the {@code SIMILAR_TO} edge from one artist to another, if it
+     * exists — a no-op otherwise. {@code bidirectional=true} also removes
+     * the reverse edge, mirroring {@link #addSimilarArtist}; it doesn't
+     * check whether the reverse edge was actually created bidirectionally
+     * in the first place, just removes it if present.
+     *
+     * @param artistId        the artist
+     * @param similarArtistId the similar artist
+     * @param bidirectional   whether to also remove the reverse edge
+     */
+    public void removeSimilarArtist(UUID artistId, UUID similarArtistId, boolean bidirectional) {
+        write("remove SIMILAR_TO artist=" + artistId + " similar=" + similarArtistId, () -> {
+            neo4jClient.query("""
+                    MATCH (a1:Artist {id: $artistId})-[r:SIMILAR_TO]->(a2:Artist {id: $similarArtistId})
+                    DELETE r
+                    """)
+                .bind(artistId.toString()).to("artistId")
+                .bind(similarArtistId.toString()).to("similarArtistId")
+                .run();
+
+            if (bidirectional) {
+                neo4jClient.query("""
+                        MATCH (a2:Artist {id: $similarArtistId})-[r:SIMILAR_TO]->(a1:Artist {id: $artistId})
+                        DELETE r
+                        """)
+                    .bind(artistId.toString()).to("artistId")
+                    .bind(similarArtistId.toString()).to("similarArtistId")
                     .run();
             }
         });

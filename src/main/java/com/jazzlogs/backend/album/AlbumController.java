@@ -117,6 +117,21 @@ public class AlbumController {
     }
 
     /**
+     * Removes this artist from the album's personnel — see {@link
+     * AlbumService#removePersonnel}.
+     *
+     * @param id       the album
+     * @param artistId the artist
+     * @param role     which edge to remove (LEADER/SIDEMAN) — same shape as {@code POST}'s body
+     */
+    @DeleteMapping("/{id}/personnel/{artistId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> removePersonnel(@PathVariable UUID id, @PathVariable UUID artistId, @RequestParam PersonnelRole role) {
+        albumService.removePersonnel(id, artistId, role);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
      * Marks this album as a good entry point into an artist — see {@link AlbumService#markEntryPoint}.
      *
      * @param id       the album
