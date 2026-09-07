@@ -22,10 +22,12 @@ import com.jazzlogs.backend.artist.dto.ArtistTagsDto;
 import com.jazzlogs.backend.artist.dto.ArtistHeaderDto;
 import com.jazzlogs.backend.artist.dto.CreateArtistRequest;
 import com.jazzlogs.backend.artist.dto.AlbumSummaryDto;
+import com.jazzlogs.backend.artist.dto.SimilarArtistDto;
 import com.jazzlogs.backend.artist.dto.SimilarArtistRequest;
 import com.jazzlogs.backend.editorial.AlbumEditorialRepository;
 import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.graph.GraphService;
+import com.jazzlogs.backend.graph.SimilarArtistEntry;
 import com.jazzlogs.backend.review.ReviewRepository;
 import com.jazzlogs.backend.spotify.SpotifyArtistData;
 import com.jazzlogs.backend.spotify.SpotifyCatalogService;
@@ -210,6 +212,41 @@ public class ArtistService {
             deksByAlbumId.get(album.getId()),
             album.getArtist().getId(),
             album.getArtist().getName()
+        ));
+    }
+
+    /**
+     * The artist's "similar artists" list ({@code SIMILAR_TO} in Neo4j),
+     * paginated. Same "Neo4j gives the small curated candidate set (plus its
+     * per-artist {@code reason}), Postgres does the real {@code Page}" split
+     * as {@link #getEssentialListening} — {@code reason} is merged onto the
+     * page from a map built off that same unpaged Neo4j read, not a second
+     * Neo4j round trip.
+     *
+     * @param artistId the artist
+     * @param pageable page request
+     * @return the matching page, empty if this artist has no similar artists
+     * @throws ResponseStatusException 404 if the artist doesn't exist
+     */
+    @Transactional(readOnly = true)
+    public Page<SimilarArtistDto> getSimilarArtists(UUID artistId, Pageable pageable) {
+        getArtistOrThrow(artistId);
+
+        List<SimilarArtistEntry> entries = graphService.getSimilarArtists(artistId);
+        if (entries.isEmpty()) {
+            return Page.empty(pageable);
+        }
+
+        List<UUID> similarArtistIds = entries.stream().map(SimilarArtistEntry::artistId).toList();
+        Map<UUID, String> reasonsByArtistId = entries.stream()
+            .collect(Collectors.toMap(SimilarArtistEntry::artistId, SimilarArtistEntry::reason));
+
+        Page<Artist> page = artistRepository.findByIdInOrderByNameAsc(similarArtistIds, pageable);
+        return page.map(artist -> new SimilarArtistDto(
+            artist.getId(),
+            artist.getName(),
+            artist.getImageUrl(),
+            reasonsByArtistId.get(artist.getId())
         ));
     }
 

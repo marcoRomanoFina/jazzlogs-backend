@@ -27,10 +27,12 @@ import com.jazzlogs.backend.album.VocalProfile;
 import com.jazzlogs.backend.artist.dto.ArtistTagsDto;
 import com.jazzlogs.backend.artist.dto.ArtistHeaderDto;
 import com.jazzlogs.backend.artist.dto.AlbumSummaryDto;
+import com.jazzlogs.backend.artist.dto.SimilarArtistDto;
 import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.editorial.dto.AlbumEditorialRequest;
 import com.jazzlogs.backend.editorial.dto.ArtistEditorialRequest;
 import com.jazzlogs.backend.graph.GraphService;
+import com.jazzlogs.backend.graph.SimilarArtistEntry;
 import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.like.LikeService;
 import com.jazzlogs.backend.like.LikeableEntityType;
@@ -41,9 +43,9 @@ import com.jazzlogs.backend.user.UserRepository;
 // GraphService is mocked here (not the real Neo4jClient-backed bean) — same
 // reasoning as AlbumServiceTest: getArtistHeader doesn't call it at all, but
 // syncArtistNode (called by other ArtistService methods this test doesn't
-// exercise) does. getEssentialListening/getSidemanAlbums do call it
-// (getEntryPointAlbumIds/getSidemanAlbumIds respectively), which is exactly
-// what's stubbed per test below.
+// exercise) does. getEssentialListening/getSidemanAlbums/getSimilarArtists
+// do call it (getEntryPointAlbumIds/getSidemanAlbumIds/getSimilarArtists
+// respectively), which is exactly what's stubbed per test below.
 @SpringBootTest
 @Transactional
 class ArtistServiceTest {
@@ -242,6 +244,44 @@ class ArtistServiceTest {
         assertThat(ratedDto.dek()).isEqualTo("A great dek");
         assertThat(bareDto.avgRating()).isNull();
         assertThat(bareDto.dek()).isNull();
+    }
+
+    @Test
+    void getSimilarArtists_rejectsUnknownArtist() {
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class,
+            () -> artistService.getSimilarArtists(UUID.randomUUID(), PageRequest.of(0, 6))
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void getSimilarArtists_returnsEmptyPage_whenNoSimilarArtists() {
+        Artist artist = persistArtist("No Similar Artists Artist");
+        when(graphService.getSimilarArtists(artist.getId())).thenReturn(List.of());
+
+        Page<SimilarArtistDto> page = artistService.getSimilarArtists(artist.getId(), PageRequest.of(0, 6));
+
+        assertThat(page.getContent()).isEmpty();
+        assertThat(page.getTotalElements()).isZero();
+    }
+
+    @Test
+    void getSimilarArtists_ordersByNameAscending_andIncludesTheCuratedReason() {
+        Artist target = persistArtist("Target Artist");
+        Artist zArtist = persistArtist("Zeta Artist");
+        Artist aArtist = persistArtist("Alpha Artist");
+        when(graphService.getSimilarArtists(target.getId())).thenReturn(List.of(
+            new SimilarArtistEntry(zArtist.getId(), zArtist.getName(), "Same rhythm section"),
+            new SimilarArtistEntry(aArtist.getId(), aArtist.getName(), "Same label, same era")
+        ));
+
+        Page<SimilarArtistDto> page = artistService.getSimilarArtists(target.getId(), PageRequest.of(0, 6));
+
+        assertThat(page.getContent()).extracting(SimilarArtistDto::name).containsExactly("Alpha Artist", "Zeta Artist");
+        assertThat(page.getContent().get(0).reason()).isEqualTo("Same label, same era");
+        assertThat(page.getContent().get(1).reason()).isEqualTo("Same rhythm section");
     }
 
     @Test

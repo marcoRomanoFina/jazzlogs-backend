@@ -26,6 +26,7 @@ import com.jazzlogs.backend.artist.dto.ArtistTagsDto;
 import com.jazzlogs.backend.artist.dto.ArtistHeaderDto;
 import com.jazzlogs.backend.artist.dto.CreateArtistRequest;
 import com.jazzlogs.backend.artist.dto.AlbumSummaryDto;
+import com.jazzlogs.backend.artist.dto.SimilarArtistDto;
 import com.jazzlogs.backend.artist.dto.SimilarArtistRequest;
 import com.jazzlogs.backend.editorial.ArtistEditorial;
 import com.jazzlogs.backend.editorial.EditorialService;
@@ -46,6 +47,9 @@ public class ArtistController {
 
     /** Fixed server-side, not a client-controlled ?size — see {@link #getSidemanAlbums}. */
     private static final int SIDEMAN_ALBUMS_PAGE_SIZE = 6;
+
+    /** Fixed server-side, not a client-controlled ?size — see {@link #getSimilarArtists}. */
+    private static final int SIMILAR_ARTISTS_PAGE_SIZE = 6;
 
     private final ArtistService artistService;
     private final EditorialService editorialService;
@@ -131,6 +135,19 @@ public class ArtistController {
     @GetMapping("/{id}/sideman-albums")
     public Page<AlbumSummaryDto> getSidemanAlbums(@PathVariable UUID id, @RequestParam(defaultValue = "0") int page) {
         return artistService.getSidemanAlbums(id, PageRequest.of(page, SIDEMAN_ALBUMS_PAGE_SIZE));
+    }
+
+    /**
+     * The artist's "similar artists" list, paginated — see
+     * {@link ArtistService#getSimilarArtists}.
+     *
+     * @param id   the artist
+     * @param page 0-based; page size is fixed at {@link #SIMILAR_ARTISTS_PAGE_SIZE}, not client-controlled
+     * @return the matching page
+     */
+    @GetMapping("/{id}/similar")
+    public Page<SimilarArtistDto> getSimilarArtists(@PathVariable UUID id, @RequestParam(defaultValue = "0") int page) {
+        return artistService.getSimilarArtists(id, PageRequest.of(page, SIMILAR_ARTISTS_PAGE_SIZE));
     }
 
     @PostMapping("/{id}/similar")
