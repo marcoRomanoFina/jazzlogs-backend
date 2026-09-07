@@ -121,6 +121,19 @@ public class AlbumController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Unmarks this album as a good entry point into an artist — see {@link AlbumService#unmarkEntryPoint}.
+     *
+     * @param id       the album
+     * @param artistId the artist
+     */
+    @DeleteMapping("/{id}/entry-point/{artistId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> unmarkEntryPoint(@PathVariable UUID id, @PathVariable UUID artistId) {
+        albumService.unmarkEntryPoint(id, artistId);
+        return ResponseEntity.noContent().build();
+    }
+
     // Full replace, not add-one — see StyleTagRequest's comment.
     @PutMapping("/{id}/tags/style")
     @PreAuthorize("hasRole('ADMIN')")

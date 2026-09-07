@@ -122,6 +122,19 @@ public class TrackController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Unmarks this track as a good entry point into an artist — see {@link TrackService#unmarkEntryPoint}.
+     *
+     * @param id       the track
+     * @param artistId the artist
+     */
+    @DeleteMapping("/{id}/entry-point/{artistId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> unmarkEntryPoint(@PathVariable UUID id, @PathVariable UUID artistId) {
+        trackService.unmarkEntryPoint(id, artistId);
+        return ResponseEntity.noContent().build();
+    }
+
     /** Adds this track to the archive's "Featured Tracks" — see {@link TrackService#setFeatured}. */
     @PostMapping("/{id}/featured")
     @PreAuthorize("hasRole('ADMIN')")

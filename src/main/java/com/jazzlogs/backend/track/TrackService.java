@@ -162,6 +162,19 @@ public class TrackService {
         graphService.markTrackAsEntryPoint(trackId, artistId);
     }
 
+    /**
+     * Unmarks this track as a good entry point into an artist — idempotent,
+     * does nothing if it wasn't marked.
+     *
+     * @param trackId  the track
+     * @param artistId the artist
+     */
+    public void unmarkEntryPoint(UUID trackId, UUID artistId) {
+        getTrackOrThrow(trackId);
+        getArtistOrThrow(artistId);
+        graphService.unmarkTrackAsEntryPoint(trackId, artistId);
+    }
+
     /** Up to this many tracks can be {@link Track#isFeatured} at once — see {@link #setFeatured}. */
     static final int MAX_FEATURED_TRACKS = 6;
 

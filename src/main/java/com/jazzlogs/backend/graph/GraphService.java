@@ -139,6 +139,24 @@ public class GraphService {
     }
 
     /**
+     * Removes the {@code ENTRY_POINT_TO} edge from an album to an artist, if
+     * it exists — a no-op otherwise.
+     *
+     * @param albumId  the album
+     * @param artistId the artist
+     */
+    public void unmarkAsEntryPoint(UUID albumId, UUID artistId) {
+        write("remove ENTRY_POINT_TO album=" + albumId + " artist=" + artistId, () ->
+            neo4jClient.query("""
+                    MATCH (al:Album {id: $albumId})-[r:ENTRY_POINT_TO]->(ar:Artist {id: $artistId})
+                    DELETE r
+                    """)
+                .bind(albumId.toString()).to("albumId")
+                .bind(artistId.toString()).to("artistId")
+                .run());
+    }
+
+    /**
      * Every album curated as a good entry point into an artist — unpaged,
      * on purpose: this is a small, curated set (an admin picks each one via
      * {@link #markAsEntryPoint}), not something that grows unbounded like a
@@ -355,6 +373,24 @@ public class GraphService {
             neo4jClient.query("""
                     MATCH (tr:Track {id: $trackId}), (ar:Artist {id: $artistId})
                     MERGE (tr)-[:ENTRY_POINT_TO]->(ar)
+                    """)
+                .bind(trackId.toString()).to("trackId")
+                .bind(artistId.toString()).to("artistId")
+                .run());
+    }
+
+    /**
+     * Removes the {@code ENTRY_POINT_TO} edge from a track to an artist, if
+     * it exists — a no-op otherwise.
+     *
+     * @param trackId  the track
+     * @param artistId the artist
+     */
+    public void unmarkTrackAsEntryPoint(UUID trackId, UUID artistId) {
+        write("remove ENTRY_POINT_TO track=" + trackId + " artist=" + artistId, () ->
+            neo4jClient.query("""
+                    MATCH (tr:Track {id: $trackId})-[r:ENTRY_POINT_TO]->(ar:Artist {id: $artistId})
+                    DELETE r
                     """)
                 .bind(trackId.toString()).to("trackId")
                 .bind(artistId.toString()).to("artistId")

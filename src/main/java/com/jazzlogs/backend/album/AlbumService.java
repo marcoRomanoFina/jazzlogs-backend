@@ -150,6 +150,19 @@ public class AlbumService {
         graphService.markAsEntryPoint(albumId, artistId);
     }
 
+    /**
+     * Unmarks this album as a good entry point into an artist — idempotent,
+     * does nothing if it wasn't marked.
+     *
+     * @param albumId  the album
+     * @param artistId the artist
+     */
+    public void unmarkEntryPoint(UUID albumId, UUID artistId) {
+        getAlbumOrThrow(albumId);
+        getArtistOrThrow(artistId);
+        graphService.unmarkAsEntryPoint(albumId, artistId);
+    }
+
     public void replaceStyles(UUID albumId, StyleTagRequest request) {
         getAlbumOrThrow(albumId);
         request.styleCodes().forEach(code -> VocabularyCodes.validate(StyleVocabulary.class, code, "style"));
