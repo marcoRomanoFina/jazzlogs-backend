@@ -1,0 +1,85 @@
+name: Test
+
+# Runs on every PR targeting develop (catches breakage before it merges) and
+# on every push to develop itself (confirms the merge commit is still
+# green) — same two Postgres/Neo4j dependencies as docker-compose.yml, just
+# started as GitHub Actions services instead, since services start before
+# checkout and can't bind-mount a repo file for Postgres' init script the
+# way the compose file does; the "Enable Postgres extensions" step below is
+# the CI equivalent of that script.
+on:
+  pull_request:
+    branches: [develop]
+  push:
+    branches: [develop]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      neo4j:
+        image: neo4j:5.26
+        env:
+          NEO4J_AUTH: neo4j/jazzlogs-dev-password
+        ports:
+          - 7687:7687
+          - 7474:7474
+        options: >-
+          --health-cmd "cypher-shell -a bolt://localhost:7687 -u neo4j -p jazzlogs-dev-password 'RETURN 1;' || exit 1"
+          --health-interval 15s
+          --health-timeout 10s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      # ubuntu-latest ships postgresql-client already, but installing it
+      # explicitly (idempotent either way) keeps this from silently
+      # depending on that instead of stating it.
+      - name: Install psql
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+
+      # pgvector/pgvector already has the extension's binaries, but nothing
+      # enables it in a fresh database on its own — same two statements as
+      # docker/postgres/init/001_extensions.sql, just run as a step instead
+      # of an init script (see the top-level comment for why).
+      - name: Enable Postgres extensions
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d postgres \
+            -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+
+      - name: Run tests
+        env:
+          DATABASE_URL: jdbc:postgresql://localhost:5432/postgres
+          DATABASE_USERNAME: postgres
+          DATABASE_PASSWORD: postgres
+          NEO4J_PASSWORD: jazzlogs-dev-password
+        run: ./mvnw test
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: target/surefire-reports/
