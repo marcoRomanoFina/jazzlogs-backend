@@ -148,10 +148,34 @@ public class TrackService {
         );
     }
 
+    /**
+     * Marks this track as a good entry point into an artist — the track's
+     * own artist (via its album) has to be this one.
+     *
+     * @param trackId  the track
+     * @param artistId the artist this track is a good entry point into — must be this track's own artist
+     * @throws ResponseStatusException 400 if this artist isn't this track's own artist
+     */
     public void markEntryPoint(UUID trackId, UUID artistId) {
+        Track track = getTrackOrThrow(trackId);
+        getArtistOrThrow(artistId);
+        if (!track.getAlbum().getArtist().getId().equals(artistId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Track " + trackId + " isn't by artist " + artistId);
+        }
+        graphService.markTrackAsEntryPoint(trackId, artistId);
+    }
+
+    /**
+     * Unmarks this track as a good entry point into an artist — idempotent,
+     * does nothing if it wasn't marked.
+     *
+     * @param trackId  the track
+     * @param artistId the artist
+     */
+    public void unmarkEntryPoint(UUID trackId, UUID artistId) {
         getTrackOrThrow(trackId);
         getArtistOrThrow(artistId);
-        graphService.markTrackAsEntryPoint(trackId, artistId);
+        graphService.unmarkTrackAsEntryPoint(trackId, artistId);
     }
 
     /** Up to this many tracks can be {@link Track#isFeatured} at once — see {@link #setFeatured}. */

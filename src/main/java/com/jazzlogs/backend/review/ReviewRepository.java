@@ -73,4 +73,22 @@ public interface ReviewRepository extends LikeableRepository<Review> {
         BigDecimal getAvgRating();
         long getCount();
     }
+
+    /**
+     * Batch — one query for a whole page of albums (e.g.
+     * {@code ArtistService.getEssentialListening}), not one
+     * {@link #getRatingStats} call per row. No count here, unlike the
+     * single-album version — callers so far only need the average.
+     *
+     * @param albumIds the albums to average
+     * @return one row per album that has at least one review — an album
+     *         with none simply has no row, callers treat that as unrated
+     */
+    @Query("SELECT r.album.id AS albumId, AVG(r.rating) AS avgRating FROM Review r WHERE r.album.id IN :albumIds GROUP BY r.album.id")
+    List<AlbumRatingRow> findAvgRatingsByAlbumIds(@Param("albumIds") List<UUID> albumIds);
+
+    interface AlbumRatingRow {
+        UUID getAlbumId();
+        BigDecimal getAvgRating();
+    }
 }

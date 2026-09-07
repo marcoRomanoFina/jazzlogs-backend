@@ -1,20 +1,31 @@
 package com.jazzlogs.backend.artist;
 
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.jazzlogs.backend.album.Album;
+import com.jazzlogs.backend.album.AlbumRepository;
 import com.jazzlogs.backend.album.dto.ContextTagRequest;
 import com.jazzlogs.backend.album.dto.StyleTagRequest;
 import com.jazzlogs.backend.artist.dto.ArtistHeaderDto;
 import com.jazzlogs.backend.artist.dto.CreateArtistRequest;
+import com.jazzlogs.backend.artist.dto.EssentialListeningAlbumDto;
 import com.jazzlogs.backend.artist.dto.SimilarArtistRequest;
+import com.jazzlogs.backend.editorial.AlbumEditorialRepository;
 import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.graph.GraphService;
+import com.jazzlogs.backend.review.ReviewRepository;
 import com.jazzlogs.backend.spotify.SpotifyArtistData;
 import com.jazzlogs.backend.spotify.SpotifyCatalogService;
 import com.jazzlogs.backend.track.dto.InstrumentTagRequest;
@@ -33,6 +44,9 @@ public class ArtistService {
     private final GraphService graphService;
     private final EditorialService editorialService;
     private final SpotifyCatalogService spotifyCatalogService;
+    private final AlbumRepository albumRepository;
+    private final ReviewRepository reviewRepository;
+    private final AlbumEditorialRepository albumEditorialRepository;
 
     // Upsert on spotifyArtistId when given: re-posting an artist that's
     // already in the catalog updates it in place (fresh Spotify data)
@@ -129,6 +143,48 @@ public class ArtistService {
             artist.getImageUrl(),
             editorialService.getArtistEditorialDto(artistId, currentUserId)
         );
+    }
+
+    /**
+     * The artist page's "Essential Listening" section — albums curated as a
+     * good entry point into this artist, paginated. The candidate album ids
+     * come from one unpaged Neo4j read ({@link GraphService#getEntryPointAlbumIds}) —
+     * the real pagination (and {@code Page}'s total count) happens here in
+     * Postgres, not in Cypher, since that candidate set is small and curated.
+     *
+     * @param artistId the artist
+     * @param pageable page request
+     * @return the matching page, empty if this artist has no entry-point albums
+     * @throws ResponseStatusException 404 if the artist doesn't exist
+     */
+    @Transactional(readOnly = true)
+    public Page<EssentialListeningAlbumDto> getEssentialListening(UUID artistId, Pageable pageable) {
+        getArtistOrThrow(artistId);
+
+        List<UUID> entryPointAlbumIds = graphService.getEntryPointAlbumIds(artistId);
+        if (entryPointAlbumIds.isEmpty()) {
+            return Page.empty(pageable);
+        }
+
+        Page<Album> page = albumRepository.findByIdInOrderByReleaseYearAsc(entryPointAlbumIds, pageable);
+        List<UUID> pageAlbumIds = page.getContent().stream().map(Album::getId).toList();
+
+        Map<UUID, BigDecimal> avgRatingsByAlbumId = reviewRepository.findAvgRatingsByAlbumIds(pageAlbumIds).stream()
+            .collect(Collectors.toMap(ReviewRepository.AlbumRatingRow::getAlbumId, ReviewRepository.AlbumRatingRow::getAvgRating));
+        Map<UUID, String> deksByAlbumId = albumEditorialRepository.findDeksByAlbumIds(pageAlbumIds).stream()
+            .collect(Collectors.toMap(AlbumEditorialRepository.AlbumEditorialDekRow::getAlbumId, AlbumEditorialRepository.AlbumEditorialDekRow::getDek));
+
+        return page.map(album -> new EssentialListeningAlbumDto(
+            album.getId(),
+            album.getName(),
+            album.getImageUrl(),
+            album.getReleaseYear(),
+            album.getLabel(),
+            avgRatingsByAlbumId.get(album.getId()),
+            deksByAlbumId.get(album.getId()),
+            album.getArtist().getId(),
+            album.getArtist().getName()
+        ));
     }
 
     private Artist getArtistOrThrow(UUID artistId) {

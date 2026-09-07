@@ -108,10 +108,29 @@ public class AlbumController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Marks this album as a good entry point into an artist — see {@link AlbumService#markEntryPoint}.
+     *
+     * @param id       the album
+     * @param artistId the artist this album is a good entry point into
+     */
     @PostMapping("/{id}/entry-point/{artistId}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> markEntryPoint(@PathVariable UUID id, @PathVariable UUID artistId) {
         albumService.markEntryPoint(id, artistId);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Unmarks this album as a good entry point into an artist — see {@link AlbumService#unmarkEntryPoint}.
+     *
+     * @param id       the album
+     * @param artistId the artist
+     */
+    @DeleteMapping("/{id}/entry-point/{artistId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> unmarkEntryPoint(@PathVariable UUID id, @PathVariable UUID artistId) {
+        albumService.unmarkEntryPoint(id, artistId);
         return ResponseEntity.noContent().build();
     }
 

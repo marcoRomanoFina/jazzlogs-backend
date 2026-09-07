@@ -2,6 +2,7 @@ package com.jazzlogs.backend.track;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
+import static org.mockito.Mockito.verify;
 
 import java.util.List;
 import java.util.UUID;
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpStatus;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -24,7 +26,11 @@ import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
 import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialRequest;
+import com.jazzlogs.backend.graph.GraphService;
 
+// GraphService is mocked here (not the real Neo4jClient-backed bean) — same
+// reasoning as AlbumServiceTest/ArtistServiceTest: markEntryPoint is the one
+// test below that actually reaches it.
 @SpringBootTest
 @Transactional
 class TrackServiceTest {
@@ -46,6 +52,9 @@ class TrackServiceTest {
 
     @Autowired
     private EntityManager entityManager;
+
+    @MockitoBean
+    private GraphService graphService;
 
     // Real, currently-curated tracks can already be at (or near) the cap in
     // the shared dev DB this suite runs against — every test here needs a
@@ -127,6 +136,39 @@ class TrackServiceTest {
 
         assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(trackRepository.findById(seventh.getId()).orElseThrow().isFeatured()).isFalse();
+    }
+
+    @Test
+    void markEntryPoint_acceptsTheTracksOwnArtist() {
+        Artist artist = artistRepository.save(new Artist("Entry Point Test Artist", null, null, null));
+        Track track = persistTrackFor(artist, "Entry Point Test Track");
+
+        trackService.markEntryPoint(track.getId(), artist.getId());
+
+        verify(graphService).markTrackAsEntryPoint(track.getId(), artist.getId());
+    }
+
+    @Test
+    void markEntryPoint_rejectsAnArtistThatDoesNotOwnTheTrack() {
+        Artist owner = artistRepository.save(new Artist("Owner Test Artist", null, null, null));
+        Artist someoneElse = artistRepository.save(new Artist("Someone Else Test Artist", null, null, null));
+        Track track = persistTrackFor(owner, "Mismatch Test Track");
+
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> trackService.markEntryPoint(track.getId(), someoneElse.getId())
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    private Track persistTrackFor(Artist artist, String name) {
+        Album album = albumRepository.save(new Album(
+            artist, "Album for " + name, null, null, null, 2024, 1,
+            "LOG-" + UUID.randomUUID(), "LABEL", VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
+        ));
+        return trackRepository.save(new Track(
+            album, null, name, null, null, null, false, null, null, null, null, null, null
+        ));
     }
 
     // setFeatured requires a TrackEditorial to already exist — every scenario
