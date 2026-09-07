@@ -103,21 +103,32 @@ The recommendation chat (`POST /chats/{chatId}/messages`) is backed by a plain L
 ## Running locally
 
 Requirements: Java 21, Maven, a Postgres instance with the `pg_trgm` and
-`vector` extensions available (the real Supabase project is the expected
-target — see `DATABASE_URL` below), and a local Neo4j (Community Edition
-works fine via Docker).
-
-Two Spring profiles exist — `application-dev.properties` /
-`application-prod.properties` — but both point at the same real Postgres via
-`DATABASE_URL` / `DATABASE_USERNAME` / `DATABASE_PASSWORD`; `prod` is just
-what deployment sets automatically (`SPRING_PROFILES_ACTIVE=prod`, e.g.
-Railway). An in-memory H2 profile was tried for a while for zero-setup local
-dev, but couldn't run the `pg_trgm`/`pgvector` SQL the agent's catalog/editorial
-search tools depend on, so it was dropped.
+`vector` extensions available, and a Neo4j instance.
 
 ```bash
+docker compose up -d
 ./mvnw spring-boot:run
 ```
+
+`docker-compose.yml` brings up both: Postgres on `localhost:5433` (not the
+default 5432 — leaves room for a native, non-Docker Postgres already bound
+there) via the `pgvector/pgvector` image (plain `postgres` doesn't bundle
+the `vector` extension's binaries at all), and Neo4j Community Edition on
+the usual `7474`/`7687`. Flyway builds the whole schema itself on first
+boot — no separate schema import needed, just point `DATABASE_URL` at it
+(see the table below; the defaults in `application-dev.properties` already
+match this compose file's credentials, so `DATABASE_URL`/`DATABASE_USERNAME`/
+`DATABASE_PASSWORD` can be omitted from `.env` entirely if running the local
+stack this way).
+
+Both `application-dev.properties` and `application-prod.properties` read
+`DATABASE_URL`/`DATABASE_USERNAME`/`DATABASE_PASSWORD` the same way — `prod`
+is just what deployment sets automatically (`SPRING_PROFILES_ACTIVE=prod`,
+e.g. Railway) — so pointing either profile at a real Supabase project
+instead of the local compose stack works exactly the same way, just with
+different env var values. An in-memory H2 profile was tried for a while for
+zero-setup local dev, but couldn't run the `pg_trgm`/`pgvector` SQL the
+agent's catalog/editorial search tools depend on, so it was dropped.
 
 Configuration is read from environment variables (see `application.properties`,
 `application-dev.properties` and `application-prod.properties` for the full
@@ -126,8 +137,8 @@ list and defaults):
 | Variable | Required | Notes |
 |---|---|---|
 | `SUPABASE_JWKS_URI` | yes | JWKS endpoint used to validate incoming JWTs |
-| `DATABASE_URL` / `DATABASE_USERNAME` / `DATABASE_PASSWORD` | yes | same real Postgres in every profile |
-| `NEO4J_URI` / `NEO4J_USERNAME` / `NEO4J_PASSWORD` | password only | defaults to `bolt://localhost:7687` |
+| `DATABASE_URL` / `DATABASE_USERNAME` / `DATABASE_PASSWORD` | no | defaults to the local compose stack (`localhost:5433`, `postgres`/`postgres`); point these at Supabase instead to use that |
+| `NEO4J_URI` / `NEO4J_USERNAME` / `NEO4J_PASSWORD` | password only | defaults to `bolt://localhost:7687` (the local compose stack) |
 | `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` | no | catalog enrichment is skipped without these |
 | `OPENAI_API_KEY` | no | editorial embeddings/agent calls are skipped without this |
 
@@ -137,8 +148,9 @@ list and defaults):
 ./mvnw test
 ```
 
-Tests run against the same real Postgres as `dev`/`prod` (see `DATABASE_URL`
-above) with the real Spring context. `PlaylistTrackSyncFailureTest` in
-particular writes a real, non-rolled-back row to `sync_failures` on every run
-(it tests a fire-and-forget async path that commits on its own thread,
-outside the test's transaction) — clean that table out periodically.
+Tests run against the same Postgres as `dev`/`prod` (see `DATABASE_URL`
+above — the local compose stack by default) with the real Spring context.
+`PlaylistTrackSyncFailureTest` in particular writes a real, non-rolled-back
+row to `sync_failures` on every run (it tests a fire-and-forget async path
+that commits on its own thread, outside the test's transaction) — clean that
+table out periodically.
