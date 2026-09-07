@@ -148,6 +148,14 @@ public class TrackService {
         );
     }
 
+    /**
+     * Marks this track as a good entry point into an artist — the artist
+     * doesn't have to be one of the track's own performers (e.g. a famous
+     * standard can be a good entry point into an artist who only covered it).
+     *
+     * @param trackId  the track
+     * @param artistId the artist this track is a good entry point into
+     */
     public void markEntryPoint(UUID trackId, UUID artistId) {
         getTrackOrThrow(trackId);
         getArtistOrThrow(artistId);

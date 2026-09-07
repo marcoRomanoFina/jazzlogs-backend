@@ -109,6 +109,12 @@ public class TrackController {
         return trackService.getTrackTags(id);
     }
 
+    /**
+     * Marks this track as a good entry point into an artist — see {@link TrackService#markEntryPoint}.
+     *
+     * @param id       the track
+     * @param artistId the artist this track is a good entry point into
+     */
     @PostMapping("/{id}/entry-point/{artistId}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> markEntryPoint(@PathVariable UUID id, @PathVariable UUID artistId) {

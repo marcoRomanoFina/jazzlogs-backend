@@ -135,6 +135,15 @@ public class AlbumService {
         }
     }
 
+    /**
+     * Marks this album as a good entry point into an artist — the album's
+     * own artist doesn't have to be this one (e.g. a great collaboration
+     * album can be a good entry point into an artist who only appears on
+     * it as a sideman). See {@code ArtistService#getEssentialListening}.
+     *
+     * @param albumId  the album
+     * @param artistId the artist this album is a good entry point into
+     */
     public void markEntryPoint(UUID albumId, UUID artistId) {
         getAlbumOrThrow(albumId);
         getArtistOrThrow(artistId);

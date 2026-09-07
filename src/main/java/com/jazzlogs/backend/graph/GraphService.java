@@ -120,6 +120,13 @@ public class GraphService {
                 .run());
     }
 
+    /**
+     * Creates the {@code ENTRY_POINT_TO} edge from an album to an artist —
+     * see {@link #getEntryPointAlbumIds}, which reads it back.
+     *
+     * @param albumId  the album
+     * @param artistId the artist this album is a good entry point into
+     */
     public void markAsEntryPoint(UUID albumId, UUID artistId) {
         write("add ENTRY_POINT_TO album=" + albumId + " artist=" + artistId, () ->
             neo4jClient.query("""
@@ -337,6 +344,12 @@ public class GraphService {
         replaceTags("Track", trackId, "FEATURES_INSTRUMENT", "Instrument", instrumentCodes);
     }
 
+    /**
+     * Creates the {@code ENTRY_POINT_TO} edge from a track to an artist.
+     *
+     * @param trackId  the track
+     * @param artistId the artist this track is a good entry point into
+     */
     public void markTrackAsEntryPoint(UUID trackId, UUID artistId) {
         write("add ENTRY_POINT_TO track=" + trackId + " artist=" + artistId, () ->
             neo4jClient.query("""
