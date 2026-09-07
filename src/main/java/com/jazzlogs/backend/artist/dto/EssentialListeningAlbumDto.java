@@ -5,10 +5,10 @@ import java.util.UUID;
 
 /**
  * One album in an artist's "Essential Listening" section — an album
- * curated as a good entry point into that artist. The album's own artist
- * isn't necessarily the artist whose page this is (see {@code
- * GraphService#markAsEntryPoint}) — hence carrying its own artist id/name,
- * not assumed to match the caller's.
+ * curated as a good entry point into that artist. {@code artistId}/{@code
+ * artistName} are always this artist's own (see {@code
+ * AlbumService#markEntryPoint}, which enforces that at write time) — carried
+ * here anyway so the frontend doesn't need a separate lookup to render them.
  *
  * @param id         the album's own id
  * @param name       the album's name

@@ -136,17 +136,19 @@ public class AlbumService {
     }
 
     /**
-     * Marks this album as a good entry point into an artist — the album's
-     * own artist doesn't have to be this one (e.g. a great collaboration
-     * album can be a good entry point into an artist who only appears on
-     * it as a sideman). See {@code ArtistService#getEssentialListening}.
+     * Marks this album as a good entry point into an artist — see {@code
+     * ArtistService#getEssentialListening}.
      *
      * @param albumId  the album
-     * @param artistId the artist this album is a good entry point into
+     * @param artistId the artist this album is a good entry point into — must be this album's own artist
+     * @throws ResponseStatusException 400 if this artist isn't this album's own artist
      */
     public void markEntryPoint(UUID albumId, UUID artistId) {
-        getAlbumOrThrow(albumId);
+        Album album = getAlbumOrThrow(albumId);
         getArtistOrThrow(artistId);
+        if (!album.getArtist().getId().equals(artistId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Album " + albumId + " isn't by artist " + artistId);
+        }
         graphService.markAsEntryPoint(albumId, artistId);
     }
 

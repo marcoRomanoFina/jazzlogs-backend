@@ -149,16 +149,19 @@ public class TrackService {
     }
 
     /**
-     * Marks this track as a good entry point into an artist — the artist
-     * doesn't have to be one of the track's own performers (e.g. a famous
-     * standard can be a good entry point into an artist who only covered it).
+     * Marks this track as a good entry point into an artist — the track's
+     * own artist (via its album) has to be this one.
      *
      * @param trackId  the track
-     * @param artistId the artist this track is a good entry point into
+     * @param artistId the artist this track is a good entry point into — must be this track's own artist
+     * @throws ResponseStatusException 400 if this artist isn't this track's own artist
      */
     public void markEntryPoint(UUID trackId, UUID artistId) {
-        getTrackOrThrow(trackId);
+        Track track = getTrackOrThrow(trackId);
         getArtistOrThrow(artistId);
+        if (!track.getAlbum().getArtist().getId().equals(artistId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Track " + trackId + " isn't by artist " + artistId);
+        }
         graphService.markTrackAsEntryPoint(trackId, artistId);
     }
 

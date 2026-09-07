@@ -138,9 +138,11 @@ class ArtistServiceTest {
     @Test
     void getEssentialListening_ordersByReleaseYearAscending_andIncludesTheAlbumsOwnArtist() {
         Artist target = persistArtist("Target Artist");
-        // The entry-point album's own artist isn't necessarily the artist
-        // whose page this is — a great collaboration album led by someone
-        // else can still be a good entry point into target.
+        // getEssentialListening trusts whatever GraphService.getEntryPointAlbumIds
+        // returns and resolves each album's own artist from Postgres — this
+        // stubs a mismatched artist purely to prove that resolution is
+        // correct, not because AlbumService.markEntryPoint would ever let a
+        // real request create one (it enforces album.artist == artistId).
         Artist otherArtist = persistArtist("Other Artist");
         Album newer = persistAlbum(otherArtist, "Newer Album", 2020);
         Album older = persistAlbum(otherArtist, "Older Album", 1965);
