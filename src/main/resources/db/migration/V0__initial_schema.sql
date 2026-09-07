@@ -18,6 +18,10 @@ CREATE TABLE album_editorials (
     editorial_id uuid NOT NULL
 );
 
+-- No "label" column — added later, by V7 (already applied, checksummed,
+-- and never re-run against the real database). Leaving it out here lets
+-- V7 add it during a fresh-database replay, the same way it really
+-- happened, instead of failing with "column already exists".
 CREATE TABLE albums (
     id uuid NOT NULL,
     accessibility character varying(255) NOT NULL,
@@ -25,7 +29,6 @@ CREATE TABLE albums (
     energy character varying(255) NOT NULL,
     image_url character varying(255),
     instagram_permalink character varying(255),
-    label character varying(255) NOT NULL,
     log_number character varying(255) NOT NULL,
     mood_intensity character varying(255) NOT NULL,
     name character varying(255) NOT NULL,
@@ -250,8 +253,13 @@ CREATE TABLE track_ratings (
     user_id uuid NOT NULL
 );
 
--- No "log_number" column — dropped before this baseline was written (see
--- Track.java; logNumber now lives only on albums, and is required there).
+-- log_number IS included here even though it's long gone by the time this
+-- baseline was written (see Track.java; logNumber now lives only on
+-- albums) — V3 (already applied, checksummed, and never re-run against the
+-- real database) drops this column, and V0 only ever executes on a
+-- genuinely fresh database, where V3 gets replayed right after it. Leaving
+-- it out here would make that replay fail with "column does not exist"
+-- instead of reproducing the real database's actual history.
 CREATE TABLE tracks (
     id uuid NOT NULL,
     created_at timestamp(6) with time zone NOT NULL,
@@ -263,6 +271,7 @@ CREATE TABLE tracks (
     composition_type character varying(255),
     energy character varying(255),
     image_url character varying(255),
+    log_number character varying(255),
     mood_intensity character varying(255),
     normalized_name character varying(255) NOT NULL,
     spotify_track_id character varying(255),
