@@ -181,6 +181,30 @@ public class GraphService {
     }
 
     /**
+     * Every album where this artist appears as a sideman ({@code SIDEMAN_ON}),
+     * not as the leading artist — unpaged, same reasoning as {@link
+     * #getEntryPointAlbumIds}: a single id-only read, cheap even for a
+     * prolific session musician. The caller (ArtistService.getSidemanAlbums)
+     * paginates over these ids in Postgres instead of paging this query.
+     *
+     * @param artistId the artist
+     * @return every album id this artist plays sideman on, unordered
+     */
+    public List<UUID> getSidemanAlbumIds(UUID artistId) {
+        return read("read SIDEMAN_ON album ids for artist=" + artistId, () ->
+            neo4jClient.query("""
+                    MATCH (ar:Artist {id: $artistId})-[:SIDEMAN_ON]->(al:Album)
+                    RETURN al.id AS albumId
+                    """)
+                .bind(artistId.toString()).to("artistId")
+                .fetch()
+                .all()
+                .stream()
+                .map(row -> UUID.fromString((String) row.get("albumId")))
+                .toList());
+    }
+
+    /**
      * MATCH-then-MERGE, not create-if-missing: if the :User or :Album node isn't
      * there (e.g. it was created while Neo4j was down), this silently touches
      * nothing — same as every other relationship write here. Callers that want
