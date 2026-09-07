@@ -16,7 +16,11 @@ public interface LikeCountable {
 
     void decrementLikeCount(UUID entityId);
 
-    // Reads just the counter column, not the whole entity — empty if entityId
-    // doesn't exist, callers treat that as 0 rather than an error.
+    /**
+     * Reads just the counter column, not the whole entity.
+     *
+     * @param entityId the entity to check
+     * @return its like count, empty if no entity with that id exists — callers treat that as 0, not an error
+     */
     Optional<Integer> findLikeCount(UUID entityId);
 }

@@ -102,13 +102,30 @@ public class LikeService {
         }
     }
 
-  
+    /**
+     * How many likes an entity has. 0 both for a genuinely unliked entity
+     * and for an entityType with no repository wired up yet — unlike
+     * {@link #addLike}, this is a read with nothing to reject, so it
+     * degrades quietly instead of throwing.
+     *
+     * @param entityType which kind of entity
+     * @param entityId   that entity's own id
+     * @return its like count
+     */
     @Transactional(readOnly = true)
     public long countLikes(LikeableEntityType entityType, UUID entityId) {
         LikeableRepository<?> repository = repositories.get(entityType);
         return repository == null ? 0 : repository.findLikeCount(entityId).orElse(0);
     }
 
+    /**
+     * Whether a user has liked an entity.
+     *
+     * @param userId     the user to check
+     * @param entityType which kind of entity
+     * @param entityId   that entity's own id
+     * @return true if that user has liked it
+     */
     @Transactional(readOnly = true)
     public boolean hasUserLiked(UUID userId, LikeableEntityType entityType, UUID entityId) {
         return likeRepository.existsById(new LikeId(userId, entityType, entityId));

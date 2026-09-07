@@ -58,11 +58,26 @@ public class LikeController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * How many likes an entity has — see {@link LikeService#countLikes}.
+     *
+     * @param entityType which kind of entity
+     * @param entityId   that entity's own id
+     * @return its like count
+     */
     @GetMapping("/count")
     public LikeCountResponse countLikes(@RequestParam LikeableEntityType entityType, @RequestParam UUID entityId) {
         return new LikeCountResponse(likeService.countLikes(entityType, entityId));
     }
 
+    /**
+     * Whether the caller has liked an entity — see {@link LikeService#hasUserLiked}.
+     *
+     * @param entityType which kind of entity
+     * @param entityId   that entity's own id
+     * @param jwt        the caller
+     * @return whether the caller has liked it
+     */
     @GetMapping("/me")
     public LikedResponse hasLiked(
         @RequestParam LikeableEntityType entityType,
