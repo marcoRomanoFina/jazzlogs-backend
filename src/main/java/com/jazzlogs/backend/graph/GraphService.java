@@ -94,6 +94,16 @@ public class GraphService {
                 .run());
     }
 
+    /**
+     * Creates/updates the {@code LEADER_OF} edge from an artist to an
+     * album, recording which instruments they played on it — {@code
+     * MERGE}d, so calling this again for the same pair just replaces
+     * {@code instruments} instead of duplicating the edge.
+     *
+     * @param artistId    the leading artist
+     * @param albumId     the album
+     * @param instruments instruments this artist played on the album
+     */
     public void setAlbumLeader(UUID artistId, UUID albumId, List<String> instruments) {
         write("set LEADER_OF artist=" + artistId + " album=" + albumId, () ->
             neo4jClient.query("""
@@ -107,6 +117,16 @@ public class GraphService {
                 .run());
     }
 
+    /**
+     * Creates/updates the {@code SIDEMAN_ON} edge from an artist to an
+     * album, recording which instruments they played on it — see {@link
+     * #getSidemanAlbumIds}, which reads it back. {@code MERGE}d, same as
+     * {@link #setAlbumLeader}.
+     *
+     * @param artistId    the sideman
+     * @param albumId     the album
+     * @param instruments instruments this artist played on the album
+     */
     public void addSideman(UUID artistId, UUID albumId, List<String> instruments) {
         write("add SIDEMAN_ON artist=" + artistId + " album=" + albumId, () ->
             neo4jClient.query("""
@@ -117,6 +137,42 @@ public class GraphService {
                 .bind(artistId.toString()).to("artistId")
                 .bind(albumId.toString()).to("albumId")
                 .bind(instruments).to("instruments")
+                .run());
+    }
+
+    /**
+     * Removes the {@code LEADER_OF} edge from an artist to an album, if it
+     * exists — a no-op otherwise.
+     *
+     * @param artistId the leading artist
+     * @param albumId  the album
+     */
+    public void removeAlbumLeader(UUID artistId, UUID albumId) {
+        write("remove LEADER_OF artist=" + artistId + " album=" + albumId, () ->
+            neo4jClient.query("""
+                    MATCH (ar:Artist {id: $artistId})-[l:LEADER_OF]->(al:Album {id: $albumId})
+                    DELETE l
+                    """)
+                .bind(artistId.toString()).to("artistId")
+                .bind(albumId.toString()).to("albumId")
+                .run());
+    }
+
+    /**
+     * Removes the {@code SIDEMAN_ON} edge from an artist to an album, if it
+     * exists — a no-op otherwise.
+     *
+     * @param artistId the sideman
+     * @param albumId  the album
+     */
+    public void removeSideman(UUID artistId, UUID albumId) {
+        write("remove SIDEMAN_ON artist=" + artistId + " album=" + albumId, () ->
+            neo4jClient.query("""
+                    MATCH (ar:Artist {id: $artistId})-[s:SIDEMAN_ON]->(al:Album {id: $albumId})
+                    DELETE s
+                    """)
+                .bind(artistId.toString()).to("artistId")
+                .bind(albumId.toString()).to("albumId")
                 .run());
     }
 
@@ -170,6 +226,30 @@ public class GraphService {
         return read("read ENTRY_POINT_TO album ids for artist=" + artistId, () ->
             neo4jClient.query("""
                     MATCH (al:Album)-[:ENTRY_POINT_TO]->(ar:Artist {id: $artistId})
+                    RETURN al.id AS albumId
+                    """)
+                .bind(artistId.toString()).to("artistId")
+                .fetch()
+                .all()
+                .stream()
+                .map(row -> UUID.fromString((String) row.get("albumId")))
+                .toList());
+    }
+
+    /**
+     * Every album where this artist appears as a sideman ({@code SIDEMAN_ON}),
+     * not as the leading artist — unpaged, same reasoning as {@link
+     * #getEntryPointAlbumIds}: a single id-only read, cheap even for a
+     * prolific session musician. The caller (ArtistService.getSidemanAlbums)
+     * paginates over these ids in Postgres instead of paging this query.
+     *
+     * @param artistId the artist
+     * @return every album id this artist plays sideman on, unordered
+     */
+    public List<UUID> getSidemanAlbumIds(UUID artistId) {
+        return read("read SIDEMAN_ON album ids for artist=" + artistId, () ->
+            neo4jClient.query("""
+                    MATCH (ar:Artist {id: $artistId})-[:SIDEMAN_ON]->(al:Album)
                     RETURN al.id AS albumId
                     """)
                 .bind(artistId.toString()).to("artistId")
@@ -607,7 +687,18 @@ public class GraphService {
         replaceTags("Artist", artistId, "PERFECT_FOR", "Context", contextCodes);
     }
 
-    /** Unidirectional by default (a1 -> a2 only); pass bidirectional=true to also create a2 -> a1. */
+    /**
+     * Creates/updates the {@code SIMILAR_TO} edge from one artist to
+     * another, with a curated {@code reason} — see {@link
+     * #getSimilarArtists}, which reads it back. Unidirectional by default
+     * ({@code artistId -> similarArtistId} only); {@code bidirectional=true}
+     * also creates the reverse edge with the same {@code reason}.
+     *
+     * @param artistId        the artist
+     * @param similarArtistId the similar artist
+     * @param reason          the curated reason, shown as-is on both edges if bidirectional
+     * @param bidirectional   whether to also create the reverse edge
+     */
     public void addSimilarArtist(UUID artistId, UUID similarArtistId, String reason, boolean bidirectional) {
         write("add SIMILAR_TO artist=" + artistId + " similar=" + similarArtistId, () -> {
             neo4jClient.query("""
@@ -629,6 +720,39 @@ public class GraphService {
                     .bind(artistId.toString()).to("artistId")
                     .bind(similarArtistId.toString()).to("similarArtistId")
                     .bind(reason).to("reason")
+                    .run();
+            }
+        });
+    }
+
+    /**
+     * Removes the {@code SIMILAR_TO} edge from one artist to another, if it
+     * exists — a no-op otherwise. {@code bidirectional=true} also removes
+     * the reverse edge, mirroring {@link #addSimilarArtist}; it doesn't
+     * check whether the reverse edge was actually created bidirectionally
+     * in the first place, just removes it if present.
+     *
+     * @param artistId        the artist
+     * @param similarArtistId the similar artist
+     * @param bidirectional   whether to also remove the reverse edge
+     */
+    public void removeSimilarArtist(UUID artistId, UUID similarArtistId, boolean bidirectional) {
+        write("remove SIMILAR_TO artist=" + artistId + " similar=" + similarArtistId, () -> {
+            neo4jClient.query("""
+                    MATCH (a1:Artist {id: $artistId})-[r:SIMILAR_TO]->(a2:Artist {id: $similarArtistId})
+                    DELETE r
+                    """)
+                .bind(artistId.toString()).to("artistId")
+                .bind(similarArtistId.toString()).to("similarArtistId")
+                .run();
+
+            if (bidirectional) {
+                neo4jClient.query("""
+                        MATCH (a2:Artist {id: $similarArtistId})-[r:SIMILAR_TO]->(a1:Artist {id: $artistId})
+                        DELETE r
+                        """)
+                    .bind(artistId.toString()).to("artistId")
+                    .bind(similarArtistId.toString()).to("similarArtistId")
                     .run();
             }
         });

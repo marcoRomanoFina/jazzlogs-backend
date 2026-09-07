@@ -21,11 +21,13 @@ import com.jazzlogs.backend.album.dto.StyleTagRequest;
 import com.jazzlogs.backend.artist.dto.ArtistTagsDto;
 import com.jazzlogs.backend.artist.dto.ArtistHeaderDto;
 import com.jazzlogs.backend.artist.dto.CreateArtistRequest;
-import com.jazzlogs.backend.artist.dto.EssentialListeningAlbumDto;
+import com.jazzlogs.backend.artist.dto.AlbumSummaryDto;
+import com.jazzlogs.backend.artist.dto.SimilarArtistDto;
 import com.jazzlogs.backend.artist.dto.SimilarArtistRequest;
 import com.jazzlogs.backend.editorial.AlbumEditorialRepository;
 import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.graph.GraphService;
+import com.jazzlogs.backend.graph.SimilarArtistEntry;
 import com.jazzlogs.backend.review.ReviewRepository;
 import com.jazzlogs.backend.spotify.SpotifyArtistData;
 import com.jazzlogs.backend.spotify.SpotifyCatalogService;
@@ -114,12 +116,40 @@ public class ArtistService {
         graphService.replaceArtistContexts(artistId, request.contextCodes());
     }
 
+    /**
+     * Curates a {@code SIMILAR_TO} edge from this artist to another — see
+     * {@link #getSimilarArtists}, which reads it back. Unidirectional by
+     * default ({@code artistId -> similarArtistId} only); {@code
+     * request.bidirectional()} also creates the reverse edge, since
+     * "similar" is usually mutual but the curated {@code reason} might not
+     * read the same way in reverse.
+     *
+     * @param artistId the artist
+     * @param request  the similar artist, an optional curated reason, and whether to also create the reverse edge
+     * @throws ResponseStatusException 404 if either artist doesn't exist
+     */
     public void addSimilarArtist(UUID artistId, SimilarArtistRequest request) {
         getArtistOrThrow(artistId);
         getArtistOrThrow(request.similarArtistId());
 
         boolean bidirectional = Boolean.TRUE.equals(request.bidirectional());
         graphService.addSimilarArtist(artistId, request.similarArtistId(), request.reason(), bidirectional);
+    }
+
+    /**
+     * Removes the {@code SIMILAR_TO} edge from this artist to another — see
+     * {@link #addSimilarArtist}. {@code bidirectional} also removes the
+     * reverse edge, if one exists.
+     *
+     * @param artistId        the artist
+     * @param similarArtistId the similar artist
+     * @param bidirectional   whether to also remove the reverse edge
+     * @throws ResponseStatusException 404 if either artist doesn't exist
+     */
+    public void removeSimilarArtist(UUID artistId, UUID similarArtistId, boolean bidirectional) {
+        getArtistOrThrow(artistId);
+        getArtistOrThrow(similarArtistId);
+        graphService.removeSimilarArtist(artistId, similarArtistId, bidirectional);
     }
 
     /**
@@ -159,15 +189,38 @@ public class ArtistService {
      * @throws ResponseStatusException 404 if the artist doesn't exist
      */
     @Transactional(readOnly = true)
-    public Page<EssentialListeningAlbumDto> getEssentialListening(UUID artistId, Pageable pageable) {
+    public Page<AlbumSummaryDto> getEssentialListening(UUID artistId, Pageable pageable) {
         getArtistOrThrow(artistId);
+        return resolveAlbumPage(graphService.getEntryPointAlbumIds(artistId), pageable);
+    }
 
-        List<UUID> entryPointAlbumIds = graphService.getEntryPointAlbumIds(artistId);
-        if (entryPointAlbumIds.isEmpty()) {
+    /**
+     * Albums where this artist appears as a sideman ({@code SIDEMAN_ON}), not
+     * as the leading artist — paginated. Same architecture and same
+     * per-row data as {@link #getEssentialListening}, just a different
+     * Neo4j source edge for the candidate album ids.
+     *
+     * @param artistId the artist
+     * @param pageable page request
+     * @return the matching page, empty if this artist has no sideman albums
+     * @throws ResponseStatusException 404 if the artist doesn't exist
+     */
+    @Transactional(readOnly = true)
+    public Page<AlbumSummaryDto> getSidemanAlbums(UUID artistId, Pageable pageable) {
+        getArtistOrThrow(artistId);
+        return resolveAlbumPage(graphService.getSidemanAlbumIds(artistId), pageable);
+    }
+
+    // Shared by getEssentialListening/getSidemanAlbums: both paginate the
+    // same way over a Neo4j-sourced, unpaged album id candidate set — real
+    // pagination (and Page's total count) happens here in Postgres, plus the
+    // avgRating/dek batch enrichment, identically either way.
+    private Page<AlbumSummaryDto> resolveAlbumPage(List<UUID> albumIds, Pageable pageable) {
+        if (albumIds.isEmpty()) {
             return Page.empty(pageable);
         }
 
-        Page<Album> page = albumRepository.findByIdInOrderByReleaseYearAsc(entryPointAlbumIds, pageable);
+        Page<Album> page = albumRepository.findByIdInOrderByReleaseYearAsc(albumIds, pageable);
         List<UUID> pageAlbumIds = page.getContent().stream().map(Album::getId).toList();
 
         Map<UUID, BigDecimal> avgRatingsByAlbumId = reviewRepository.findAvgRatingsByAlbumIds(pageAlbumIds).stream()
@@ -175,16 +228,53 @@ public class ArtistService {
         Map<UUID, String> deksByAlbumId = albumEditorialRepository.findDeksByAlbumIds(pageAlbumIds).stream()
             .collect(Collectors.toMap(AlbumEditorialRepository.AlbumEditorialDekRow::getAlbumId, AlbumEditorialRepository.AlbumEditorialDekRow::getDek));
 
-        return page.map(album -> new EssentialListeningAlbumDto(
+        return page.map(album -> new AlbumSummaryDto(
             album.getId(),
             album.getName(),
             album.getImageUrl(),
             album.getReleaseYear(),
             album.getLabel(),
+            album.getTotalTracks(),
+            album.getLogNumber(),
             avgRatingsByAlbumId.get(album.getId()),
             deksByAlbumId.get(album.getId()),
             album.getArtist().getId(),
             album.getArtist().getName()
+        ));
+    }
+
+    /**
+     * The artist's "similar artists" list ({@code SIMILAR_TO} in Neo4j),
+     * paginated. Same "Neo4j gives the small curated candidate set (plus its
+     * per-artist {@code reason}), Postgres does the real {@code Page}" split
+     * as {@link #getEssentialListening} — {@code reason} is merged onto the
+     * page from a map built off that same unpaged Neo4j read, not a second
+     * Neo4j round trip.
+     *
+     * @param artistId the artist
+     * @param pageable page request
+     * @return the matching page, empty if this artist has no similar artists
+     * @throws ResponseStatusException 404 if the artist doesn't exist
+     */
+    @Transactional(readOnly = true)
+    public Page<SimilarArtistDto> getSimilarArtists(UUID artistId, Pageable pageable) {
+        getArtistOrThrow(artistId);
+
+        List<SimilarArtistEntry> entries = graphService.getSimilarArtists(artistId);
+        if (entries.isEmpty()) {
+            return Page.empty(pageable);
+        }
+
+        List<UUID> similarArtistIds = entries.stream().map(SimilarArtistEntry::artistId).toList();
+        Map<UUID, String> reasonsByArtistId = entries.stream()
+            .collect(Collectors.toMap(SimilarArtistEntry::artistId, SimilarArtistEntry::reason));
+
+        Page<Artist> page = artistRepository.findByIdInOrderByNameAsc(similarArtistIds, pageable);
+        return page.map(artist -> new SimilarArtistDto(
+            artist.getId(),
+            artist.getName(),
+            artist.getImageUrl(),
+            reasonsByArtistId.get(artist.getId())
         ));
     }
 

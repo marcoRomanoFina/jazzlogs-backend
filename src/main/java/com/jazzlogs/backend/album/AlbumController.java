@@ -101,10 +101,33 @@ public class AlbumController {
         return editorialService.toAlbumEditorialDto(editorial, currentUserId(jwt));
     }
 
+    /**
+     * Adds this artist to the album's personnel — {@code LEADER_OF} or
+     * {@code SIDEMAN_ON} in Neo4j depending on {@code request.role()} — see
+     * {@link AlbumService#addPersonnel}.
+     *
+     * @param id      the album
+     * @param request the artist, role (LEADER/SIDEMAN), and instruments played
+     */
     @PostMapping("/{id}/personnel")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> addPersonnel(@PathVariable UUID id, @RequestBody PersonnelRequest request) {
         albumService.addPersonnel(id, request);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Removes this artist from the album's personnel — see {@link
+     * AlbumService#removePersonnel}.
+     *
+     * @param id       the album
+     * @param artistId the artist
+     * @param role     which edge to remove (LEADER/SIDEMAN) — same shape as {@code POST}'s body
+     */
+    @DeleteMapping("/{id}/personnel/{artistId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> removePersonnel(@PathVariable UUID id, @PathVariable UUID artistId, @RequestParam PersonnelRole role) {
+        albumService.removePersonnel(id, artistId, role);
         return ResponseEntity.noContent().build();
     }
 

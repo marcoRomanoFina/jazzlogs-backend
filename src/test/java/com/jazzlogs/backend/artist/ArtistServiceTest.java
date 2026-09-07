@@ -2,6 +2,7 @@ package com.jazzlogs.backend.artist;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -26,11 +27,13 @@ import com.jazzlogs.backend.album.Level;
 import com.jazzlogs.backend.album.VocalProfile;
 import com.jazzlogs.backend.artist.dto.ArtistTagsDto;
 import com.jazzlogs.backend.artist.dto.ArtistHeaderDto;
-import com.jazzlogs.backend.artist.dto.EssentialListeningAlbumDto;
+import com.jazzlogs.backend.artist.dto.AlbumSummaryDto;
+import com.jazzlogs.backend.artist.dto.SimilarArtistDto;
 import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.editorial.dto.AlbumEditorialRequest;
 import com.jazzlogs.backend.editorial.dto.ArtistEditorialRequest;
 import com.jazzlogs.backend.graph.GraphService;
+import com.jazzlogs.backend.graph.SimilarArtistEntry;
 import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.like.LikeService;
 import com.jazzlogs.backend.like.LikeableEntityType;
@@ -41,8 +44,9 @@ import com.jazzlogs.backend.user.UserRepository;
 // GraphService is mocked here (not the real Neo4jClient-backed bean) — same
 // reasoning as AlbumServiceTest: getArtistHeader doesn't call it at all, but
 // syncArtistNode (called by other ArtistService methods this test doesn't
-// exercise) does. getEssentialListening does call it (getEntryPointAlbumIds),
-// which is exactly what's stubbed per test below.
+// exercise) does. getEssentialListening/getSidemanAlbums/getSimilarArtists
+// do call it (getEntryPointAlbumIds/getSidemanAlbumIds/getSimilarArtists
+// respectively), which is exactly what's stubbed per test below.
 @SpringBootTest
 @Transactional
 class ArtistServiceTest {
@@ -131,7 +135,7 @@ class ArtistServiceTest {
         Artist artist = persistArtist("No Entry Points Artist");
         when(graphService.getEntryPointAlbumIds(artist.getId())).thenReturn(List.of());
 
-        Page<EssentialListeningAlbumDto> page = artistService.getEssentialListening(artist.getId(), PageRequest.of(0, 5));
+        Page<AlbumSummaryDto> page = artistService.getEssentialListening(artist.getId(), PageRequest.of(0, 5));
 
         assertThat(page.getContent()).isEmpty();
         assertThat(page.getTotalElements()).isZero();
@@ -150,9 +154,9 @@ class ArtistServiceTest {
         Album older = persistAlbum(otherArtist, "Older Album", 1965);
         when(graphService.getEntryPointAlbumIds(target.getId())).thenReturn(List.of(newer.getId(), older.getId()));
 
-        Page<EssentialListeningAlbumDto> page = artistService.getEssentialListening(target.getId(), PageRequest.of(0, 5));
+        Page<AlbumSummaryDto> page = artistService.getEssentialListening(target.getId(), PageRequest.of(0, 5));
 
-        assertThat(page.getContent()).extracting(EssentialListeningAlbumDto::name).containsExactly("Older Album", "Newer Album");
+        assertThat(page.getContent()).extracting(AlbumSummaryDto::name).containsExactly("Older Album", "Newer Album");
         assertThat(page.getContent().get(0).artistId()).isEqualTo(otherArtist.getId());
         assertThat(page.getContent().get(0).artistName()).isEqualTo("Other Artist");
     }
@@ -171,15 +175,136 @@ class ArtistServiceTest {
         entityManager.flush();
         entityManager.clear();
 
-        Page<EssentialListeningAlbumDto> page = artistService.getEssentialListening(target.getId(), PageRequest.of(0, 5));
+        Page<AlbumSummaryDto> page = artistService.getEssentialListening(target.getId(), PageRequest.of(0, 5));
 
-        EssentialListeningAlbumDto ratedDto = page.getContent().stream().filter(a -> a.id().equals(rated.getId())).findFirst().orElseThrow();
-        EssentialListeningAlbumDto bareDto = page.getContent().stream().filter(a -> a.id().equals(bare.getId())).findFirst().orElseThrow();
+        AlbumSummaryDto ratedDto = page.getContent().stream().filter(a -> a.id().equals(rated.getId())).findFirst().orElseThrow();
+        AlbumSummaryDto bareDto = page.getContent().stream().filter(a -> a.id().equals(bare.getId())).findFirst().orElseThrow();
 
         assertThat(ratedDto.avgRating()).isEqualByComparingTo("4.5");
         assertThat(ratedDto.dek()).isEqualTo("A great dek");
         assertThat(bareDto.avgRating()).isNull();
         assertThat(bareDto.dek()).isNull();
+    }
+
+    @Test
+    void getSidemanAlbums_rejectsUnknownArtist() {
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class,
+            () -> artistService.getSidemanAlbums(UUID.randomUUID(), PageRequest.of(0, 6))
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void getSidemanAlbums_returnsEmptyPage_whenNoSidemanAlbums() {
+        Artist artist = persistArtist("No Sideman Albums Artist");
+        when(graphService.getSidemanAlbumIds(artist.getId())).thenReturn(List.of());
+
+        Page<AlbumSummaryDto> page = artistService.getSidemanAlbums(artist.getId(), PageRequest.of(0, 6));
+
+        assertThat(page.getContent()).isEmpty();
+        assertThat(page.getTotalElements()).isZero();
+    }
+
+    @Test
+    void getSidemanAlbums_ordersByReleaseYearAscending_andIncludesTheAlbumsOwnArtist() {
+        Artist sideman = persistArtist("Sideman Artist");
+        Artist leader = persistArtist("Leader Artist");
+        Album newer = persistAlbum(leader, "Newer Album", 2020);
+        Album older = persistAlbum(leader, "Older Album", 1965);
+        when(graphService.getSidemanAlbumIds(sideman.getId())).thenReturn(List.of(newer.getId(), older.getId()));
+
+        Page<AlbumSummaryDto> page = artistService.getSidemanAlbums(sideman.getId(), PageRequest.of(0, 6));
+
+        assertThat(page.getContent()).extracting(AlbumSummaryDto::name).containsExactly("Older Album", "Newer Album");
+        assertThat(page.getContent().get(0).artistId()).isEqualTo(leader.getId());
+        assertThat(page.getContent().get(0).artistName()).isEqualTo("Leader Artist");
+    }
+
+    @Test
+    void getSidemanAlbums_includesRatingAndDek_nullWhenNeitherExists() {
+        Artist sideman = persistArtist("Rated Test Sideman");
+        Artist leader = persistArtist("Rated Test Leader");
+        Album rated = persistAlbum(leader, "Rated Album", 2000);
+        Album bare = persistAlbum(leader, "Bare Album", 2001);
+        when(graphService.getSidemanAlbumIds(sideman.getId())).thenReturn(List.of(rated.getId(), bare.getId()));
+
+        User reviewer = userRepository.save(new User(UUID.randomUUID(), "sideman-albums-" + UUID.randomUUID() + "@example.com"));
+        reviewService.createReview(reviewer.getId(), rated.getId(), new BigDecimal("4.5"), null, List.of());
+        editorialService.upsertAlbumEditorial(rated.getId(), new AlbumEditorialRequest("Title", "A great dek", null, List.of()));
+        entityManager.flush();
+        entityManager.clear();
+
+        Page<AlbumSummaryDto> page = artistService.getSidemanAlbums(sideman.getId(), PageRequest.of(0, 6));
+
+        AlbumSummaryDto ratedDto = page.getContent().stream().filter(a -> a.id().equals(rated.getId())).findFirst().orElseThrow();
+        AlbumSummaryDto bareDto = page.getContent().stream().filter(a -> a.id().equals(bare.getId())).findFirst().orElseThrow();
+
+        assertThat(ratedDto.avgRating()).isEqualByComparingTo("4.5");
+        assertThat(ratedDto.dek()).isEqualTo("A great dek");
+        assertThat(bareDto.avgRating()).isNull();
+        assertThat(bareDto.dek()).isNull();
+    }
+
+    @Test
+    void getSimilarArtists_rejectsUnknownArtist() {
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class,
+            () -> artistService.getSimilarArtists(UUID.randomUUID(), PageRequest.of(0, 6))
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void getSimilarArtists_returnsEmptyPage_whenNoSimilarArtists() {
+        Artist artist = persistArtist("No Similar Artists Artist");
+        when(graphService.getSimilarArtists(artist.getId())).thenReturn(List.of());
+
+        Page<SimilarArtistDto> page = artistService.getSimilarArtists(artist.getId(), PageRequest.of(0, 6));
+
+        assertThat(page.getContent()).isEmpty();
+        assertThat(page.getTotalElements()).isZero();
+    }
+
+    @Test
+    void getSimilarArtists_ordersByNameAscending_andIncludesTheCuratedReason() {
+        Artist target = persistArtist("Target Artist");
+        Artist zArtist = persistArtist("Zeta Artist");
+        Artist aArtist = persistArtist("Alpha Artist");
+        when(graphService.getSimilarArtists(target.getId())).thenReturn(List.of(
+            new SimilarArtistEntry(zArtist.getId(), zArtist.getName(), "Same rhythm section"),
+            new SimilarArtistEntry(aArtist.getId(), aArtist.getName(), "Same label, same era")
+        ));
+
+        Page<SimilarArtistDto> page = artistService.getSimilarArtists(target.getId(), PageRequest.of(0, 6));
+
+        assertThat(page.getContent()).extracting(SimilarArtistDto::name).containsExactly("Alpha Artist", "Zeta Artist");
+        assertThat(page.getContent().get(0).reason()).isEqualTo("Same label, same era");
+        assertThat(page.getContent().get(1).reason()).isEqualTo("Same rhythm section");
+    }
+
+    @Test
+    void removeSimilarArtist_removesUnidirectionalByDefault() {
+        Artist artist = persistArtist("Remove Similar Test Artist");
+        Artist similar = persistArtist("Remove Similar Test Similar Artist");
+
+        artistService.removeSimilarArtist(artist.getId(), similar.getId(), false);
+
+        verify(graphService).removeSimilarArtist(artist.getId(), similar.getId(), false);
+    }
+
+    @Test
+    void removeSimilarArtist_rejectsUnknownArtist() {
+        Artist similar = persistArtist("Known Similar Test Artist");
+
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class,
+            () -> artistService.removeSimilarArtist(UUID.randomUUID(), similar.getId(), false)
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     @Test

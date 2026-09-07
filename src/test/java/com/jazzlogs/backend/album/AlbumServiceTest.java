@@ -210,6 +210,39 @@ class AlbumServiceTest {
     }
 
     @Test
+    void removePersonnel_removesLeaderEdge() {
+        Artist artist = artistRepository.save(new Artist("Remove Leader Test Artist", null, null, null));
+        Album album = persistAlbum(artist, "Remove Leader Test Album", 2018);
+
+        albumService.removePersonnel(album.getId(), artist.getId(), PersonnelRole.LEADER);
+
+        verify(graphService).removeAlbumLeader(artist.getId(), album.getId());
+    }
+
+    @Test
+    void removePersonnel_removesSidemanEdge() {
+        Artist owner = artistRepository.save(new Artist("Sideman Owner Test Artist", null, null, null));
+        Artist sideman = artistRepository.save(new Artist("Remove Sideman Test Artist", null, null, null));
+        Album album = persistAlbum(owner, "Remove Sideman Test Album", 2018);
+
+        albumService.removePersonnel(album.getId(), sideman.getId(), PersonnelRole.SIDEMAN);
+
+        verify(graphService).removeSideman(sideman.getId(), album.getId());
+    }
+
+    @Test
+    void removePersonnel_rejectsUnknownAlbum() {
+        Artist artist = artistRepository.save(new Artist("Unknown Album Test Artist", null, null, null));
+
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class,
+            () -> albumService.removePersonnel(UUID.randomUUID(), artist.getId(), PersonnelRole.SIDEMAN)
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
     void getAlbumTracks_rejectsUnknownAlbum() {
         ResponseStatusException ex = catchThrowableOfType(
             ResponseStatusException.class, () -> albumService.getAlbumTracks(UUID.randomUUID(), UUID.randomUUID())

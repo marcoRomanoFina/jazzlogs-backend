@@ -6,6 +6,8 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -20,6 +22,15 @@ public interface ArtistRepository extends JpaRepository<Artist, UUID>, SavedItem
      * spotifyArtistId already existing means "update it", not "create a duplicate".
      */
     Optional<Artist> findBySpotifyArtistId(String spotifyArtistId);
+
+    /**
+     * Paginates a Neo4j-sourced candidate id set (similar artists) here in
+     * Postgres — same "unpaged Neo4j read + real Postgres Page" split as
+     * {@code AlbumRepository.findByIdInOrderByReleaseYearAsc}. Ordered by
+     * name ASC: artists have no natural chronological ordering like an
+     * album's releaseYear.
+     */
+    Page<Artist> findByIdInOrderByNameAsc(List<UUID> ids, Pageable pageable);
 
     @Override
     default Optional<Resolved> resolve(UUID entityId) {

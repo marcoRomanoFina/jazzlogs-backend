@@ -11,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -25,7 +26,8 @@ import com.jazzlogs.backend.album.dto.StyleTagRequest;
 import com.jazzlogs.backend.artist.dto.ArtistTagsDto;
 import com.jazzlogs.backend.artist.dto.ArtistHeaderDto;
 import com.jazzlogs.backend.artist.dto.CreateArtistRequest;
-import com.jazzlogs.backend.artist.dto.EssentialListeningAlbumDto;
+import com.jazzlogs.backend.artist.dto.AlbumSummaryDto;
+import com.jazzlogs.backend.artist.dto.SimilarArtistDto;
 import com.jazzlogs.backend.artist.dto.SimilarArtistRequest;
 import com.jazzlogs.backend.editorial.ArtistEditorial;
 import com.jazzlogs.backend.editorial.EditorialService;
@@ -43,6 +45,12 @@ public class ArtistController {
 
     /** Fixed server-side, not a client-controlled ?size — see {@link #getEssentialListening}. */
     private static final int ESSENTIAL_LISTENING_PAGE_SIZE = 5;
+
+    /** Fixed server-side, not a client-controlled ?size — see {@link #getSidemanAlbums}. */
+    private static final int SIDEMAN_ALBUMS_PAGE_SIZE = 6;
+
+    /** Fixed server-side, not a client-controlled ?size — see {@link #getSimilarArtists}. */
+    private static final int SIMILAR_ARTISTS_PAGE_SIZE = 6;
 
     private final ArtistService artistService;
     private final EditorialService editorialService;
@@ -113,14 +121,66 @@ public class ArtistController {
      * @return the matching page
      */
     @GetMapping("/{id}/essential-listening")
-    public Page<EssentialListeningAlbumDto> getEssentialListening(@PathVariable UUID id, @RequestParam(defaultValue = "0") int page) {
+    public Page<AlbumSummaryDto> getEssentialListening(@PathVariable UUID id, @RequestParam(defaultValue = "0") int page) {
         return artistService.getEssentialListening(id, PageRequest.of(page, ESSENTIAL_LISTENING_PAGE_SIZE));
     }
 
+    /**
+     * Albums where this artist appears as a sideman, paginated — see
+     * {@link ArtistService#getSidemanAlbums}.
+     *
+     * @param id   the artist
+     * @param page 0-based; page size is fixed at {@link #SIDEMAN_ALBUMS_PAGE_SIZE}, not client-controlled
+     * @return the matching page
+     */
+    @GetMapping("/{id}/sideman-albums")
+    public Page<AlbumSummaryDto> getSidemanAlbums(@PathVariable UUID id, @RequestParam(defaultValue = "0") int page) {
+        return artistService.getSidemanAlbums(id, PageRequest.of(page, SIDEMAN_ALBUMS_PAGE_SIZE));
+    }
+
+    /**
+     * The artist's "similar artists" list, paginated — see
+     * {@link ArtistService#getSimilarArtists}.
+     *
+     * @param id   the artist
+     * @param page 0-based; page size is fixed at {@link #SIMILAR_ARTISTS_PAGE_SIZE}, not client-controlled
+     * @return the matching page
+     */
+    @GetMapping("/{id}/similar")
+    public Page<SimilarArtistDto> getSimilarArtists(@PathVariable UUID id, @RequestParam(defaultValue = "0") int page) {
+        return artistService.getSimilarArtists(id, PageRequest.of(page, SIMILAR_ARTISTS_PAGE_SIZE));
+    }
+
+    /**
+     * Curates this artist as similar to another — see {@link
+     * ArtistService#addSimilarArtist}.
+     *
+     * @param id      the artist
+     * @param request the similar artist, an optional curated reason, and whether to also create the reverse edge
+     */
     @PostMapping("/{id}/similar")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> addSimilarArtist(@PathVariable UUID id, @RequestBody SimilarArtistRequest request) {
         artistService.addSimilarArtist(id, request);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Removes the {@code SIMILAR_TO} edge from this artist to another — see
+     * {@link ArtistService#removeSimilarArtist}.
+     *
+     * @param id              the artist
+     * @param similarArtistId the similar artist
+     * @param bidirectional   whether to also remove the reverse edge, if one exists
+     */
+    @DeleteMapping("/{id}/similar/{similarArtistId}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> removeSimilarArtist(
+        @PathVariable UUID id,
+        @PathVariable UUID similarArtistId,
+        @RequestParam(defaultValue = "false") boolean bidirectional
+    ) {
+        artistService.removeSimilarArtist(id, similarArtistId, bidirectional);
         return ResponseEntity.noContent().build();
     }
 
