@@ -84,7 +84,14 @@ public class SavedItemService {
         }
     }
 
-    /** Idempotent — does nothing if the saved item didn't exist. */
+    /**
+     * Unsaves an entity on the caller's behalf. Idempotent — does nothing if
+     * the saved item didn't exist.
+     *
+     * @param userId     who is unsaving it
+     * @param entityType which kind of entity
+     * @param entityId   that entity's own id
+     */
     @Transactional
     public void remove(UUID userId, SaveableEntityType entityType, UUID entityId) {
         savedItemRepository.deleteByUserIdAndEntityTypeAndEntityId(userId, entityType, entityId);

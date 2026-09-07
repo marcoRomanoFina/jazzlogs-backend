@@ -51,6 +51,13 @@ public class SavedItemController {
         return ResponseEntity.status(created ? HttpStatus.CREATED : HttpStatus.OK).build();
     }
 
+    /**
+     * Unsaves an entity on the caller's behalf — see {@link SavedItemService#remove}.
+     *
+     * @param entityType which kind of entity
+     * @param entityId   that entity's own id
+     * @param jwt        the caller
+     */
     @DeleteMapping
     public ResponseEntity<Void> remove(
         @RequestParam SaveableEntityType entityType,
