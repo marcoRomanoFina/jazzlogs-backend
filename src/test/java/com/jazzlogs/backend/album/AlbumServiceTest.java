@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.album.dto.AlbumHeaderDto;
+import com.jazzlogs.backend.album.dto.CoverColorRequest;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
 import com.jazzlogs.backend.graph.AlbumHeaderGraphData;
@@ -155,6 +156,33 @@ class AlbumServiceTest {
 
         assertThat(tracks).extracting(TrackDto::name).containsExactly("Track B", "Track A");
         assertThat(tracks).extracting(TrackDto::trackNumber).containsExactly(1, 2);
+    }
+
+    @Test
+    void setCoverColor_setsItAndSurfacesItOnTheHeader() {
+        Artist artist = artistRepository.save(new Artist("Cover Color Test Artist", null, null, null));
+        Album album = persistAlbum(artist, "Cover Color Test Album", 2022);
+        when(graphService.getAlbumHeaderGraphData(album.getId()))
+            .thenReturn(new AlbumHeaderGraphData(List.of(), List.of(), List.of(), List.of()));
+
+        albumService.setCoverColor(album.getId(), new CoverColorRequest("#a86b32"));
+
+        AlbumHeaderDto dto = albumService.getAlbumHeader(album.getId(), UUID.randomUUID());
+        assertThat(dto.coverColor()).isEqualTo("#a86b32");
+    }
+
+    @Test
+    void clearCoverColor_resetsItToNull() {
+        Artist artist = artistRepository.save(new Artist("Clear Cover Color Test Artist", null, null, null));
+        Album album = persistAlbum(artist, "Clear Cover Color Test Album", 2022);
+        when(graphService.getAlbumHeaderGraphData(album.getId()))
+            .thenReturn(new AlbumHeaderGraphData(List.of(), List.of(), List.of(), List.of()));
+        albumService.setCoverColor(album.getId(), new CoverColorRequest("#a86b32"));
+
+        albumService.clearCoverColor(album.getId());
+
+        AlbumHeaderDto dto = albumService.getAlbumHeader(album.getId(), UUID.randomUUID());
+        assertThat(dto.coverColor()).isNull();
     }
 
     @Test

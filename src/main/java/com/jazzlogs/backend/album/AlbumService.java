@@ -16,6 +16,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.album.dto.AlbumHeaderDto;
 import com.jazzlogs.backend.album.dto.ContextTagRequest;
+import com.jazzlogs.backend.album.dto.CoverColorRequest;
 import com.jazzlogs.backend.album.dto.CreateAlbumRequest;
 import com.jazzlogs.backend.album.dto.MoodTagRequest;
 import com.jazzlogs.backend.album.dto.PersonnelRequest;
@@ -159,6 +160,28 @@ public class AlbumService {
     }
 
     /**
+     * Sets an album's curated cover color.
+     *
+     * @param albumId the album
+     * @param request the color to set
+     */
+    @Transactional
+    public void setCoverColor(UUID albumId, CoverColorRequest request) {
+        getAlbumOrThrow(albumId).setCoverColor(request.coverColor());
+    }
+
+    /**
+     * Clears an album's curated cover color, back to {@code null} — the
+     * frontend falls back to its own automatic sampling.
+     *
+     * @param albumId the album
+     */
+    @Transactional
+    public void clearCoverColor(UUID albumId) {
+        getAlbumOrThrow(albumId).setCoverColor(null);
+    }
+
+    /**
      * The album page's fast, above-the-fold load — everything about the
      * album except its track list (see {@link #getAlbumTracks}, fetched
      * separately since it's the expensive part).
@@ -203,6 +226,7 @@ public class AlbumService {
             album.getAccessibility(),
             album.getPostedAt(),
             album.getInstagramPermalink(),
+            album.getCoverColor(),
             editorialDto,
             graphData.styles(),
             graphData.moods(),

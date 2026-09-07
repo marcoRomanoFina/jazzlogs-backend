@@ -101,6 +101,13 @@ public class Album {
     @Setter
     private String instagramPermalink;
 
+    // Admin-curated, hex ("#a86b32"), null until explicitly set — see the
+    // migration's comment. Set/cleared via their own endpoints
+    // (PUT/DELETE /albums/{id}/cover-color), not the main upsert.
+    @Setter
+    @Column(name = "cover_color", length = 7)
+    private String coverColor;
+
     // Ordered by createdAt only as a stable fallback — the real, editorial track
     // order (trackNumber) lives on the CONTAINS relationship in Neo4j, not here.
     @OneToMany(mappedBy = "album", cascade = CascadeType.ALL, orphanRemoval = true)

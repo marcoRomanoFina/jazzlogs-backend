@@ -34,6 +34,9 @@ import com.jazzlogs.backend.graph.AlbumPersonnelEntry;
  * @param accessibility      tag: how approachable/accessible the album is
  * @param postedAt           when this album was first added to JazzLogs
  * @param instagramPermalink optional link to an Instagram post about this album
+ * @param coverColor         admin-curated accent color, hex (e.g. {@code #a86b32}),
+ *                           {@code null} until explicitly set — the frontend falls
+ *                           back to its own automatic sampling in that case
  * @param editorial          the album's own editorial, {@code null} if none written yet
  * @param styles             style tag labels, from Neo4j
  * @param moods              mood tag labels, from Neo4j
@@ -65,6 +68,7 @@ public record AlbumHeaderDto(
     Level accessibility,
     Instant postedAt,
     String instagramPermalink,
+    String coverColor,
     AlbumEditorialDto editorial,
     List<String> styles,
     List<String> moods,
