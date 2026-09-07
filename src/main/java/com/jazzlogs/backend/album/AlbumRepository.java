@@ -6,6 +6,8 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -45,6 +47,22 @@ public interface AlbumRepository extends JpaRepository<Album, UUID>, SavedItemRe
      */
     @Query("SELECT a FROM Album a JOIN FETCH a.artist WHERE a.id IN :ids")
     List<Album> findAllByIdWithArtist(@Param("ids") List<UUID> ids);
+
+    /**
+     * Same {@code JOIN FETCH a.artist} as {@link #findAllByIdWithArtist},
+     * paginated — for {@code ArtistService.getEssentialListening}, whose
+     * candidate album ids come from a single unpaged Neo4j read
+     * ({@code GraphService.getEntryPointAlbumIds}) and get their real
+     * pagination (and {@code Page}'s total count) done here instead.
+     * {@code artist} is a to-one association, not a collection — combining
+     * a fetch join with {@code Pageable} is safe here, unlike fetch-joining
+     * a collection (see {@code ReviewRepository}'s comment on that).
+     */
+    @Query(
+        value = "SELECT a FROM Album a JOIN FETCH a.artist WHERE a.id IN :ids ORDER BY a.releaseYear ASC",
+        countQuery = "SELECT count(a) FROM Album a WHERE a.id IN :ids"
+    )
+    Page<Album> findByIdInOrderByReleaseYearAsc(@Param("ids") List<UUID> ids, Pageable pageable);
 
     /**
      * Same matchType/ordering shape as {@code ArtistRepository.search} — see

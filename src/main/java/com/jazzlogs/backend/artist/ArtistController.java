@@ -4,6 +4,8 @@ import java.util.UUID;
 
 import jakarta.validation.Valid;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -15,12 +17,14 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.jazzlogs.backend.album.dto.ContextTagRequest;
 import com.jazzlogs.backend.album.dto.StyleTagRequest;
 import com.jazzlogs.backend.artist.dto.ArtistHeaderDto;
 import com.jazzlogs.backend.artist.dto.CreateArtistRequest;
+import com.jazzlogs.backend.artist.dto.EssentialListeningAlbumDto;
 import com.jazzlogs.backend.artist.dto.SimilarArtistRequest;
 import com.jazzlogs.backend.editorial.ArtistEditorial;
 import com.jazzlogs.backend.editorial.EditorialService;
@@ -35,6 +39,9 @@ import lombok.AllArgsConstructor;
 @RequestMapping("/artists")
 @AllArgsConstructor
 public class ArtistController {
+
+    /** Fixed server-side, not a client-controlled ?size — see {@link #getEssentialListening}. */
+    private static final int ESSENTIAL_LISTENING_PAGE_SIZE = 5;
 
     private final ArtistService artistService;
     private final EditorialService editorialService;
@@ -83,6 +90,19 @@ public class ArtistController {
     public ResponseEntity<Void> replaceContexts(@PathVariable UUID id, @RequestBody ContextTagRequest request) {
         artistService.replaceContexts(id, request);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * The artist page's "Essential Listening" section, paginated — see
+     * {@link ArtistService#getEssentialListening}.
+     *
+     * @param id   the artist
+     * @param page 0-based; page size is fixed at {@link #ESSENTIAL_LISTENING_PAGE_SIZE}, not client-controlled
+     * @return the matching page
+     */
+    @GetMapping("/{id}/essential-listening")
+    public Page<EssentialListeningAlbumDto> getEssentialListening(@PathVariable UUID id, @RequestParam(defaultValue = "0") int page) {
+        return artistService.getEssentialListening(id, PageRequest.of(page, ESSENTIAL_LISTENING_PAGE_SIZE));
     }
 
     @PostMapping("/{id}/similar")

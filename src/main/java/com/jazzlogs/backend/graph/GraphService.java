@@ -132,6 +132,30 @@ public class GraphService {
     }
 
     /**
+     * Every album curated as a good entry point into an artist — unpaged,
+     * on purpose: this is a small, curated set (an admin picks each one via
+     * {@link #markAsEntryPoint}), not something that grows unbounded like a
+     * track/note feed. The caller (ArtistService.getEssentialListening)
+     * paginates over these ids in Postgres instead of paging this query.
+     *
+     * @param artistId the artist
+     * @return every entry-point album's id, unordered
+     */
+    public List<UUID> getEntryPointAlbumIds(UUID artistId) {
+        return read("read ENTRY_POINT_TO album ids for artist=" + artistId, () ->
+            neo4jClient.query("""
+                    MATCH (al:Album)-[:ENTRY_POINT_TO]->(ar:Artist {id: $artistId})
+                    RETURN al.id AS albumId
+                    """)
+                .bind(artistId.toString()).to("artistId")
+                .fetch()
+                .all()
+                .stream()
+                .map(row -> UUID.fromString((String) row.get("albumId")))
+                .toList());
+    }
+
+    /**
      * MATCH-then-MERGE, not create-if-missing: if the :User or :Album node isn't
      * there (e.g. it was created while Neo4j was down), this silently touches
      * nothing — same as every other relationship write here. Callers that want
