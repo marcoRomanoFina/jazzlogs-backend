@@ -1,5 +1,6 @@
 package com.jazzlogs.backend.track;
 
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
@@ -50,13 +51,19 @@ public class TrackService {
     // below) instead of creating a duplicate. The track's album is never
     // reassigned on update — see AlbumService.applyToExisting for the same
     // reasoning on albums/artists — so the Neo4j CONTAINS edge uses the
-    // track's actual album, not necessarily the one in the URL.
+    // track's actual album, not necessarily the one in the URL. A brand-new
+    // track's position (CONTAINS.trackNumber) and the album's totalTracks
+    // are both assigned by upload order here, not Spotify's own
+    // track_number/total_tracks — those count bonus/alternate takes we
+    // often deliberately skip cataloguing, which would leave gaps
+    // otherwise. An update to an existing track never touches either.
     @Transactional
     public Track createOrUpdateTrack(UUID albumId, CreateTrackRequest request) {
         Album album = getAlbumOrThrow(albumId);
         SpotifyTrackData data = spotifyCatalogService.fetchTrack(request.spotifyTrackId());
 
-        Track track = trackRepository.findBySpotifyTrackId(request.spotifyTrackId())
+        Optional<Track> existingTrack = trackRepository.findBySpotifyTrackId(request.spotifyTrackId());
+        Track track = existingTrack
             .map(existing -> applyToExisting(existing, data, request))
             .orElseGet(() -> new Track(
                 album,
@@ -76,7 +83,12 @@ public class TrackService {
         Track saved = trackRepository.save(track);
 
         graphService.syncTrackNode(saved.getId(), saved.getName());
-        graphService.addTrackToAlbum(saved.getAlbum().getId(), saved.getId(), data.trackNumber());
+
+        if (existingTrack.isEmpty()) {
+            int trackNumber = graphService.getTrackPlacements(album.getId()).size() + 1;
+            graphService.addTrackToAlbum(album.getId(), saved.getId(), trackNumber);
+            album.setTotalTracks(trackNumber);
+        }
 
         return saved;
     }

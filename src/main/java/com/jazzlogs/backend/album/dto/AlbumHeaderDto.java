@@ -25,7 +25,9 @@ import com.jazzlogs.backend.graph.AlbumPersonnelEntry;
  * @param spotifyUrl         link to play it on Spotify
  * @param imageUrl           cover art
  * @param releaseYear        year of original release
- * @param totalTracks        Spotify's own track count for this album
+ * @param totalTracks        how many tracks are catalogued so far, by upload
+ *                           order — not Spotify's own track count, which
+ *                           can include bonus/alternate takes we skip
  * @param logNumber          JazzLogs' own catalog/release identifier
  * @param label              the record label
  * @param vocalProfile       instrumental/vocal classification

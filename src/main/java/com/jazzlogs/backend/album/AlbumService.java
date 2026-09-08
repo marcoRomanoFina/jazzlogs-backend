@@ -71,6 +71,9 @@ public class AlbumService {
     // catalog updates it in place (fresh Spotify data + the editable fields
     // below) instead of creating a duplicate. postedAt is only stamped on the
     // create path — an update never resets when the album was first posted.
+    // totalTracks isn't Spotify's own count — it's ours, driven by how many
+    // tracks actually get catalogued (see TrackService#createOrUpdateTrack) —
+    // so a brand-new album starts at 0, not data.totalTracks().
     @Transactional
     public Album createOrUpdateAlbum(CreateAlbumRequest request) {
         Artist artist = getArtistOrThrow(request.artistId());
@@ -85,7 +88,7 @@ public class AlbumService {
                 data.spotifyUrl(),
                 data.imageUrl(),
                 data.releaseYear(),
-                data.totalTracks(),
+                0,
                 request.logNumber(),
                 request.label(),
                 request.vocalProfile(),
@@ -110,7 +113,8 @@ public class AlbumService {
         album.setSpotifyUrl(data.spotifyUrl());
         album.setImageUrl(data.imageUrl());
         album.setReleaseYear(data.releaseYear());
-        album.setTotalTracks(data.totalTracks());
+        // totalTracks is never refreshed from Spotify here — it's ours, bumped
+        // as tracks actually get catalogued, not Spotify's own track count.
         album.setLogNumber(request.logNumber());
         album.setLabel(request.label());
         album.setVocalProfile(request.vocalProfile());
