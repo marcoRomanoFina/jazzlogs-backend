@@ -39,6 +39,8 @@ import com.jazzlogs.backend.graph.AlbumPersonnelEntry;
  * @param coverColor         admin-curated accent color, hex (e.g. {@code #a86b32}),
  *                           {@code null} until explicitly set — the frontend falls
  *                           back to its own automatic sampling in that case
+ * @param letterColor        admin-curated text color, hex, {@code null} until explicitly
+ *                           set — the frontend falls back to its own default in that case
  * @param editorial          the album's own editorial, {@code null} if none written yet
  * @param styles             style tag labels, from Neo4j
  * @param moods              mood tag labels, from Neo4j
@@ -71,6 +73,7 @@ public record AlbumHeaderDto(
     Instant postedAt,
     String instagramPermalink,
     String coverColor,
+    String letterColor,
     AlbumEditorialDto editorial,
     List<String> styles,
     List<String> moods,

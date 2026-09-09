@@ -20,6 +20,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.album.dto.AlbumHeaderDto;
 import com.jazzlogs.backend.album.dto.CoverColorRequest;
+import com.jazzlogs.backend.album.dto.LetterColorRequest;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
 import com.jazzlogs.backend.graph.AlbumHeaderGraphData;
@@ -184,6 +185,33 @@ class AlbumServiceTest {
 
         AlbumHeaderDto dto = albumService.getAlbumHeader(album.getId(), UUID.randomUUID());
         assertThat(dto.coverColor()).isNull();
+    }
+
+    @Test
+    void setLetterColor_setsItAndSurfacesItOnTheHeader() {
+        Artist artist = artistRepository.save(new Artist("Letter Color Test Artist", null, null, null));
+        Album album = persistAlbum(artist, "Letter Color Test Album", 2022);
+        when(graphService.getAlbumHeaderGraphData(album.getId()))
+            .thenReturn(new AlbumHeaderGraphData(List.of(), List.of(), List.of(), List.of()));
+
+        albumService.setLetterColor(album.getId(), new LetterColorRequest("#a86b32"));
+
+        AlbumHeaderDto dto = albumService.getAlbumHeader(album.getId(), UUID.randomUUID());
+        assertThat(dto.letterColor()).isEqualTo("#a86b32");
+    }
+
+    @Test
+    void clearLetterColor_resetsItToNull() {
+        Artist artist = artistRepository.save(new Artist("Clear Letter Color Test Artist", null, null, null));
+        Album album = persistAlbum(artist, "Clear Letter Color Test Album", 2022);
+        when(graphService.getAlbumHeaderGraphData(album.getId()))
+            .thenReturn(new AlbumHeaderGraphData(List.of(), List.of(), List.of(), List.of()));
+        albumService.setLetterColor(album.getId(), new LetterColorRequest("#a86b32"));
+
+        albumService.clearLetterColor(album.getId());
+
+        AlbumHeaderDto dto = albumService.getAlbumHeader(album.getId(), UUID.randomUUID());
+        assertThat(dto.letterColor()).isNull();
     }
 
     @Test

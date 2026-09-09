@@ -18,6 +18,7 @@ import com.jazzlogs.backend.album.dto.AlbumHeaderDto;
 import com.jazzlogs.backend.album.dto.ContextTagRequest;
 import com.jazzlogs.backend.album.dto.CoverColorRequest;
 import com.jazzlogs.backend.album.dto.CreateAlbumRequest;
+import com.jazzlogs.backend.album.dto.LetterColorRequest;
 import com.jazzlogs.backend.album.dto.MoodTagRequest;
 import com.jazzlogs.backend.album.dto.PersonnelRequest;
 import com.jazzlogs.backend.album.dto.StyleTagRequest;
@@ -242,6 +243,28 @@ public class AlbumService {
     }
 
     /**
+     * Sets an album's curated letter (text) color.
+     *
+     * @param albumId the album
+     * @param request the color to set
+     */
+    @Transactional
+    public void setLetterColor(UUID albumId, LetterColorRequest request) {
+        getAlbumOrThrow(albumId).setLetterColor(request.letterColor());
+    }
+
+    /**
+     * Clears an album's curated letter color, back to {@code null} — the
+     * frontend falls back to its own default.
+     *
+     * @param albumId the album
+     */
+    @Transactional
+    public void clearLetterColor(UUID albumId) {
+        getAlbumOrThrow(albumId).setLetterColor(null);
+    }
+
+    /**
      * The album page's fast, above-the-fold load — everything about the
      * album except its track list (see {@link #getAlbumTracks}, fetched
      * separately since it's the expensive part).
@@ -287,6 +310,7 @@ public class AlbumService {
             album.getPostedAt(),
             album.getInstagramPermalink(),
             album.getCoverColor(),
+            album.getLetterColor(),
             editorialDto,
             graphData.styles(),
             graphData.moods(),
