@@ -108,6 +108,12 @@ public class Album {
     @Column(name = "cover_color", length = 7)
     private String coverColor;
 
+    // Same reasoning as coverColor, just for the page's text — its own
+    // endpoints (PUT/DELETE /albums/{id}/letter-color), not the main upsert.
+    @Setter
+    @Column(name = "letter_color", length = 7)
+    private String letterColor;
+
     // Ordered by createdAt only as a stable fallback — the real, editorial track
     // order (trackNumber) lives on the CONTAINS relationship in Neo4j, not here.
     @OneToMany(mappedBy = "album", cascade = CascadeType.ALL, orphanRemoval = true)

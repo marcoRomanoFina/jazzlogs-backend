@@ -26,6 +26,7 @@ import com.jazzlogs.backend.album.dto.AlbumHeaderDto;
 import com.jazzlogs.backend.album.dto.ContextTagRequest;
 import com.jazzlogs.backend.album.dto.CoverColorRequest;
 import com.jazzlogs.backend.album.dto.CreateAlbumRequest;
+import com.jazzlogs.backend.album.dto.LetterColorRequest;
 import com.jazzlogs.backend.album.dto.MoodTagRequest;
 import com.jazzlogs.backend.album.dto.PersonnelRequest;
 import com.jazzlogs.backend.album.dto.StyleTagRequest;
@@ -201,6 +202,31 @@ public class AlbumController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> clearCoverColor(@PathVariable UUID id) {
         albumService.clearCoverColor(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Sets the album's curated letter (text) color — see {@link AlbumService#setLetterColor}.
+     *
+     * @param id      the album
+     * @param request the color to set
+     */
+    @PutMapping("/{id}/letter-color")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> setLetterColor(@PathVariable UUID id, @Valid @RequestBody LetterColorRequest request) {
+        albumService.setLetterColor(id, request);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Clears the album's curated letter color — see {@link AlbumService#clearLetterColor}.
+     *
+     * @param id the album
+     */
+    @DeleteMapping("/{id}/letter-color")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> clearLetterColor(@PathVariable UUID id) {
+        albumService.clearLetterColor(id);
         return ResponseEntity.noContent().build();
     }
 
