@@ -18,7 +18,7 @@ import java.util.UUID;
  * @param imageUrl    cover art
  * @param releaseYear year of original release
  * @param label       the record label
- * @param totalTracks how many tracks the album has
+ * @param totalTracks how many tracks are catalogued so far, by upload order — not Spotify's own count (see {@code TrackService#createOrUpdateTrack})
  * @param logNumber   the catalog/log number
  * @param avgRating   JazzLogs' own average review rating, {@code null} if unrated
  * @param dek         the album's own editorial's short standfirst text, {@code null} if no editorial written yet
