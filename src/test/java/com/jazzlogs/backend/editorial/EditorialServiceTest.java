@@ -295,6 +295,7 @@ class EditorialServiceTest {
         // the single most recent row here, never flaky.
         LastLogDto dto = editorialService.getLastLog(UUID.randomUUID()).orElseThrow();
 
+        assertThat(dto.albumId()).isEqualTo(album.getId());
         assertThat(dto.title()).isEqualTo("Last Log Editorial");
         assertThat(dto.artistName()).isEqualTo("Last Log Artist");
         assertThat(dto.releaseYear()).isEqualTo(2023);

@@ -11,6 +11,9 @@ import java.util.UUID;
  * carries {@code tracks}, which "Recently filed" never needs.
  *
  * @param id                 the album editorial's own id
+ * @param albumId            the album's own id — what a client needs to
+ *                           link into GET /albums/{id}, since {@code id}
+ *                           above is the editorial, not the album
  * @param title              the editorial's headline
  * @param artistName         the album's artist
  * @param dek                the editorial's short standfirst text
@@ -24,6 +27,7 @@ import java.util.UUID;
  */
 public record LastLogDto(
     UUID id,
+    UUID albumId,
     String title,
     String artistName,
     String dek,

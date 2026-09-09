@@ -233,7 +233,7 @@ public class EditorialService {
             .toList();
 
         return new LastLogDto(
-            row.id(), row.title(), row.artistName(), row.dek(), row.byline(),
+            row.id(), row.albumId(), row.title(), row.artistName(), row.dek(), row.byline(),
             row.releaseYear(), row.postedAt(), row.imageUrl(), row.likeCount(),
             liked.contains(row.id()), tracks
         );
