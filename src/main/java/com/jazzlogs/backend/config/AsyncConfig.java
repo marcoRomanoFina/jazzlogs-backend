@@ -5,6 +5,8 @@ import java.util.concurrent.Executors;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
+import org.springframework.core.task.SyncTaskExecutor;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
@@ -17,6 +19,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 @EnableAsync
 public class AsyncConfig {
 
+    @Profile("!test")
     @Bean(name = "neo4jSyncExecutor")
     public Executor neo4jSyncExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
@@ -26,6 +29,21 @@ public class AsyncConfig {
         executor.setThreadNamePrefix("neo4j-sync-");
         executor.initialize();
         return executor;
+    }
+
+    // Test-only: runs Neo4jAsyncSyncExecutor.sync's graphWrite on the calling
+    // thread instead of a background pool. That graphWrite is a call into
+    // GraphService, which every test mocks (@MockitoBean) — a real
+    // background thread invoking a Mockito mock while the main test thread
+    // is mid-`when(...)` on some unrelated mock is a genuine race (Mockito's
+    // stubbing bookkeeping isn't safe against that), surfacing as a
+    // nonsensical "cannot stub void method" failure in a completely
+    // different test class. Running synchronously here removes the second
+    // thread entirely, not just makes the race rarer.
+    @Profile("test")
+    @Bean(name = "neo4jSyncExecutor")
+    public Executor neo4jSyncExecutorSync() {
+        return new SyncTaskExecutor();
     }
 
     // The default pool for any @Async method that doesn't name an executor
