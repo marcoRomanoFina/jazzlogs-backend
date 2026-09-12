@@ -14,16 +14,11 @@ import org.springframework.data.repository.query.Param;
 public interface EditorialSummaryRepository extends JpaRepository<EditorialSummary, UUID> {
 
     /**
-     * {@code findFirst}, not {@code find}, defensively: {@code
-     * idx_editorials_only_one_featured} (see V18) enforces at most one row
-     * with {@code featurated = true} at the DB level, so this should never
-     * actually find more than one — {@code findFirst} just means a second
-     * row would be picked over, not an error, if that guarantee were ever
-     * violated.
-     *
-     * @return the featurated editorial, or empty if none is set
+     * For {@code EditorialService.getFeatured} — the featured album's own
+     * editorial (if it has one written yet), keyed the same way every other
+     * owner lookup in this view is.
      */
-    Optional<EditorialSummary> findFirstByFeaturatedTrue();
+    Optional<EditorialSummary> findByOwnerTypeAndOwnerId(EditorialOwnerType ownerType, UUID ownerId);
 
     /**
      * Backs the Catalogue's free-form filter/search — the only caller that

@@ -59,8 +59,6 @@ public class EditorialSummary {
     @Column(name = "like_count")
     private int likeCount;
 
-    private boolean featurated;
-
     /** Artist name for an album, album name for a track — null for an artist editorial (nothing one hop further to show). */
     @Column(name = "context_name")
     private String contextName;

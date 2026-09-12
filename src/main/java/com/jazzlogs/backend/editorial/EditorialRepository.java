@@ -29,26 +29,4 @@ public interface EditorialRepository extends LikeableRepository<Editorial> {
 
     @Query("SELECT e.likeCount FROM Editorial e WHERE e.id = :id")
     Optional<Integer> findLikeCount(@Param("id") UUID entityId);
-
-    /**
-     * The normal-path way to clear the previous featurated row, across
-     * every subtype (Album/Track/ArtistEditorial alike) — {@link
-     * EditorialService#setFeaturated} calls this before {@link
-     * #markFeaturated}, both as atomic UPDATEs rather than
-     * read-modify-save. This alone doesn't guarantee at most one stays
-     * featured under concurrent calls; {@code idx_editorials_only_one_featured}
-     * (see V18) is what actually enforces that.
-     */
-    @Modifying
-    @Query("UPDATE Editorial e SET e.featurated = false WHERE e.featurated = true")
-    void clearFeaturated();
-
-    /**
-     * See {@link #clearFeaturated} — always called right after it, never on its own.
-     *
-     * @param id the editorial to feature; caller is responsible for validating it exists
-     */
-    @Modifying
-    @Query("UPDATE Editorial e SET e.featurated = true WHERE e.id = :id")
-    void markFeaturated(@Param("id") UUID id);
 }

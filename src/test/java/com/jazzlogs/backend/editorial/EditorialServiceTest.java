@@ -29,6 +29,7 @@ import com.jazzlogs.backend.album.VocalProfile;
 import com.jazzlogs.backend.editorial.dto.AlbumEditorialRequest;
 import com.jazzlogs.backend.editorial.dto.ArtistEditorialRequest;
 import com.jazzlogs.backend.editorial.dto.CatalogueEditorialDto;
+import com.jazzlogs.backend.editorial.dto.EditorialSummaryDto;
 import com.jazzlogs.backend.editorial.dto.FeaturedTrackDto;
 import com.jazzlogs.backend.editorial.dto.LastLogDto;
 import com.jazzlogs.backend.editorial.dto.RecentAlbumEditorialDto;
@@ -59,9 +60,6 @@ class EditorialServiceTest {
 
     @Autowired
     private EditorialRepository editorialRepository;
-
-    @Autowired
-    private EditorialSummaryRepository editorialSummaryRepository;
 
     // GraphService is mocked here — trackNumber lives only in Neo4j (see
     // Track's own comment), so getLastLog's tests stub getTrackPlacements
@@ -108,13 +106,13 @@ class EditorialServiceTest {
 
     @Test
     void getFeatured_returnsEmpty_whenNothingIsFeatured() {
-        editorialRepository.clearFeaturated();
+        albumRepository.clearFeatured();
 
         assertThat(editorialService.getFeatured(UUID.randomUUID())).isEmpty();
     }
 
     @Test
-    void setFeaturated_marksExactlyOneEditorial_clearingWhicheverWasFeaturedBefore() {
+    void getFeatured_derivesFromTheFeaturedAlbum_switchingWhenADifferentAlbumIsFeatured() {
         Artist artist = artistRepository.save(new Artist("Featured Test Artist", null, null, null));
         Album albumA = albumRepository.save(new Album(
             artist, "Featured Album A", null, null, null, 2024, 1, "LOG-FEAT-A", "LABEL-FEAT-A",
@@ -124,29 +122,29 @@ class EditorialServiceTest {
             artist, "Featured Album B", null, null, null, 2024, 1, "LOG-FEAT-B", "LABEL-FEAT-B",
             VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
         ));
-        AlbumEditorial editorialA = editorialService.upsertAlbumEditorial(
-            albumA.getId(), new AlbumEditorialRequest("A", "dek", "byline", List.of())
-        );
-        AlbumEditorial editorialB = editorialService.upsertAlbumEditorial(
-            albumB.getId(), new AlbumEditorialRequest("B", "dek", "byline", List.of())
-        );
+        editorialService.upsertAlbumEditorial(albumA.getId(), new AlbumEditorialRequest("A", "dek", "byline", List.of()));
+        editorialService.upsertAlbumEditorial(albumB.getId(), new AlbumEditorialRequest("B", "dek", "byline", List.of()));
 
-        editorialService.setFeaturated(editorialA.getId());
-        assertThat(editorialSummaryRepository.findFirstByFeaturatedTrue().map(EditorialSummary::getId))
-            .contains(editorialA.getId());
+        albumRepository.markFeatured(albumA.getId());
+        assertThat(editorialService.getFeatured(UUID.randomUUID()).map(EditorialSummaryDto::ownerId))
+            .contains(albumA.getId());
 
-        editorialService.setFeaturated(editorialB.getId());
-        assertThat(editorialSummaryRepository.findFirstByFeaturatedTrue().map(EditorialSummary::getId))
-            .contains(editorialB.getId());
+        albumRepository.clearFeatured();
+        albumRepository.markFeatured(albumB.getId());
+        assertThat(editorialService.getFeatured(UUID.randomUUID()).map(EditorialSummaryDto::ownerId))
+            .contains(albumB.getId());
     }
 
     @Test
-    void setFeaturated_rejectsUnknownEditorialId() {
-        ResponseStatusException ex = catchThrowableOfType(
-            ResponseStatusException.class, () -> editorialService.setFeaturated(UUID.randomUUID())
-        );
+    void getFeatured_returnsEmpty_whenTheFeaturedAlbumHasNoEditorialYet() {
+        Artist artist = artistRepository.save(new Artist("No Editorial Featured Test Artist", null, null, null));
+        Album album = albumRepository.save(new Album(
+            artist, "No Editorial Featured Album", null, null, null, 2024, 1, "LOG-FEAT-NO-ED", "LABEL-FEAT-NO-ED",
+            VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
+        ));
+        albumRepository.markFeatured(album.getId());
 
-        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(editorialService.getFeatured(UUID.randomUUID())).isEmpty();
     }
 
     @Test

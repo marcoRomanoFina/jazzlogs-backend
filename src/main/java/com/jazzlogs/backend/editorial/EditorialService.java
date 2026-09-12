@@ -67,42 +67,12 @@ public class EditorialService {
     private final AlbumEditorialRepository albumEditorialRepository;
     private final TrackEditorialRepository trackEditorialRepository;
     private final ArtistEditorialRepository artistEditorialRepository;
-    private final EditorialRepository editorialRepository;
     private final EditorialSummaryRepository editorialSummaryRepository;
     private final EmbeddingService embeddingService;
     private final LikeService likeService;
     private final GraphService graphService;
     private final EntityManager entityManager;
 
-    /**
-     * Marks {@code editorialId} as THE featurated one, unfeaturating
-     * whichever one (if any) held that spot before. {@code
-     * idx_editorials_only_one_featured} (see V18) is what actually
-     * guarantees at most one stays featured under concurrent calls —
-     * clearFeaturated()+markFeaturated() alone can't: two overlapping calls
-     * can each see nothing featured, clear nothing, then both mark a
-     * different row true. The unique index turns that into a thrown
-     * exception here instead of silently leaving two rows featured.
-     *
-     * @param editorialId must already exist — a base {@link Editorial} id,
-     *                    valid regardless of which concrete subtype it is
-     * @throws ResponseStatusException 409 if a concurrent call already
-     *                                  featured a different editorial
-     */
-    @Transactional
-    public void setFeaturated(UUID editorialId) {
-        if (!editorialRepository.existsById(editorialId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Editorial not found: " + editorialId);
-        }
-        editorialRepository.clearFeaturated();
-        try {
-            editorialRepository.markFeaturated(editorialId);
-        } catch (DataIntegrityViolationException e) {
-            throw new ResponseStatusException(
-                HttpStatus.CONFLICT, "Another editorial was just featured concurrently — try again", e
-            );
-        }
-    }
 
     /**
      * The archive's free-form search/filter/paginate listing, across every
@@ -270,13 +240,20 @@ public class EditorialService {
     }
 
     /**
+     * The archive hero — derived from the featured album ({@link
+     * AlbumService#setFeatured}/{@code albums.featured}, see V24), not an
+     * independent flag on the editorial itself anymore (that's what {@code
+     * editorials.featurated} used to be, replaced by this). Empty if no
+     * album is featured, or if the featured album has no editorial yet —
+     * either way {@link EditorialController#featured} turns that into a 404.
+     *
      * @param currentUserId used only to compute {@code likedByCurrentUser} on the result
-     * @return the featurated editorial, empty if none is set — {@link
-     *         EditorialController#featured} turns that into the 404
+     * @return the featured album's editorial, empty if there isn't one
      */
     @Transactional(readOnly = true)
     public Optional<EditorialSummaryDto> getFeatured(UUID currentUserId) {
-        return editorialSummaryRepository.findFirstByFeaturatedTrue()
+        return albumRepository.findByFeaturedTrue()
+            .flatMap(album -> editorialSummaryRepository.findByOwnerTypeAndOwnerId(EditorialOwnerType.ALBUM, album.getId()))
             .map(summary -> toEditorialSummaryDto(
                 summary, likeService.hasUserLiked(currentUserId, LikeableEntityType.EDITORIAL, summary.getId())
             ));
@@ -295,7 +272,6 @@ public class EditorialService {
             summary.getCreatedAt(),
             summary.getLikeCount(),
             likedByCurrentUser,
-            summary.isFeaturated(),
             summary.getContextName(),
             summary.getReleaseYear(),
             summary.getPreviewText(),
@@ -433,6 +409,11 @@ public class EditorialService {
     /** For {@code TrackService.setFeatured} — a track needs a {@link TrackEditorial} before it can be featured. */
     public boolean hasTrackEditorial(UUID trackId) {
         return trackEditorialRepository.existsByTrackId(trackId);
+    }
+
+    /** For {@code AlbumService.setFeatured} — an album needs an {@link AlbumEditorial} before it can be featured. */
+    public boolean hasAlbumEditorial(UUID albumId) {
+        return albumEditorialRepository.existsByAlbumId(albumId);
     }
 
     public Map<UUID, TrackEditorialDto> getTrackEditorialDtosByAlbumId(UUID albumId) {

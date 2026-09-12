@@ -12,6 +12,9 @@ public interface AlbumEditorialRepository extends JpaRepository<AlbumEditorial, 
 
     Optional<AlbumEditorial> findByAlbumId(UUID albumId);
 
+    /** For {@code EditorialService.hasAlbumEditorial} — {@code AlbumService.setFeatured} needs this before featuring an album. */
+    boolean existsByAlbumId(UUID albumId);
+
     /**
      * Batch — one query for a whole page of albums (e.g.
      * {@code ArtistService.getEssentialListening}), which only wants
