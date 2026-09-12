@@ -91,15 +91,19 @@ jobs:
           exit 1
 
       # Same bucket/public-read setup as docker-compose.yml's createbuckets
-      # service, just run directly against the container started above
-      # instead of via another container on a shared compose network.
+      # service — the quay.io/minio/mc image again (not a downloaded mc
+      # binary: dl.min.io's direct binary URL 410s now), one container (not
+      # one `docker run` per command — `mc alias set`'s config wouldn't
+      # survive into a separate --rm container for the next command),
+      # --network host so it reaches the MinIO container above via
+      # localhost like everything else in this job does.
       - name: Create MinIO bucket
         run: |
-          curl -sSL https://dl.min.io/client/mc/release/linux-amd64/mc -o ./mc
-          chmod +x ./mc
-          ./mc alias set local http://localhost:9000 minioadmin jazzlogs-dev-password
-          ./mc mb --ignore-existing local/jazzlogs-images
-          ./mc anonymous set download local/jazzlogs-images
+          docker run --rm --network host --entrypoint sh quay.io/minio/mc:latest -c "
+            mc alias set local http://localhost:9000 minioadmin jazzlogs-dev-password &&
+            mc mb --ignore-existing local/jazzlogs-images &&
+            mc anonymous set download local/jazzlogs-images
+          "
 
       - name: Run tests
         env:
