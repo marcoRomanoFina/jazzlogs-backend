@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import jakarta.validation.Valid;
 
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -17,7 +18,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.jazzlogs.backend.listen.ListenService;
 import com.jazzlogs.backend.playlist.dto.PlaylistDetailDto;
@@ -66,6 +69,19 @@ public class PlaylistController {
     @PreAuthorize("hasRole('ADMIN')")
     public PlaylistDetailDto update(@PathVariable UUID id, @Valid @RequestBody PlaylistUpsertRequest request) {
         return playlistService.update(id, request);
+    }
+
+    /**
+     * Uploads a new cover image for this playlist — see {@link PlaylistService#setCoverImage}.
+     *
+     * @param id   the playlist
+     * @param file the image file (jpeg/png/webp only, see {@code ImageStorageService})
+     */
+    @PutMapping(value = "/{id}/cover", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> setCoverImage(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
+        playlistService.setCoverImage(id, file);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{id}/tracks")

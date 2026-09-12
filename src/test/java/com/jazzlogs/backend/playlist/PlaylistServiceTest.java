@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import java.util.List;
 import java.util.UUID;
@@ -15,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpStatus;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -29,6 +31,7 @@ import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.playlist.dto.PlaylistDetailDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistTrackDetailDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistUpsertRequest;
+import com.jazzlogs.backend.storage.ImageStorageService;
 import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackRepository;
 
@@ -36,7 +39,8 @@ import com.jazzlogs.backend.track.TrackRepository;
 // class tests PlaylistService's own Postgres/validation logic (addTrack/
 // removeTrack/updateTrackNote/reorderTracks, vocab code validation), not Neo4j
 // behavior. See PlaylistTrackSyncFailureTest for the real-GraphService,
-// Neo4j-down-doesn't-break-the-endpoint coverage.
+// Neo4j-down-doesn't-break-the-endpoint coverage. ImageStorageService is
+// mocked too — see ImageStorageServiceTest for the real-MinIO upload coverage.
 @SpringBootTest
 @Transactional
 class PlaylistServiceTest {
@@ -58,6 +62,9 @@ class PlaylistServiceTest {
 
     @MockitoBean
     private GraphService graphService;
+
+    @MockitoBean
+    private ImageStorageService imageStorageService;
 
     @Test
     void addTrack_updatesTrackCountAndDurationMs() {
@@ -196,6 +203,30 @@ class PlaylistServiceTest {
         PlaylistDetailDto created = playlistService.create(upsertRequestWithTags("tags-cut", List.of("SWING", "BEBOP")));
 
         verify(graphService).setPlaylistTags(created.id(), List.of("SWING", "BEBOP"), List.of(), List.of());
+    }
+
+    @Test
+    void setCoverImage_uploadsUnderThePlaylistsOwnKeyAndPersistsTheReturnedUrl() {
+        UUID playlistId = persistPlaylist("cover-set");
+        MockMultipartFile file = new MockMultipartFile("file", "cover.jpg", "image/jpeg", "fake-bytes".getBytes());
+        when(imageStorageService.upload("playlists/" + playlistId + "/cover", file))
+            .thenReturn("http://localhost:9000/jazzlogs-images/playlists/" + playlistId + "/cover.jpg");
+
+        playlistService.setCoverImage(playlistId, file);
+
+        PlaylistDetailDto dto = playlistService.getPlaylistDetail(playlistId, null, true);
+        assertThat(dto.coverImageUrl()).isEqualTo("http://localhost:9000/jazzlogs-images/playlists/" + playlistId + "/cover.jpg");
+    }
+
+    @Test
+    void setCoverImage_rejectsUnknownPlaylist() {
+        MockMultipartFile file = new MockMultipartFile("file", "cover.jpg", "image/jpeg", "fake-bytes".getBytes());
+
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> playlistService.setCoverImage(UUID.randomUUID(), file)
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     private UUID persistPlaylist(String slug) {

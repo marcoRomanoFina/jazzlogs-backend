@@ -12,6 +12,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.album.Album;
@@ -24,6 +25,7 @@ import com.jazzlogs.backend.playlist.dto.PlaylistDetailDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistSummaryDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistTrackDetailDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistUpsertRequest;
+import com.jazzlogs.backend.storage.ImageStorageService;
 import com.jazzlogs.backend.syncfailure.Neo4jAsyncSyncExecutor;
 import com.jazzlogs.backend.syncfailure.SyncFailureEntityType;
 import com.jazzlogs.backend.track.Track;
@@ -47,6 +49,7 @@ public class PlaylistService {
     private final LikeService likeService;
     private final GraphService graphService;
     private final Neo4jAsyncSyncExecutor syncExecutor;
+    private final ImageStorageService imageStorageService;
 
     /** Metadata only — see PlaylistUpsertRequest; the tracklist is empty until addTrack is called. */
     @Transactional
@@ -72,6 +75,22 @@ public class PlaylistService {
         graphService.syncPlaylistNode(playlist.getId(), playlist.getTitle());
         replaceTags(playlist, request.styleCodes(), request.moodCodes(), request.contextCodes());
         return getPlaylistDetail(id, null, true);
+    }
+
+    /**
+     * Uploads a new cover image for this playlist — see {@link
+     * ImageStorageService#upload}. One object per playlist ({@code
+     * playlists/{id}/cover.<ext>}), so re-uploading overwrites the old
+     * cover instead of leaving it orphaned in storage.
+     *
+     * @param id   the playlist
+     * @param file the image file (jpeg/png/webp only)
+     */
+    @Transactional
+    public void setCoverImage(UUID id, MultipartFile file) {
+        Playlist playlist = getPlaylistOrThrow(id);
+        String url = imageStorageService.upload("playlists/" + id + "/cover", file);
+        playlist.updateCoverImageUrl(url);
     }
 
     /**

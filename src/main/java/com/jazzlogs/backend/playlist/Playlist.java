@@ -101,6 +101,12 @@ public class Playlist {
         this.durationMs = durationMs;
     }
 
+    // Separate from update(...) — set via its own upload endpoint
+    // (PlaylistService.setCoverImage), not the metadata upsert.
+    public void updateCoverImageUrl(String coverImageUrl) {
+        this.coverImageUrl = coverImageUrl;
+    }
+
     @PrePersist
     void onCreate() {
         Instant now = Instant.now();

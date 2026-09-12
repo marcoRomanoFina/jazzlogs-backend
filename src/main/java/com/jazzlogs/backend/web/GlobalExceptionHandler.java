@@ -6,6 +6,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import com.jazzlogs.backend.graph.GraphWriteException;
 import com.jazzlogs.backend.spotify.SpotifyLookupException;
@@ -39,6 +40,12 @@ public class GlobalExceptionHandler {
                 "error", "embedding_generation_failed",
                 "message", "Could not save editorial content because the embedding service failed: " + ex.getMessage()
             ));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<Map<String, String>> handleMaxUploadSizeExceededException(MaxUploadSizeExceededException ex) {
+        return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE)
+            .body(Map.of("error", "file_too_large", "message", "Uploaded file exceeds the size limit."));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
