@@ -2,11 +2,12 @@ name: Test
 
 # Runs on every PR targeting develop (catches breakage before it merges) and
 # on every push to develop itself (confirms the merge commit is still
-# green) — same two Postgres/Neo4j dependencies as docker-compose.yml, just
-# started as GitHub Actions services instead, since services start before
-# checkout and can't bind-mount a repo file for Postgres' init script the
-# way the compose file does; the "Enable Postgres extensions" step below is
-# the CI equivalent of that script.
+# green) — same Postgres/Neo4j/MinIO dependencies as docker-compose.yml,
+# just started as GitHub Actions services (Postgres/Neo4j) or a plain
+# `docker run` step (MinIO — see the "Start MinIO" step for why) instead,
+# since services start before checkout and can't bind-mount a repo file
+# for Postgres' init script the way the compose file does; the "Enable
+# Postgres extensions" step below is the CI equivalent of that script.
 on:
   pull_request:
     branches: [develop]
@@ -69,12 +70,45 @@ jobs:
           PGPASSWORD=postgres psql -h localhost -U postgres -d postgres \
             -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pgcrypto;"
 
+      # Not a `services:` container like postgres/neo4j above — those only
+      # let you set image/env/ports, not the command a service container
+      # runs, and MinIO needs `server /data ...` as an explicit argument (bare
+      # `minio` with no args just prints help and exits). A plain `docker run`
+      # step gives full control over that, and its published ports land on
+      # localhost the same way a services: container's would.
+      - name: Start MinIO
+        run: |
+          docker run -d --name minio \
+            -p 9000:9000 -p 9001:9001 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=jazzlogs-dev-password \
+            quay.io/minio/minio:latest server /data --console-address ":9001"
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:9000/minio/health/live && exit 0
+            sleep 2
+          done
+          echo "MinIO never became healthy" >&2
+          exit 1
+
+      # Same bucket/public-read setup as docker-compose.yml's createbuckets
+      # service, just run directly against the container started above
+      # instead of via another container on a shared compose network.
+      - name: Create MinIO bucket
+        run: |
+          curl -sSL https://dl.min.io/client/mc/release/linux-amd64/mc -o ./mc
+          chmod +x ./mc
+          ./mc alias set local http://localhost:9000 minioadmin jazzlogs-dev-password
+          ./mc mb --ignore-existing local/jazzlogs-images
+          ./mc anonymous set download local/jazzlogs-images
+
       - name: Run tests
         env:
           DATABASE_URL: jdbc:postgresql://localhost:5432/postgres
           DATABASE_USERNAME: postgres
           DATABASE_PASSWORD: postgres
           NEO4J_PASSWORD: jazzlogs-dev-password
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: jazzlogs-dev-password
         run: ./mvnw test
 
       - name: Upload test reports
