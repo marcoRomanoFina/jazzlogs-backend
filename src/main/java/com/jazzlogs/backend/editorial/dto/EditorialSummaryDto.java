@@ -24,13 +24,6 @@ import com.jazzlogs.backend.editorial.EditorialSummary;
  * @param likeCount          denormalized total, kept in sync via atomic
  *                           increment/decrement — never a live {@code COUNT(*)}
  * @param likedByCurrentUser whether the caller liked this editorial
- * @param featurated         always {@code true} — this DTO is only ever
- *                           built for the one editorial {@code
- *                           EditorialService#getFeatured} derives from the
- *                           currently-featured album (see {@code
- *                           Album#featured}), kept as a field so this stays
- *                           a drop-in replacement for what the frontend
- *                           already reads off {@code GET /editorials/featured}
  * @param contextName        one hop past the owner: the artist's name for
  *                           an album, the album's name for a track, {@code
  *                           null} for an artist (nothing one hop further to show)
@@ -57,7 +50,6 @@ public record EditorialSummaryDto(
     Instant createdAt,
     int likeCount,
     boolean likedByCurrentUser,
-    boolean featurated,
     String contextName,
     Integer releaseYear,
     String previewText,

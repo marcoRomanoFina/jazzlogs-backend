@@ -259,11 +259,6 @@ public class EditorialService {
             ));
     }
 
-    // featurated is always true here — this DTO is only ever built for the
-    // one editorial getFeatured derived from the currently-featured album,
-    // never for a generic listing. Kept as a field (not just dropped) so
-    // this stays a drop-in replacement for whatever the frontend already
-    // reads off GET /editorials/featured.
     private EditorialSummaryDto toEditorialSummaryDto(EditorialSummary summary, boolean likedByCurrentUser) {
         return new EditorialSummaryDto(
             summary.getId(),
@@ -277,7 +272,6 @@ public class EditorialService {
             summary.getCreatedAt(),
             summary.getLikeCount(),
             likedByCurrentUser,
-            true,
             summary.getContextName(),
             summary.getReleaseYear(),
             summary.getPreviewText(),
