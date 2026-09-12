@@ -110,16 +110,19 @@ docker compose up -d
 ./mvnw spring-boot:run
 ```
 
-`docker-compose.yml` brings up both: Postgres on `localhost:5433` (not the
-default 5432 — leaves room for a native, non-Docker Postgres already bound
-there) via the `pgvector/pgvector` image (plain `postgres` doesn't bundle
-the `vector` extension's binaries at all), and Neo4j Community Edition on
-the usual `7474`/`7687`. Flyway builds the whole schema itself on first
-boot — no separate schema import needed, just point `DATABASE_URL` at it
-(see the table below; the defaults in `application-dev.properties` already
-match this compose file's credentials, so `DATABASE_URL`/`DATABASE_USERNAME`/
-`DATABASE_PASSWORD` can be omitted from `.env` entirely if running the local
-stack this way).
+`docker-compose.yml` brings up all three: Postgres on `localhost:5433` (not
+the default 5432 — leaves room for a native, non-Docker Postgres already
+bound there) via the `pgvector/pgvector` image (plain `postgres` doesn't
+bundle the `vector` extension's binaries at all), Neo4j Community Edition on
+the usual `7474`/`7687`, and MinIO (S3-compatible object storage for
+user-uploaded images, e.g. a playlist cover) on `9000`/`9001` — a one-shot
+`createbuckets` service creates its bucket and makes it public-read on
+first `up`, no manual step needed. Flyway builds the whole schema itself on
+first boot — no separate schema import needed, just point `DATABASE_URL` at
+it (see the table below; the defaults in `application-dev.properties`
+already match this compose file's credentials, so `DATABASE_URL`/
+`DATABASE_USERNAME`/`DATABASE_PASSWORD` can be omitted from `.env` entirely
+if running the local stack this way).
 
 Both `application-dev.properties` and `application-prod.properties` read
 `DATABASE_URL`/`DATABASE_USERNAME`/`DATABASE_PASSWORD` the same way — `prod`
@@ -139,6 +142,7 @@ list and defaults):
 | `SUPABASE_JWKS_URI` | yes | JWKS endpoint used to validate incoming JWTs |
 | `DATABASE_URL` / `DATABASE_USERNAME` / `DATABASE_PASSWORD` | no | defaults to the local compose stack (`localhost:5433`, `postgres`/`postgres`); point these at Supabase instead to use that |
 | `NEO4J_URI` / `NEO4J_USERNAME` / `NEO4J_PASSWORD` | password only | defaults to `bolt://localhost:7687` (the local compose stack) |
+| `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | no | defaults to `minioadmin`/a dev-only password; console at `localhost:9001`. Not read by the app yet — infra only until the image upload endpoint exists |
 | `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` | no | catalog enrichment is skipped without these |
 | `OPENAI_API_KEY` | no | editorial embeddings/agent calls are skipped without this |
 
