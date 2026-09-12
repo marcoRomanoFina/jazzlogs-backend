@@ -53,7 +53,48 @@ services:
       timeout: 10s
       retries: 10
 
+  minio:
+    # S3-compatible object storage — where user-uploaded images (e.g. a
+    # playlist cover) actually live, since those have no Spotify-sourced
+    # imageUrl to fall back on like albums/artists/tracks do.
+    # quay.io, not Docker Hub — MinIO stopped publishing there.
+    image: quay.io/minio/minio:latest
+    container_name: jazzlogs-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-jazzlogs-dev-password}
+    ports:
+      # 9000: the S3 API itself. 9001: the web console (browse buckets at
+      # http://localhost:9001), not used by the app.
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # One-shot: creates the jazzlogs-images bucket and makes it public-read,
+  # then exits — so a fresh `docker compose up` needs no manual `mc` step.
+  # Public-read (not presigned URLs) so a stored object is a plain,
+  # permanent URL — same shape as every Spotify-sourced imageUrl already is.
+  createbuckets:
+    image: quay.io/minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-jazzlogs-dev-password};
+      mc mb --ignore-existing local/jazzlogs-images;
+      mc anonymous set download local/jazzlogs-images;
+      "
+
 volumes:
   postgres-data:
   neo4j-data:
   neo4j-logs:
+  minio-data:
