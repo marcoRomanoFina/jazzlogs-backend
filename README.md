@@ -9,7 +9,7 @@ This is a from-scratch rewrite of [jazzlogs](https://github.com/marcoRomanoFina/
 ## Tech stack
 
 - **Java 21 / Spring Boot 4** — REST API, validation, security
-- **PostgreSQL (Supabase)** — primary data store, source of truth for every write
+- **PostgreSQL** — primary data store, source of truth for every write
 - **Neo4j** — recommendation graph, built from listening history and catalog relationships (artists, styles, moods, similar albums)
 - **Supabase Auth** — JWT-based authentication; the backend only validates tokens against Supabase's JWKS, it never issues or stores credentials
 - **Spotify Web API** — catalog metadata lookup (album art, track durations, etc.)
@@ -127,7 +127,7 @@ if running the local stack this way).
 Both `application-dev.properties` and `application-prod.properties` read
 `DATABASE_URL`/`DATABASE_USERNAME`/`DATABASE_PASSWORD` the same way — `prod`
 is just what deployment sets automatically (`SPRING_PROFILES_ACTIVE=prod`,
-e.g. Railway) — so pointing either profile at a real Supabase project
+e.g. Railway) — so pointing either profile at a real production Postgres
 instead of the local compose stack works exactly the same way, just with
 different env var values. An in-memory H2 profile was tried for a while for
 zero-setup local dev, but couldn't run the `pg_trgm`/`pgvector` SQL the
@@ -140,9 +140,9 @@ list and defaults):
 | Variable | Required | Notes |
 |---|---|---|
 | `SUPABASE_JWKS_URI` | yes | JWKS endpoint used to validate incoming JWTs |
-| `DATABASE_URL` / `DATABASE_USERNAME` / `DATABASE_PASSWORD` | no | defaults to the local compose stack (`localhost:5433`, `postgres`/`postgres`); point these at Supabase instead to use that |
+| `DATABASE_URL` / `DATABASE_USERNAME` / `DATABASE_PASSWORD` | no | defaults to the local compose stack (`localhost:5433`, `postgres`/`postgres`); point these at your production Postgres instead to use that |
 | `NEO4J_URI` / `NEO4J_USERNAME` / `NEO4J_PASSWORD` | password only | defaults to `bolt://localhost:7687` (the local compose stack) |
-| `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | no | defaults to `minioadmin`/a dev-only password; console at `localhost:9001`. Not read by the app yet — infra only until the image upload endpoint exists |
+| `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | no | defaults to `minioadmin`/a dev-only password; console at `localhost:9001` |
 | `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` | no | catalog enrichment is skipped without these |
 | `OPENAI_API_KEY` | no | editorial embeddings/agent calls are skipped without this |
 
