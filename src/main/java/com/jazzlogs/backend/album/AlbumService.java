@@ -9,6 +9,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -262,6 +263,48 @@ public class AlbumService {
     @Transactional
     public void clearLetterColor(UUID albumId) {
         getAlbumOrThrow(albumId).setLetterColor(null);
+    }
+
+    /**
+     * Marks this album as THE featured album — the archive hero's source
+     * (see {@code EditorialService#getFeatured}), unfeaturing whichever one
+     * (if any) held that spot before. {@code idx_albums_only_one_featured}
+     * (see V24) is what actually guarantees at most one stays featured
+     * under concurrent calls — clearFeatured()+markFeatured() alone can't:
+     * two overlapping calls can each see nothing featured, clear nothing,
+     * then both mark a different row true. The unique index turns that
+     * into a thrown exception here instead of silently leaving two albums
+     * featured.
+     *
+     * @param albumId the album
+     * @throws ResponseStatusException 404 if the album doesn't exist, 409 if
+     *                                  it has no {@code AlbumEditorial} yet
+     *                                  (a featured album with no editorial
+     *                                  wouldn't show up in the hero at all)
+     *                                  or if a concurrent call already
+     *                                  featured a different album
+     */
+    @Transactional
+    public void setFeatured(UUID albumId) {
+        getAlbumOrThrow(albumId);
+        if (!editorialService.hasAlbumEditorial(albumId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Album has no editorial yet, can't be featured");
+        }
+        albumRepository.clearFeatured();
+        try {
+            albumRepository.markFeatured(albumId);
+        } catch (DataIntegrityViolationException e) {
+            throw new ResponseStatusException(
+                HttpStatus.CONFLICT, "Another album was just featured concurrently — try again", e
+            );
+        }
+    }
+
+    /** Removes this album from being THE featured one — a no-op if it wasn't. */
+    @Transactional
+    public void unsetFeatured(UUID albumId) {
+        getAlbumOrThrow(albumId);
+        albumRepository.unmarkFeatured(albumId);
     }
 
     /**

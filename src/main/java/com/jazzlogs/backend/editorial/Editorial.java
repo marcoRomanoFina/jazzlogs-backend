@@ -20,7 +20,6 @@ import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
 
 /**
  * Class-table inheritance base for AlbumEditorial/TrackEditorial (and later
@@ -61,10 +60,6 @@ public abstract class Editorial {
 
     @Column(nullable = false)
     private Instant updatedAt;
-
-    @Setter
-    @Column(nullable = false)
-    private boolean featurated;
 
     public void update(String title, String dek, String byline) {
         this.title = title;

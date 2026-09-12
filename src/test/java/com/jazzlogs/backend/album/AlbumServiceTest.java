@@ -23,6 +23,8 @@ import com.jazzlogs.backend.album.dto.CoverColorRequest;
 import com.jazzlogs.backend.album.dto.LetterColorRequest;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
+import com.jazzlogs.backend.editorial.EditorialService;
+import com.jazzlogs.backend.editorial.dto.AlbumEditorialRequest;
 import com.jazzlogs.backend.graph.AlbumHeaderGraphData;
 import com.jazzlogs.backend.graph.AlbumPersonnelEntry;
 import com.jazzlogs.backend.graph.GraphService;
@@ -55,6 +57,9 @@ class AlbumServiceTest {
 
     @Autowired
     private ListenService listenService;
+
+    @Autowired
+    private EditorialService editorialService;
 
     @Autowired
     private EntityManager entityManager;
@@ -212,6 +217,64 @@ class AlbumServiceTest {
 
         AlbumHeaderDto dto = albumService.getAlbumHeader(album.getId(), UUID.randomUUID());
         assertThat(dto.letterColor()).isNull();
+    }
+
+    @Test
+    void setFeatured_marksExactlyOneAlbum_clearingWhicheverWasFeaturedBefore() {
+        Artist artist = artistRepository.save(new Artist("Featured Test Artist", null, null, null));
+        Album albumA = persistAlbum(artist, "Featured Album A", 2020);
+        Album albumB = persistAlbum(artist, "Featured Album B", 2021);
+        editorialService.upsertAlbumEditorial(albumA.getId(), new AlbumEditorialRequest("A", "dek", "byline", List.of()));
+        editorialService.upsertAlbumEditorial(albumB.getId(), new AlbumEditorialRequest("B", "dek", "byline", List.of()));
+
+        albumService.setFeatured(albumA.getId());
+        assertThat(albumRepository.findByFeaturedTrue().map(Album::getId)).contains(albumA.getId());
+
+        albumService.setFeatured(albumB.getId());
+        assertThat(albumRepository.findByFeaturedTrue().map(Album::getId)).contains(albumB.getId());
+    }
+
+    @Test
+    void setFeatured_rejectsUnknownAlbum() {
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> albumService.setFeatured(UUID.randomUUID())
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void setFeatured_rejectsAlbumWithNoEditorialYet() {
+        Artist artist = artistRepository.save(new Artist("No Editorial Featured Test Artist", null, null, null));
+        Album album = persistAlbum(artist, "No Editorial Featured Album", 2020);
+
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> albumService.setFeatured(album.getId())
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
+    void unsetFeatured_isNoOpWhenTheAlbumWasNeverFeatured() {
+        Artist artist = artistRepository.save(new Artist("Unset Featured Test Artist", null, null, null));
+        Album album = persistAlbum(artist, "Unset Featured Album", 2020);
+
+        albumService.unsetFeatured(album.getId());
+
+        assertThat(albumRepository.findById(album.getId()).orElseThrow().isFeatured()).isFalse();
+    }
+
+    @Test
+    void unsetFeatured_removesTheFeaturedFlag() {
+        Artist artist = artistRepository.save(new Artist("Remove Featured Test Artist", null, null, null));
+        Album album = persistAlbum(artist, "Remove Featured Album", 2020);
+        editorialService.upsertAlbumEditorial(album.getId(), new AlbumEditorialRequest("Title", "dek", "byline", List.of()));
+        albumService.setFeatured(album.getId());
+
+        albumService.unsetFeatured(album.getId());
+
+        assertThat(albumRepository.findById(album.getId()).orElseThrow().isFeatured()).isFalse();
     }
 
     @Test
