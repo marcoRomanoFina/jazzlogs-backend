@@ -9,6 +9,7 @@ import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -103,4 +104,33 @@ public interface AlbumRepository extends JpaRepository<Album, UUID>, SavedItemRe
         LIMIT 20
         """, nativeQuery = true)
     List<CandidateRow> search(@Param("normalizedQuery") String normalizedQuery);
+
+    /** For {@code EditorialService.getFeatured} — the archive hero's source album, if any is currently featured. */
+    Optional<Album> findByFeaturedTrue();
+
+    /**
+     * The normal-path way to clear the previous featured row before marking
+     * a new one — {@code AlbumService.setFeatured} calls this before {@link
+     * #markFeatured}, both as atomic UPDATEs rather than read-modify-save.
+     * This alone doesn't guarantee at most one stays featured under
+     * concurrent calls; {@code idx_albums_only_one_featured} (see V24) is
+     * what actually enforces that.
+     */
+    @Modifying
+    @Query("UPDATE Album a SET a.featured = false WHERE a.featured = true")
+    void clearFeatured();
+
+    /**
+     * See {@link #clearFeatured} — always called right after it, never on its own.
+     *
+     * @param id the album to feature; caller is responsible for validating it exists
+     */
+    @Modifying
+    @Query("UPDATE Album a SET a.featured = true WHERE a.id = :id")
+    void markFeatured(@Param("id") UUID id);
+
+    /** A no-op if {@code id} wasn't featured to begin with. */
+    @Modifying
+    @Query("UPDATE Album a SET a.featured = false WHERE a.id = :id")
+    void unmarkFeatured(@Param("id") UUID id);
 }

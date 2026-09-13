@@ -230,6 +230,22 @@ public class AlbumController {
         return ResponseEntity.noContent().build();
     }
 
+    /** Marks this album as THE featured album — see {@link AlbumService#setFeatured}. */
+    @PostMapping("/{id}/featured")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> setFeatured(@PathVariable UUID id) {
+        albumService.setFeatured(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Removes this album from being featured — see {@link AlbumService#unsetFeatured}. */
+    @DeleteMapping("/{id}/featured")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> unsetFeatured(@PathVariable UUID id) {
+        albumService.unsetFeatured(id);
+        return ResponseEntity.noContent().build();
+    }
+
     // No POST/DELETE /{id}/listen anymore — an album's "listened" state
     // isn't something a user sets directly, it's a consequence of listening
     // to every one of its tracks (POST/DELETE /tracks/{id}/listen), computed

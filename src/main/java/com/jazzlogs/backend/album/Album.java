@@ -114,6 +114,14 @@ public class Album {
     @Column(name = "letter_color", length = 7)
     private String letterColor;
 
+    // THE archive hero's source album (see EditorialService.getFeatured) —
+    // at most one true at a time, enforced by idx_albums_only_one_featured
+    // (see V24), not a raw setter: only ever mutated via AlbumRepository's
+    // atomic clearFeatured/markFeatured/unmarkFeatured, same pattern as
+    // Track#featured.
+    @Column(nullable = false)
+    private boolean featured;
+
     // Ordered by createdAt only as a stable fallback — the real, editorial track
     // order (trackNumber) lives on the CONTAINS relationship in Neo4j, not here.
     @OneToMany(mappedBy = "album", cascade = CascadeType.ALL, orphanRemoval = true)
