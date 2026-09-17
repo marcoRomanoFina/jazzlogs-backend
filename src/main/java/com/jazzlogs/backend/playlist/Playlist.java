@@ -53,6 +53,9 @@ public class Playlist {
 
     @Column(name = "duration_ms", nullable = false)
     private long durationMs;
+    
+    @Column(nullable = false)
+    private boolean featured;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

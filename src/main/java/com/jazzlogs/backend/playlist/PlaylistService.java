@@ -4,6 +4,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -17,10 +18,13 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.artist.Artist;
+import com.jazzlogs.backend.editorial.AlbumEditorialRepository;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.like.LikeService;
 import com.jazzlogs.backend.like.LikeableEntityType;
+import com.jazzlogs.backend.playlist.dto.FeaturedPlaylistDto;
+import com.jazzlogs.backend.playlist.dto.FeaturedPlaylistTrackDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistDetailDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistSummaryDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistTrackDetailDto;
@@ -50,6 +54,7 @@ public class PlaylistService {
     private final GraphService graphService;
     private final Neo4jAsyncSyncExecutor syncExecutor;
     private final ImageStorageService imageStorageService;
+    private final AlbumEditorialRepository albumEditorialRepository;
 
     /** Metadata only — see PlaylistUpsertRequest; the tracklist is empty until addTrack is called. */
     @Transactional
@@ -91,6 +96,37 @@ public class PlaylistService {
         Playlist playlist = getPlaylistOrThrow(id);
         String url = imageStorageService.upload("playlists/" + id + "/cover", file);
         playlist.updateCoverImageUrl(url);
+    }
+
+    /**
+     * Marks this playlist as THE featured one, unfeaturing whichever one (if
+     * any) held that spot before. {@code idx_playlists_only_one_featured}
+     * (see V26) is what actually guarantees at most one stays featured
+     * under concurrent calls — same reasoning as {@code AlbumService#setFeatured}.
+     *
+     * @param playlistId the playlist
+     * @throws ResponseStatusException 404 if the playlist doesn't exist, 409
+     *                                  if a concurrent call already featured
+     *                                  a different playlist
+     */
+    @Transactional
+    public void setFeatured(UUID playlistId) {
+        getPlaylistOrThrow(playlistId);
+        playlistRepository.clearFeatured();
+        try {
+            playlistRepository.markFeatured(playlistId);
+        } catch (DataIntegrityViolationException e) {
+            throw new ResponseStatusException(
+                HttpStatus.CONFLICT, "Another playlist was just featured concurrently — try again", e
+            );
+        }
+    }
+
+    /** Removes this playlist from being THE featured one — a no-op if it wasn't. */
+    @Transactional
+    public void unsetFeatured(UUID playlistId) {
+        getPlaylistOrThrow(playlistId);
+        playlistRepository.unmarkFeatured(playlistId);
     }
 
     /**
@@ -303,6 +339,72 @@ public class PlaylistService {
             playlist.getCoverImageUrl(), playlist.getSpotifyUrl(), playlist.isPublished(),
             playlist.getLikeCount(), liked, playlist.getTrackCount(), playlist.getDurationMs(), trackDtos,
             styleTags, moodTags, contextTags, playlist.getCreatedAt(), playlist.getUpdatedAt()
+        );
+    }
+
+    /**
+     * The singleton featured playlist — see {@code Playlist#featured}/{@code
+     * idx_playlists_only_one_featured} (V26), same "at most one" pattern as
+     * {@code Album#featured}. Each track's row is intentionally leaner than
+     * {@link #getPlaylistDetail}'s ({@link FeaturedPlaylistTrackDto} instead
+     * of {@link PlaylistTrackDetailDto}) — only what the featured section
+     * actually renders, not the full track/album/artist fan-out.
+     *
+     * @return the featured playlist, empty if none is featured, or if the
+     *         featured one isn't published and the caller isn't an admin
+     */
+    @Transactional(readOnly = true)
+    public Optional<FeaturedPlaylistDto> getFeatured(UUID currentUserId, boolean isAdmin) {
+        return playlistRepository.findByFeaturedTrue()
+            .filter(playlist -> playlist.isPublished() || isAdmin)
+            .map(playlist -> toFeaturedDto(playlist, currentUserId));
+    }
+
+    private FeaturedPlaylistDto toFeaturedDto(Playlist playlist, UUID currentUserId) {
+        List<PlaylistTrack> playlistTracks = playlistTrackRepository.findByPlaylistIdWithTrackDetails(playlist.getId());
+        List<UUID> trackIds = playlistTracks.stream().map(pt -> pt.getTrack().getId()).toList();
+        List<UUID> albumIds = playlistTracks.stream().map(pt -> pt.getTrack().getAlbum().getId()).distinct().toList();
+
+        Map<UUID, TrackRatingRepository.TrackRatingStats> statsByTrack = trackIds.isEmpty()
+            ? Map.of()
+            : trackRatingRepository.getRatingStatsForTracks(trackIds).stream()
+                .collect(Collectors.toMap(TrackRatingRepository.TrackRatingStats::getTrackId, stats -> stats));
+
+        Map<UUID, UUID> editorialIdByAlbum = albumIds.isEmpty()
+            ? Map.of()
+            : albumEditorialRepository.findIdsByAlbumIds(albumIds).stream()
+                .collect(Collectors.toMap(
+                    AlbumEditorialRepository.AlbumEditorialIdRow::getAlbumId,
+                    AlbumEditorialRepository.AlbumEditorialIdRow::getEditorialId
+                ));
+
+        List<FeaturedPlaylistTrackDto> trackDtos = playlistTracks.stream()
+            .map(pt -> toFeaturedTrackDto(
+                pt, statsByTrack.get(pt.getTrack().getId()), editorialIdByAlbum.get(pt.getTrack().getAlbum().getId())
+            ))
+            .toList();
+
+        boolean liked = currentUserId != null && likeService.hasUserLiked(currentUserId, LikeableEntityType.PLAYLIST, playlist.getId());
+
+        List<VocabularyTag> styleTags = graphService.getPlaylistStyles(playlist.getId());
+        List<VocabularyTag> moodTags = graphService.getPlaylistMoods(playlist.getId());
+        List<VocabularyTag> contextTags = graphService.getPlaylistContexts(playlist.getId());
+
+        return new FeaturedPlaylistDto(
+            playlist.getId(), playlist.getSlug(), playlist.getTitle(), playlist.getTagline(), playlist.getDescription(),
+            playlist.getCoverImageUrl(), playlist.getSpotifyUrl(), playlist.isPublished(),
+            playlist.getLikeCount(), liked, playlist.getTrackCount(), playlist.getDurationMs(), trackDtos,
+            styleTags, moodTags, contextTags, playlist.getCreatedAt(), playlist.getUpdatedAt()
+        );
+    }
+
+    private FeaturedPlaylistTrackDto toFeaturedTrackDto(PlaylistTrack playlistTrack, TrackRatingRepository.TrackRatingStats stats, UUID albumEditorialId) {
+        Track track = playlistTrack.getTrack();
+        return new FeaturedPlaylistTrackDto(
+            track.getId(), albumEditorialId,
+            stats == null ? null : stats.getAvgRating(),
+            playlistTrack.getCuratorNote(), playlistTrack.getPosition(),
+            track.getAlbum().getImageUrl()
         );
     }
 

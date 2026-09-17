@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import jakarta.validation.Valid;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -21,8 +22,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.listen.ListenService;
+import com.jazzlogs.backend.playlist.dto.FeaturedPlaylistDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistDetailDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistSummaryDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistTrackDetailDto;
@@ -57,6 +60,14 @@ public class PlaylistController {
     public PlaylistDetailDto getDetail(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
         User user = userService.resolveFromJwt(jwt);
         return playlistService.getPlaylistDetail(id, user.getId(), user.getRole() == UserRole.ADMIN);
+    }
+
+    /** The featured playlist — see {@link PlaylistService#getFeatured}. */
+    @GetMapping("/featured")
+    public FeaturedPlaylistDto getFeatured(@AuthenticationPrincipal Jwt jwt) {
+        User user = userService.resolveFromJwt(jwt);
+        return playlistService.getFeatured(user.getId(), user.getRole() == UserRole.ADMIN)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No playlist is featured"));
     }
 
     @PostMapping
@@ -107,6 +118,22 @@ public class PlaylistController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> reorderTracks(@PathVariable UUID id, @Valid @RequestBody ReorderPlaylistTracksRequest request) {
         playlistService.reorderTracks(id, request.trackIds());
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Marks this playlist as THE featured one — see {@link PlaylistService#setFeatured}. */
+    @PostMapping("/{id}/featured")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> setFeatured(@PathVariable UUID id) {
+        playlistService.setFeatured(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Removes this playlist from being featured — see {@link PlaylistService#unsetFeatured}. */
+    @DeleteMapping("/{id}/featured")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> unsetFeatured(@PathVariable UUID id) {
+        playlistService.unsetFeatured(id);
         return ResponseEntity.noContent().build();
     }
 

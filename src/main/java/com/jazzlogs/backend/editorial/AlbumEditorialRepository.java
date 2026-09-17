@@ -28,8 +28,25 @@ public interface AlbumEditorialRepository extends JpaRepository<AlbumEditorial, 
     @Query("SELECT ae.album.id AS albumId, ae.dek AS dek FROM AlbumEditorial ae WHERE ae.album.id IN :albumIds")
     List<AlbumEditorialDekRow> findDeksByAlbumIds(@Param("albumIds") List<UUID> albumIds);
 
+    /**
+     * Batch — one query per page instead of one {@link #findByAlbumId} per
+     * row. For {@code PlaylistService.getFeatured}: each featured-playlist
+     * track links out to its album's editorial, if it has one.
+     *
+     * @param albumIds the albums to look up
+     * @return one row per album that has an editorial — an album with none
+     *         simply has no row
+     */
+    @Query("SELECT ae.album.id AS albumId, ae.id AS editorialId FROM AlbumEditorial ae WHERE ae.album.id IN :albumIds")
+    List<AlbumEditorialIdRow> findIdsByAlbumIds(@Param("albumIds") List<UUID> albumIds);
+
     interface AlbumEditorialDekRow {
         UUID getAlbumId();
         String getDek();
+    }
+
+    interface AlbumEditorialIdRow {
+        UUID getAlbumId();
+        UUID getEditorialId();
     }
 }
