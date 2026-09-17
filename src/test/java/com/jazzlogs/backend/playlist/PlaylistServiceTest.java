@@ -52,6 +52,9 @@ class PlaylistServiceTest {
     private PlaylistTrackRepository playlistTrackRepository;
 
     @Autowired
+    private PlaylistRepository playlistRepository;
+
+    @Autowired
     private ArtistRepository artistRepository;
 
     @Autowired
@@ -226,6 +229,51 @@ class PlaylistServiceTest {
             ResponseStatusException.class, () -> playlistService.setCoverImage(UUID.randomUUID(), file)
         );
 
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void setFeatured_marksExactlyOnePlaylist_clearingWhicheverWasFeaturedBefore() {
+        UUID playlistA = persistPlaylist("featured-a");
+        UUID playlistB = persistPlaylist("featured-b");
+
+        playlistService.setFeatured(playlistA);
+        assertThat(playlistRepository.findByFeaturedTrue().map(Playlist::getId)).contains(playlistA);
+
+        playlistService.setFeatured(playlistB);
+        assertThat(playlistRepository.findByFeaturedTrue().map(Playlist::getId)).contains(playlistB);
+    }
+
+    @Test
+    void setFeatured_rejectsUnknownPlaylist() {
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> playlistService.setFeatured(UUID.randomUUID()));
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void unsetFeatured_isNoOpWhenThePlaylistWasNeverFeatured() {
+        UUID playlistId = persistPlaylist("unset-never-featured");
+
+        playlistService.unsetFeatured(playlistId);
+
+        assertThat(playlistRepository.findById(playlistId).orElseThrow().isFeatured()).isFalse();
+    }
+
+    @Test
+    void unsetFeatured_removesTheFeaturedFlag() {
+        UUID playlistId = persistPlaylist("unset-featured");
+        playlistService.setFeatured(playlistId);
+
+        playlistService.unsetFeatured(playlistId);
+
+        assertThat(playlistRepository.findById(playlistId).orElseThrow().isFeatured()).isFalse();
+    }
+
+    @Test
+    void unsetFeatured_rejectsUnknownPlaylist() {
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> playlistService.unsetFeatured(UUID.randomUUID()));
         assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
