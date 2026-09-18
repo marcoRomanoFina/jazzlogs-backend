@@ -30,8 +30,6 @@ public interface PlaylistRepository extends LikeableRepository<Playlist>, SavedI
     @Query("SELECT p.likeCount FROM Playlist p WHERE p.id = :id")
     Optional<Integer> findLikeCount(@Param("id") UUID entityId);
 
-    Optional<Playlist> findBySlug(String slug);
-
     List<Playlist> findByPublishedTrueOrderByCreatedAtDesc();
 
     List<Playlist> findAllByOrderByCreatedAtDesc();

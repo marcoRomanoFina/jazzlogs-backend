@@ -14,7 +14,6 @@ import jakarta.validation.constraints.NotBlank;
 // against StyleVocabulary/MoodVocabulary/ContextVocabulary before anything is
 // written — see PlaylistService.replaceTags.
 public record PlaylistUpsertRequest(
-    @NotBlank String slug,
     @NotBlank String title,
     String tagline,
     String description,

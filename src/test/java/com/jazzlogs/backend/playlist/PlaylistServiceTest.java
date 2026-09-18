@@ -329,13 +329,13 @@ class PlaylistServiceTest {
         assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
-    private UUID persistPlaylist(String slug) {
-        return persistPlaylist(slug, true);
+    private UUID persistPlaylist(String title) {
+        return persistPlaylist(title, true);
     }
 
-    private UUID persistPlaylist(String slug, boolean published) {
+    private UUID persistPlaylist(String title, boolean published) {
         PlaylistUpsertRequest request = new PlaylistUpsertRequest(
-            slug, "Test Playlist", null, null, null, null, List.of(), List.of(), List.of()
+            title, null, null, null, null, List.of(), List.of(), List.of()
         );
         UUID id = playlistService.create(request).getId();
         if (published) {
@@ -344,8 +344,8 @@ class PlaylistServiceTest {
         return id;
     }
 
-    private PlaylistUpsertRequest upsertRequestWithTags(String slug, List<String> styleCodes) {
-        return new PlaylistUpsertRequest(slug, "Test Playlist", null, null, null, null, styleCodes, List.of(), List.of());
+    private PlaylistUpsertRequest upsertRequestWithTags(String title, List<String> styleCodes) {
+        return new PlaylistUpsertRequest(title, null, null, null, null, styleCodes, List.of(), List.of());
     }
 
     private Artist persistArtist() {

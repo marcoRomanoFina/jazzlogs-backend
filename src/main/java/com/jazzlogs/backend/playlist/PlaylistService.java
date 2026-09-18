@@ -65,7 +65,7 @@ public class PlaylistService {
     @Transactional
     public Playlist create(PlaylistUpsertRequest request) {
         Playlist playlist = new Playlist(
-            request.slug(), request.title(), request.tagline(), request.description(),
+            request.title(), request.tagline(), request.description(),
             request.coverImageUrl(), request.spotifyUrl()
         );
         Playlist saved = playlistRepository.save(playlist);
@@ -79,7 +79,7 @@ public class PlaylistService {
     public PlaylistDetailDto update(UUID id, PlaylistUpsertRequest request) {
         Playlist playlist = getPlaylistOrThrow(id);
         playlist.update(
-            request.slug(), request.title(), request.tagline(), request.description(),
+            request.title(), request.tagline(), request.description(),
             request.coverImageUrl(), request.spotifyUrl()
         );
         graphService.syncPlaylistNode(playlist.getId(), playlist.getTitle());
@@ -365,7 +365,7 @@ public class PlaylistService {
         List<VocabularyTag> contextTags = graphService.getPlaylistContexts(id);
 
         return new PlaylistDetailDto(
-            playlist.getId(), playlist.getSlug(), playlist.getTitle(), playlist.getTagline(), playlist.getDescription(),
+            playlist.getId(), playlist.getTitle(), playlist.getTagline(), playlist.getDescription(),
             playlist.getCoverImageUrl(), playlist.getSpotifyUrl(), playlist.isPublished(),
             playlist.getLikeCount(), liked, playlist.getTrackCount(), playlist.getDurationMs(), trackDtos,
             styleTags, moodTags, contextTags, playlist.getCreatedAt(), playlist.getUpdatedAt()
@@ -421,7 +421,7 @@ public class PlaylistService {
         List<VocabularyTag> contextTags = graphService.getPlaylistContexts(playlist.getId());
 
         return new FeaturedPlaylistDto(
-            playlist.getId(), playlist.getSlug(), playlist.getTitle(), playlist.getTagline(), playlist.getDescription(),
+            playlist.getId(), playlist.getTitle(), playlist.getTagline(), playlist.getDescription(),
             playlist.getCoverImageUrl(), playlist.getSpotifyUrl(), playlist.isPublished(),
             playlist.getLikeCount(), liked, playlist.getTrackCount(), playlist.getDurationMs(), trackDtos,
             styleTags, moodTags, contextTags, playlist.getCreatedAt(), playlist.getUpdatedAt()
@@ -458,7 +458,7 @@ public class PlaylistService {
 
     private PlaylistSummaryDto toSummaryDto(Playlist playlist) {
         return new PlaylistSummaryDto(
-            playlist.getId(), playlist.getSlug(), playlist.getTitle(), playlist.getTagline(),
+            playlist.getId(), playlist.getTitle(), playlist.getTagline(),
             playlist.getCoverImageUrl(), playlist.isPublished(), playlist.getLikeCount(),
             playlist.getTrackCount(), playlist.getDurationMs(), playlist.getCreatedAt()
         );

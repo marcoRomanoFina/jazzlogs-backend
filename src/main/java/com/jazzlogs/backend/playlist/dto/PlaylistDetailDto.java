@@ -12,7 +12,6 @@ import com.jazzlogs.backend.graph.VocabularyTag;
 // already return.
 public record PlaylistDetailDto(
     UUID id,
-    String slug,
     String title,
     String tagline,
     String description,

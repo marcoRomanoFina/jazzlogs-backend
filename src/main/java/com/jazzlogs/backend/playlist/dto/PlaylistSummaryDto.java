@@ -5,7 +5,6 @@ import java.util.UUID;
 
 public record PlaylistSummaryDto(
     UUID id,
-    String slug,
     String title,
     String tagline,
     String coverImageUrl,

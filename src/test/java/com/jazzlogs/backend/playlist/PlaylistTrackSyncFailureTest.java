@@ -127,7 +127,7 @@ class PlaylistTrackSyncFailureTest {
 
     private UUID persistPlaylist() {
         Playlist playlist = playlistRepository.save(new Playlist(
-            "test-slug-" + UUID.randomUUID(), "Test Playlist", null, null, null, null
+            "Test Playlist", null, null, null, null
         ));
         return playlist.getId();
     }

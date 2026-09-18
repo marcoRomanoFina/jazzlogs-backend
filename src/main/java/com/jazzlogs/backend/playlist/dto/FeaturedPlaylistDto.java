@@ -10,7 +10,6 @@ import com.jazzlogs.backend.graph.VocabularyTag;
 // using the leaner FeaturedPlaylistTrackDto instead of PlaylistTrackDetailDto.
 public record FeaturedPlaylistDto(
     UUID id,
-    String slug,
     String title,
     String tagline,
     String description,

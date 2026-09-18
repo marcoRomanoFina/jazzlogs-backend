@@ -25,9 +25,6 @@ public class Playlist {
     @GeneratedValue
     private UUID id;
 
-    @Column(nullable = false, unique = true)
-    private String slug;
-
     @Column(nullable = false)
     private String title;
 
@@ -66,14 +63,12 @@ public class Playlist {
     // Every new playlist starts as a draft (published defaults to false) —
     // not a constructor param, see PlaylistService.publish/unpublish.
     public Playlist(
-        String slug,
         String title,
         String tagline,
         String description,
         String coverImageUrl,
         String spotifyUrl
     ) {
-        this.slug = slug;
         this.title = title;
         this.tagline = tagline;
         this.description = description;
@@ -82,14 +77,12 @@ public class Playlist {
     }
 
     public void update(
-        String slug,
         String title,
         String tagline,
         String description,
         String coverImageUrl,
         String spotifyUrl
     ) {
-        this.slug = slug;
         this.title = title;
         this.tagline = tagline;
         this.description = description;

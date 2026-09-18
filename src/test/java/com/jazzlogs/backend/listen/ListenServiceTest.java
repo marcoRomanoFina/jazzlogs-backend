@@ -110,7 +110,7 @@ class ListenServiceTest {
     // and which would require a live Neo4j to succeed.
     private Playlist persistPlaylist() {
         return playlistRepository.save(new Playlist(
-            "test-slug-" + UUID.randomUUID(), "Test Playlist", null, null, null, null
+            "Test Playlist", null, null, null, null
         ));
     }
 
