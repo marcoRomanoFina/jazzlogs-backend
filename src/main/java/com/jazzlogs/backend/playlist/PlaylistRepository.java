@@ -34,6 +34,9 @@ public interface PlaylistRepository extends LikeableRepository<Playlist>, SavedI
 
     List<Playlist> findAllByOrderByCreatedAtDesc();
 
+    /** For {@code PlaylistService.assertTitleAvailable} — uq_playlists_title (V29) is the DB-level backstop. */
+    Optional<Playlist> findByTitle(String title);
+
     /** For {@code PlaylistService.getFeatured} — the singleton featured playlist, if any is currently featured. */
     Optional<Playlist> findByFeaturedTrue();
 

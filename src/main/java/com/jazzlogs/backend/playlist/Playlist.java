@@ -25,7 +25,10 @@ public class Playlist {
     @GeneratedValue
     private UUID id;
 
-    @Column(nullable = false)
+    // Enforced at the DB level (uq_playlists_title, V29) — no two playlists
+    // can share a title. PlaylistService checks it up front too, for a clean
+    // 409 instead of surfacing the raw constraint violation.
+    @Column(nullable = false, unique = true)
     private String title;
 
     private String tagline;

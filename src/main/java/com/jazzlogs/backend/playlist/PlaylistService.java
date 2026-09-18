@@ -9,12 +9,15 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
+
+import jakarta.persistence.EntityManager;
 
 import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.artist.Artist;
@@ -61,36 +64,85 @@ public class PlaylistService {
     private final Neo4jAsyncSyncExecutor syncExecutor;
     private final ImageStorageService imageStorageService;
     private final AlbumEditorialRepository albumEditorialRepository;
+    private final EntityManager entityManager;
 
     /**
      * Metadata only — see PlaylistUpsertRequest; the tracklist is empty until
      * addTrack is called. Returns the saved entity, not a DTO — the
-     * controller responds 201 with a Location header, no body, so there's no
-     * caller left that needs the full getPlaylistDetail fan-out here.
+     * controller responds 201 with just its id, so there's no caller left
+     * that needs the full getPlaylistDetail fan-out here.
+     *
+     * @throws ResponseStatusException 409 if another playlist already has this title
      */
     @Transactional
     public Playlist create(PlaylistUpsertRequest request) {
+        assertTitleAvailable(request.title(), null);
         Playlist playlist = new Playlist(
             request.title(), request.tagline(), request.description(),
             request.coverImageUrl(), request.spotifyUrl()
         );
         Playlist saved = playlistRepository.save(playlist);
+        flushOrThrowOnTitleConflict(request.title());
         graphService.syncPlaylistNode(saved.getId(), saved.getTitle());
         replaceTags(saved, request.styleCodes(), request.moodCodes(), request.contextCodes());
         return saved;
     }
 
-    /** Metadata only — never touches playlist_tracks or published, see addTrack/removeTrack/updateTrackNote/reorderTracks/publish/unpublish. */
+    /**
+     * Metadata only — never touches playlist_tracks or published, see
+     * addTrack/removeTrack/updateTrackNote/reorderTracks/publish/unpublish.
+     *
+     * @throws ResponseStatusException 404 if the playlist doesn't exist, 409
+     *                                  if another playlist already has this title
+     */
     @Transactional
     public PlaylistDetailDto update(UUID id, PlaylistUpsertRequest request) {
         Playlist playlist = getPlaylistOrThrow(id);
+        assertTitleAvailable(request.title(), id);
         playlist.update(
             request.title(), request.tagline(), request.description(),
             request.coverImageUrl(), request.spotifyUrl()
         );
+        flushOrThrowOnTitleConflict(request.title());
         graphService.syncPlaylistNode(playlist.getId(), playlist.getTitle());
         replaceTags(playlist, request.styleCodes(), request.moodCodes(), request.contextCodes());
         return getPlaylistDetail(id, null, true);
+    }
+
+    /**
+     * Up-front check — the common-path way create/update reject a duplicate
+     * title, with a clean message. {@code excludingPlaylistId} lets update
+     * re-save a playlist under its own unchanged title without tripping over
+     * itself; pass {@code null} from create, where nothing should be excluded.
+     *
+     * @throws ResponseStatusException 409 if a different playlist already has this title
+     */
+    private void assertTitleAvailable(String title, UUID excludingPlaylistId) {
+        playlistRepository.findByTitle(title)
+            .filter(existing -> !existing.getId().equals(excludingPlaylistId))
+            .ifPresent(existing -> {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "A playlist titled \"" + title + "\" already exists");
+            });
+    }
+
+    /**
+     * {@code flush()} forces the pending INSERT/UPDATE to run right here
+     * instead of at commit time — same reasoning as LikeService.addLike:
+     * without it, a title collision from a concurrent request (that snuck in
+     * between {@link #assertTitleAvailable} and this point) would blow up
+     * much later, at commit, well outside this try/catch, instead of
+     * surfacing here as a clean 409. uq_playlists_title (V29) is what
+     * actually guarantees no two playlists share a title under concurrent
+     * writes; this is just what turns that into a 409 instead of a 500.
+     */
+    private void flushOrThrowOnTitleConflict(String title) {
+        try {
+            entityManager.flush();
+        } catch (DataIntegrityViolationException | ConstraintViolationException concurrentTitle) {
+            throw new ResponseStatusException(
+                HttpStatus.CONFLICT, "A playlist titled \"" + title + "\" already exists", concurrentTitle
+            );
+        }
     }
 
     /**

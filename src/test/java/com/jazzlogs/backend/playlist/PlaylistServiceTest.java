@@ -228,6 +228,35 @@ class PlaylistServiceTest {
     }
 
     @Test
+    void create_rejectsDuplicateTitle() {
+        persistPlaylist("Late Night Hours");
+
+        ResponseStatusException ex = catchThrowableOfType(ResponseStatusException.class,
+            () -> playlistService.create(upsertRequestWithTags("Late Night Hours", List.of())));
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
+    void update_rejectsRenamingToAnotherPlaylistsTitle() {
+        persistPlaylist("Late Night Hours");
+        UUID otherId = persistPlaylist("Morning Coffee");
+
+        ResponseStatusException ex = catchThrowableOfType(ResponseStatusException.class,
+            () -> playlistService.update(otherId, upsertRequestWithTags("Late Night Hours", List.of())));
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    /** Saving a playlist's metadata without changing its title must not trip over its own row. */
+    @Test
+    void update_allowsSavingUnderItsOwnUnchangedTitle() {
+        UUID playlistId = persistPlaylist("Late Night Hours");
+
+        PlaylistDetailDto updated = playlistService.update(playlistId, upsertRequestWithTags("Late Night Hours", List.of()));
+
+        assertThat(updated.title()).isEqualTo("Late Night Hours");
+    }
+
+    @Test
     void delete_rejectsUnknownPlaylist() {
         ResponseStatusException ex = catchThrowableOfType(
             ResponseStatusException.class, () -> playlistService.delete(UUID.randomUUID()));
