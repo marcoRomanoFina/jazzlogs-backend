@@ -26,6 +26,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.listen.ListenService;
 import com.jazzlogs.backend.playlist.dto.FeaturedPlaylistDto;
+import com.jazzlogs.backend.playlist.dto.JourneyPlaylistDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistDetailDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistIdDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistSummaryDto;
@@ -69,6 +70,14 @@ public class PlaylistController {
         User user = userService.resolveFromJwt(jwt);
         return playlistService.getFeatured(user.getId(), user.getRole() == UserRole.ADMIN)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No playlist is featured"));
+    }
+
+    /** The most recently published JOURNEY playlist — see {@link PlaylistService#getJourney}. */
+    @GetMapping("/journey")
+    public JourneyPlaylistDto getJourney(@AuthenticationPrincipal Jwt jwt) {
+        User user = userService.resolveFromJwt(jwt);
+        return playlistService.getJourney(user.getId())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No journey playlist has been published"));
     }
 
     @PostMapping

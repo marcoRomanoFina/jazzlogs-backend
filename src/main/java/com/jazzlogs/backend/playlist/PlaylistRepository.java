@@ -41,6 +41,16 @@ public interface PlaylistRepository extends LikeableRepository<Playlist>, SavedI
     Optional<Playlist> findByFeaturedTrue();
 
     /**
+     * For {@code PlaylistService.getJourney} — "most recently published" is
+     * approximated by {@code createdAt}: {@code Playlist} has no
+     * {@code publishedAt} timestamp, and a playlist's {@code createdAt}
+     * never changes, so this is really "most recently created JOURNEY
+     * playlist that happens to be published" rather than tracking the
+     * actual publish moment.
+     */
+    Optional<Playlist> findFirstByPublishedTrueAndTypeOrderByCreatedAtDesc(PlaylistType type);
+
+    /**
      * The normal-path way to clear the previous featured row before marking
      * a new one — {@code PlaylistService.setFeatured} calls this before
      * {@link #markFeatured}, both as atomic UPDATEs rather than
