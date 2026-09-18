@@ -156,7 +156,7 @@ class SavedItemServiceTest {
     // test doesn't care about and which would require a live Neo4j to succeed.
     private UUID persistPlaylist() {
         Playlist playlist = playlistRepository.save(new Playlist(
-            "test-slug-" + UUID.randomUUID(), "Test Playlist", null, null, null, null, true
+            "test-slug-" + UUID.randomUUID(), "Test Playlist", null, null, null, null
         ));
         return playlist.getId();
     }

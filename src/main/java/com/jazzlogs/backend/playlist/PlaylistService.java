@@ -66,7 +66,7 @@ public class PlaylistService {
     public Playlist create(PlaylistUpsertRequest request) {
         Playlist playlist = new Playlist(
             request.slug(), request.title(), request.tagline(), request.description(),
-            request.coverImageUrl(), request.spotifyUrl(), request.published()
+            request.coverImageUrl(), request.spotifyUrl()
         );
         Playlist saved = playlistRepository.save(playlist);
         graphService.syncPlaylistNode(saved.getId(), saved.getTitle());
@@ -74,17 +74,37 @@ public class PlaylistService {
         return saved;
     }
 
-    /** Metadata only — never touches playlist_tracks, see addTrack/removeTrack/updateTrackNote/reorderTracks. */
+    /** Metadata only — never touches playlist_tracks or published, see addTrack/removeTrack/updateTrackNote/reorderTracks/publish/unpublish. */
     @Transactional
     public PlaylistDetailDto update(UUID id, PlaylistUpsertRequest request) {
         Playlist playlist = getPlaylistOrThrow(id);
         playlist.update(
             request.slug(), request.title(), request.tagline(), request.description(),
-            request.coverImageUrl(), request.spotifyUrl(), request.published()
+            request.coverImageUrl(), request.spotifyUrl()
         );
         graphService.syncPlaylistNode(playlist.getId(), playlist.getTitle());
         replaceTags(playlist, request.styleCodes(), request.moodCodes(), request.contextCodes());
         return getPlaylistDetail(id, null, true);
+    }
+
+    /** Publishes this playlist, making it visible to non-admins. */
+    @Transactional
+    public void publish(UUID playlistId) {
+        getPlaylistOrThrow(playlistId).publish();
+    }
+
+    /**
+     * Reverts this playlist to draft — a no-op if it was already a draft.
+     * Also clears the featured flag if this was THE featured playlist:
+     * setFeatured requires published (see {@link #setFeatured}), so
+     * unpublishing keeps that invariant true going the other way too,
+     * instead of leaving a featured-but-unpublished row that only
+     * {@link #getFeatured}'s admin check papers over.
+     */
+    @Transactional
+    public void unpublish(UUID playlistId) {
+        getPlaylistOrThrow(playlistId).unpublish();
+        playlistRepository.unmarkFeatured(playlistId);
     }
 
     /**

@@ -84,6 +84,22 @@ public class PlaylistController {
         return playlistService.update(id, request);
     }
 
+    /** Publishes this playlist — see {@link PlaylistService#publish}. */
+    @PostMapping("/{id}/publish")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> publish(@PathVariable UUID id) {
+        playlistService.publish(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Reverts this playlist to draft — see {@link PlaylistService#unpublish}. */
+    @DeleteMapping("/{id}/publish")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> unpublish(@PathVariable UUID id) {
+        playlistService.unpublish(id);
+        return ResponseEntity.noContent().build();
+    }
+
     /**
      * Uploads a new cover image for this playlist — see {@link PlaylistService#setCoverImage}.
      *

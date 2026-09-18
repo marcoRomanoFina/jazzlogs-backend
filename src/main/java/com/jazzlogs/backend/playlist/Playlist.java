@@ -63,14 +63,15 @@ public class Playlist {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    // Every new playlist starts as a draft (published defaults to false) —
+    // not a constructor param, see PlaylistService.publish/unpublish.
     public Playlist(
         String slug,
         String title,
         String tagline,
         String description,
         String coverImageUrl,
-        String spotifyUrl,
-        boolean published
+        String spotifyUrl
     ) {
         this.slug = slug;
         this.title = title;
@@ -78,7 +79,6 @@ public class Playlist {
         this.description = description;
         this.coverImageUrl = coverImageUrl;
         this.spotifyUrl = spotifyUrl;
-        this.published = published;
     }
 
     public void update(
@@ -87,8 +87,7 @@ public class Playlist {
         String tagline,
         String description,
         String coverImageUrl,
-        String spotifyUrl,
-        boolean published
+        String spotifyUrl
     ) {
         this.slug = slug;
         this.title = title;
@@ -96,7 +95,6 @@ public class Playlist {
         this.description = description;
         this.coverImageUrl = coverImageUrl;
         this.spotifyUrl = spotifyUrl;
-        this.published = published;
     }
 
     public void updateTrackStats(int trackCount, long durationMs) {
@@ -108,6 +106,16 @@ public class Playlist {
     // (PlaylistService.setCoverImage), not the metadata upsert.
     public void updateCoverImageUrl(String coverImageUrl) {
         this.coverImageUrl = coverImageUrl;
+    }
+
+    /** See {@code PlaylistService.publish}. */
+    public void publish() {
+        this.published = true;
+    }
+
+    /** See {@code PlaylistService.unpublish}. */
+    public void unpublish() {
+        this.published = false;
     }
 
     @PrePersist

@@ -233,6 +233,48 @@ class PlaylistServiceTest {
     }
 
     @Test
+    void create_alwaysStartsAsADraft() {
+        UUID playlistId = persistPlaylist("draft-by-default", false);
+
+        assertThat(playlistRepository.findById(playlistId).orElseThrow().isPublished()).isFalse();
+    }
+
+    @Test
+    void publish_marksThePlaylistPublished() {
+        UUID playlistId = persistPlaylist("to-publish", false);
+
+        playlistService.publish(playlistId);
+
+        assertThat(playlistRepository.findById(playlistId).orElseThrow().isPublished()).isTrue();
+    }
+
+    @Test
+    void publish_rejectsUnknownPlaylist() {
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> playlistService.publish(UUID.randomUUID()));
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void unpublish_revertsToDraft_andClearsFeaturedIfItWasTheFeaturedOne() {
+        UUID playlistId = persistPlaylist("to-unpublish");
+        playlistService.setFeatured(playlistId);
+
+        playlistService.unpublish(playlistId);
+
+        Playlist reloaded = playlistRepository.findById(playlistId).orElseThrow();
+        assertThat(reloaded.isPublished()).isFalse();
+        assertThat(reloaded.isFeatured()).isFalse();
+    }
+
+    @Test
+    void unpublish_rejectsUnknownPlaylist() {
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> playlistService.unpublish(UUID.randomUUID()));
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
     void setFeatured_marksExactlyOnePlaylist_clearingWhicheverWasFeaturedBefore() {
         UUID playlistA = persistPlaylist("featured-a");
         UUID playlistB = persistPlaylist("featured-b");
@@ -293,13 +335,17 @@ class PlaylistServiceTest {
 
     private UUID persistPlaylist(String slug, boolean published) {
         PlaylistUpsertRequest request = new PlaylistUpsertRequest(
-            slug, "Test Playlist", null, null, null, null, published, List.of(), List.of(), List.of()
+            slug, "Test Playlist", null, null, null, null, List.of(), List.of(), List.of()
         );
-        return playlistService.create(request).getId();
+        UUID id = playlistService.create(request).getId();
+        if (published) {
+            playlistService.publish(id);
+        }
+        return id;
     }
 
     private PlaylistUpsertRequest upsertRequestWithTags(String slug, List<String> styleCodes) {
-        return new PlaylistUpsertRequest(slug, "Test Playlist", null, null, null, null, true, styleCodes, List.of(), List.of());
+        return new PlaylistUpsertRequest(slug, "Test Playlist", null, null, null, null, styleCodes, List.of(), List.of());
     }
 
     private Artist persistArtist() {
