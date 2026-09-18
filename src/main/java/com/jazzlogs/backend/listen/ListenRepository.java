@@ -55,4 +55,12 @@ public interface ListenRepository extends JpaRepository<Listen, ListenId> {
         @Param("entityType") ListenableEntityType entityType,
         @Param("entityId") UUID entityId
     );
+
+    /** For {@code ListenService.deleteAllFor} — hard-deleting the entity itself, not one user's listen of it. */
+    @Modifying
+    @Query("DELETE FROM Listen l WHERE l.id.entityType = :entityType AND l.id.entityId = :entityId")
+    void deleteByEntityTypeAndEntityId(
+        @Param("entityType") ListenableEntityType entityType,
+        @Param("entityId") UUID entityId
+    );
 }

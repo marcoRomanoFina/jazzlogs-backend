@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import jakarta.validation.Valid;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -21,9 +22,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.listen.ListenService;
+import com.jazzlogs.backend.playlist.dto.FeaturedPlaylistDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistDetailDto;
+import com.jazzlogs.backend.playlist.dto.PlaylistIdDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistSummaryDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistTrackDetailDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistTrackInput;
@@ -59,16 +63,49 @@ public class PlaylistController {
         return playlistService.getPlaylistDetail(id, user.getId(), user.getRole() == UserRole.ADMIN);
     }
 
+    /** The featured playlist — see {@link PlaylistService#getFeatured}. */
+    @GetMapping("/featured")
+    public FeaturedPlaylistDto getFeatured(@AuthenticationPrincipal Jwt jwt) {
+        User user = userService.resolveFromJwt(jwt);
+        return playlistService.getFeatured(user.getId(), user.getRole() == UserRole.ADMIN)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No playlist is featured"));
+    }
+
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public PlaylistDetailDto create(@Valid @RequestBody PlaylistUpsertRequest request) {
-        return playlistService.create(request);
+    public ResponseEntity<PlaylistIdDto> create(@Valid @RequestBody PlaylistUpsertRequest request) {
+        Playlist playlist = playlistService.create(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(new PlaylistIdDto(playlist.getId()));
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public PlaylistDetailDto update(@PathVariable UUID id, @Valid @RequestBody PlaylistUpsertRequest request) {
         return playlistService.update(id, request);
+    }
+
+    /** Hard-deletes this playlist and every trace of it — see {@link PlaylistService#delete}. */
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> delete(@PathVariable UUID id) {
+        playlistService.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Publishes this playlist — see {@link PlaylistService#publish}. */
+    @PostMapping("/{id}/publish")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> publish(@PathVariable UUID id) {
+        playlistService.publish(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Reverts this playlist to draft — see {@link PlaylistService#unpublish}. */
+    @DeleteMapping("/{id}/publish")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> unpublish(@PathVariable UUID id) {
+        playlistService.unpublish(id);
+        return ResponseEntity.noContent().build();
     }
 
     /**
@@ -99,7 +136,7 @@ public class PlaylistController {
 
     @PatchMapping("/{id}/tracks/{trackId}")
     @PreAuthorize("hasRole('ADMIN')")
-    public PlaylistTrackDetailDto updateTrackNote(@PathVariable UUID id, @PathVariable UUID trackId, @RequestBody UpdateTrackNoteRequest request) {
+    public PlaylistTrackDetailDto updateTrackNote(@PathVariable UUID id, @PathVariable UUID trackId, @Valid @RequestBody UpdateTrackNoteRequest request) {
         return playlistService.updateTrackNote(id, trackId, request.title(), request.curatorNote());
     }
 
@@ -107,6 +144,22 @@ public class PlaylistController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> reorderTracks(@PathVariable UUID id, @Valid @RequestBody ReorderPlaylistTracksRequest request) {
         playlistService.reorderTracks(id, request.trackIds());
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Marks this playlist as THE featured one — see {@link PlaylistService#setFeatured}. */
+    @PostMapping("/{id}/featured")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> setFeatured(@PathVariable UUID id) {
+        playlistService.setFeatured(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Removes this playlist from being featured — see {@link PlaylistService#unsetFeatured}. */
+    @DeleteMapping("/{id}/featured")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> unsetFeatured(@PathVariable UUID id) {
+        playlistService.unsetFeatured(id);
         return ResponseEntity.noContent().build();
     }
 

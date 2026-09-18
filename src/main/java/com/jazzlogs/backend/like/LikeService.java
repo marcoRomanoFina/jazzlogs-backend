@@ -137,6 +137,20 @@ public class LikeService {
     }
 
     /**
+     * Deletes every like of an entity, regardless of which user made it —
+     * for hard-deleting the entity itself (see PlaylistService.delete), not
+     * one user unliking it. Doesn't touch the entity's own likeCount column
+     * since the entity row is being removed too.
+     *
+     * @param entityType which kind of entity
+     * @param entityId   that entity's own id
+     */
+    @Transactional
+    public void deleteAllFor(LikeableEntityType entityType, UUID entityId) {
+        likeRepository.deleteByEntityTypeAndEntityId(entityType, entityId);
+    }
+
+    /**
      * One query for the whole list — the returned set is the subset of entityIds
      * this user liked, for marking hearts active across a feed without N calls.
      */

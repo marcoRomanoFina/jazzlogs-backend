@@ -46,9 +46,12 @@ public class PlaylistTrack {
 
     // Editorial title for this entry within the playlist — distinct from the
     // track's own name (e.g. a narrative/curated re-framing of the track).
+    // Required, same as curatorNote: every track added to a playlist needs
+    // its own curatorial framing, not just a bare reference to the track.
+    @Column(nullable = false)
     private String title;
 
-    @Column(name = "curator_note", columnDefinition = "TEXT")
+    @Column(name = "curator_note", nullable = false, columnDefinition = "TEXT")
     private String curatorNote;
 
     @Column(name = "created_at", nullable = false, updatable = false)

@@ -4,10 +4,12 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -15,16 +17,25 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
+import jakarta.persistence.EntityManager;
+
 import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.artist.Artist;
+import com.jazzlogs.backend.editorial.AlbumEditorialRepository;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.like.LikeService;
 import com.jazzlogs.backend.like.LikeableEntityType;
+import com.jazzlogs.backend.listen.ListenService;
+import com.jazzlogs.backend.listen.ListenableEntityType;
+import com.jazzlogs.backend.playlist.dto.FeaturedPlaylistDto;
+import com.jazzlogs.backend.playlist.dto.FeaturedPlaylistTrackDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistDetailDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistSummaryDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistTrackDetailDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistUpsertRequest;
+import com.jazzlogs.backend.saveditem.SaveableEntityType;
+import com.jazzlogs.backend.saveditem.SavedItemService;
 import com.jazzlogs.backend.storage.ImageStorageService;
 import com.jazzlogs.backend.syncfailure.Neo4jAsyncSyncExecutor;
 import com.jazzlogs.backend.syncfailure.SyncFailureEntityType;
@@ -47,34 +58,143 @@ public class PlaylistService {
     private final TrackRepository trackRepository;
     private final TrackRatingRepository trackRatingRepository;
     private final LikeService likeService;
+    private final ListenService listenService;
+    private final SavedItemService savedItemService;
     private final GraphService graphService;
     private final Neo4jAsyncSyncExecutor syncExecutor;
     private final ImageStorageService imageStorageService;
+    private final AlbumEditorialRepository albumEditorialRepository;
+    private final EntityManager entityManager;
 
-    /** Metadata only — see PlaylistUpsertRequest; the tracklist is empty until addTrack is called. */
+    /**
+     * Metadata only — see PlaylistUpsertRequest; the tracklist is empty until
+     * addTrack is called. Returns the saved entity, not a DTO — the
+     * controller responds 201 with just its id, so there's no caller left
+     * that needs the full getPlaylistDetail fan-out here.
+     *
+     * @throws ResponseStatusException 409 if another playlist already has this title
+     */
     @Transactional
-    public PlaylistDetailDto create(PlaylistUpsertRequest request) {
+    public Playlist create(PlaylistUpsertRequest request) {
+        assertTitleAvailable(request.title(), null);
         Playlist playlist = new Playlist(
-            request.slug(), request.title(), request.tagline(), request.description(),
-            request.coverImageUrl(), request.spotifyUrl(), request.published()
+            request.title(), request.tagline(), request.description(),
+            request.coverImageUrl(), request.spotifyUrl(), request.type()
         );
         Playlist saved = playlistRepository.save(playlist);
+        flushOrThrowOnTitleConflict(request.title());
         graphService.syncPlaylistNode(saved.getId(), saved.getTitle());
         replaceTags(saved, request.styleCodes(), request.moodCodes(), request.contextCodes());
-        return getPlaylistDetail(saved.getId(), null, true);
+        return saved;
     }
 
-    /** Metadata only — never touches playlist_tracks, see addTrack/removeTrack/updateTrackNote/reorderTracks. */
+    /**
+     * Metadata only — never touches playlist_tracks or published, see
+     * addTrack/removeTrack/updateTrackNote/reorderTracks/publish/unpublish.
+     *
+     * @throws ResponseStatusException 404 if the playlist doesn't exist, 409
+     *                                  if another playlist already has this title
+     */
     @Transactional
     public PlaylistDetailDto update(UUID id, PlaylistUpsertRequest request) {
         Playlist playlist = getPlaylistOrThrow(id);
+        assertTitleAvailable(request.title(), id);
         playlist.update(
-            request.slug(), request.title(), request.tagline(), request.description(),
-            request.coverImageUrl(), request.spotifyUrl(), request.published()
+            request.title(), request.tagline(), request.description(),
+            request.coverImageUrl(), request.spotifyUrl(), request.type()
         );
+        flushOrThrowOnTitleConflict(request.title());
         graphService.syncPlaylistNode(playlist.getId(), playlist.getTitle());
         replaceTags(playlist, request.styleCodes(), request.moodCodes(), request.contextCodes());
         return getPlaylistDetail(id, null, true);
+    }
+
+    /**
+     * Up-front check — the common-path way create/update reject a duplicate
+     * title, with a clean message. {@code excludingPlaylistId} lets update
+     * re-save a playlist under its own unchanged title without tripping over
+     * itself; pass {@code null} from create, where nothing should be excluded.
+     *
+     * @throws ResponseStatusException 409 if a different playlist already has this title
+     */
+    private void assertTitleAvailable(String title, UUID excludingPlaylistId) {
+        playlistRepository.findByTitle(title)
+            .filter(existing -> !existing.getId().equals(excludingPlaylistId))
+            .ifPresent(existing -> {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "A playlist titled \"" + title + "\" already exists");
+            });
+    }
+
+    /**
+     * {@code flush()} forces the pending INSERT/UPDATE to run right here
+     * instead of at commit time — same reasoning as LikeService.addLike:
+     * without it, a title collision from a concurrent request (that snuck in
+     * between {@link #assertTitleAvailable} and this point) would blow up
+     * much later, at commit, well outside this try/catch, instead of
+     * surfacing here as a clean 409. uq_playlists_title (V29) is what
+     * actually guarantees no two playlists share a title under concurrent
+     * writes; this is just what turns that into a 409 instead of a 500.
+     */
+    private void flushOrThrowOnTitleConflict(String title) {
+        try {
+            entityManager.flush();
+        } catch (DataIntegrityViolationException | ConstraintViolationException concurrentTitle) {
+            throw new ResponseStatusException(
+                HttpStatus.CONFLICT, "A playlist titled \"" + title + "\" already exists", concurrentTitle
+            );
+        }
+    }
+
+    /**
+     * Hard-deletes this playlist and everything that points at it:
+     * <ul>
+     *   <li>its playlist_tracks rows — deleted up front (also backed by the
+     *       FK's cascade, see V28, as a safety net for anything that ever
+     *       deletes a playlist row some other way)</li>
+     *   <li>any likes/listens/saved_items referencing it — polymorphic
+     *       tables with no FK to cascade off of, so cleaned up explicitly</li>
+     *   <li>its Neo4j node and every relationship on it (BELONGS_TO, tag
+     *       edges, LISTENED, ...) via {@code DETACH DELETE}, fire-and-forget
+     *       with retry like every other Neo4j write here</li>
+     * </ul>
+     *
+     * @param playlistId the playlist to delete
+     * @throws ResponseStatusException 404 if it doesn't exist
+     */
+    @Transactional
+    public void delete(UUID playlistId) {
+        getPlaylistOrThrow(playlistId);
+        playlistTrackRepository.deleteByPlaylistId(playlistId);
+        likeService.deleteAllFor(LikeableEntityType.PLAYLIST, playlistId);
+        listenService.deleteAllFor(ListenableEntityType.PLAYLIST, playlistId);
+        savedItemService.deleteAllFor(SaveableEntityType.PLAYLIST, playlistId);
+        playlistRepository.deleteById(playlistId);
+
+        syncExecutor.sync(
+            SyncFailureEntityType.PLAYLIST_DELETED,
+            Map.of("playlistId", playlistId.toString()),
+            () -> graphService.deletePlaylistNode(playlistId)
+        );
+    }
+
+    /** Publishes this playlist, making it visible to non-admins. */
+    @Transactional
+    public void publish(UUID playlistId) {
+        getPlaylistOrThrow(playlistId).publish();
+    }
+
+    /**
+     * Reverts this playlist to draft — a no-op if it was already a draft.
+     * Also clears the featured flag if this was THE featured playlist:
+     * setFeatured requires published (see {@link #setFeatured}), so
+     * unpublishing keeps that invariant true going the other way too,
+     * instead of leaving a featured-but-unpublished row that only
+     * {@link #getFeatured}'s admin check papers over.
+     */
+    @Transactional
+    public void unpublish(UUID playlistId) {
+        getPlaylistOrThrow(playlistId).unpublish();
+        playlistRepository.unmarkFeatured(playlistId);
     }
 
     /**
@@ -91,6 +211,42 @@ public class PlaylistService {
         Playlist playlist = getPlaylistOrThrow(id);
         String url = imageStorageService.upload("playlists/" + id + "/cover", file);
         playlist.updateCoverImageUrl(url);
+    }
+
+    /**
+     * Marks this playlist as THE featured one, unfeaturing whichever one (if
+     * any) held that spot before. {@code idx_playlists_only_one_featured}
+     * (see V26) is what actually guarantees at most one stays featured
+     * under concurrent calls — same reasoning as {@code AlbumService#setFeatured}.
+     *
+     * @param playlistId the playlist
+     * @throws ResponseStatusException 404 if the playlist doesn't exist, 409
+     *                                  if it isn't published yet (a featured
+     *                                  playlist non-admins can't see would be
+     *                                  a broken link) or if a concurrent call
+     *                                  already featured a different playlist
+     */
+    @Transactional
+    public void setFeatured(UUID playlistId) {
+        Playlist playlist = getPlaylistOrThrow(playlistId);
+        if (!playlist.isPublished()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Playlist isn't published yet, can't be featured");
+        }
+        playlistRepository.clearFeatured();
+        try {
+            playlistRepository.markFeatured(playlistId);
+        } catch (DataIntegrityViolationException e) {
+            throw new ResponseStatusException(
+                HttpStatus.CONFLICT, "Another playlist was just featured concurrently — try again", e
+            );
+        }
+    }
+
+    /** Removes this playlist from being THE featured one — a no-op if it wasn't. */
+    @Transactional
+    public void unsetFeatured(UUID playlistId) {
+        getPlaylistOrThrow(playlistId);
+        playlistRepository.unmarkFeatured(playlistId);
     }
 
     /**
@@ -299,10 +455,76 @@ public class PlaylistService {
         List<VocabularyTag> contextTags = graphService.getPlaylistContexts(id);
 
         return new PlaylistDetailDto(
-            playlist.getId(), playlist.getSlug(), playlist.getTitle(), playlist.getTagline(), playlist.getDescription(),
-            playlist.getCoverImageUrl(), playlist.getSpotifyUrl(), playlist.isPublished(),
+            playlist.getId(), playlist.getTitle(), playlist.getTagline(), playlist.getDescription(),
+            playlist.getCoverImageUrl(), playlist.getSpotifyUrl(), playlist.getType(), playlist.isPublished(),
             playlist.getLikeCount(), liked, playlist.getTrackCount(), playlist.getDurationMs(), trackDtos,
             styleTags, moodTags, contextTags, playlist.getCreatedAt(), playlist.getUpdatedAt()
+        );
+    }
+
+    /**
+     * The singleton featured playlist — see {@code Playlist#featured}/{@code
+     * idx_playlists_only_one_featured} (V26), same "at most one" pattern as
+     * {@code Album#featured}. Each track's row is intentionally leaner than
+     * {@link #getPlaylistDetail}'s ({@link FeaturedPlaylistTrackDto} instead
+     * of {@link PlaylistTrackDetailDto}) — only what the featured section
+     * actually renders, not the full track/album/artist fan-out.
+     *
+     * @return the featured playlist, empty if none is featured, or if the
+     *         featured one isn't published and the caller isn't an admin
+     */
+    @Transactional(readOnly = true)
+    public Optional<FeaturedPlaylistDto> getFeatured(UUID currentUserId, boolean isAdmin) {
+        return playlistRepository.findByFeaturedTrue()
+            .filter(playlist -> playlist.isPublished() || isAdmin)
+            .map(playlist -> toFeaturedDto(playlist, currentUserId));
+    }
+
+    private FeaturedPlaylistDto toFeaturedDto(Playlist playlist, UUID currentUserId) {
+        List<PlaylistTrack> playlistTracks = playlistTrackRepository.findByPlaylistIdWithTrackDetails(playlist.getId());
+        List<UUID> trackIds = playlistTracks.stream().map(pt -> pt.getTrack().getId()).toList();
+        List<UUID> albumIds = playlistTracks.stream().map(pt -> pt.getTrack().getAlbum().getId()).distinct().toList();
+
+        Map<UUID, TrackRatingRepository.TrackRatingStats> statsByTrack = trackIds.isEmpty()
+            ? Map.of()
+            : trackRatingRepository.getRatingStatsForTracks(trackIds).stream()
+                .collect(Collectors.toMap(TrackRatingRepository.TrackRatingStats::getTrackId, stats -> stats));
+
+        Map<UUID, UUID> editorialIdByAlbum = albumIds.isEmpty()
+            ? Map.of()
+            : albumEditorialRepository.findIdsByAlbumIds(albumIds).stream()
+                .collect(Collectors.toMap(
+                    AlbumEditorialRepository.AlbumEditorialIdRow::getAlbumId,
+                    AlbumEditorialRepository.AlbumEditorialIdRow::getEditorialId
+                ));
+
+        List<FeaturedPlaylistTrackDto> trackDtos = playlistTracks.stream()
+            .map(pt -> toFeaturedTrackDto(
+                pt, statsByTrack.get(pt.getTrack().getId()), editorialIdByAlbum.get(pt.getTrack().getAlbum().getId())
+            ))
+            .toList();
+
+        boolean liked = currentUserId != null && likeService.hasUserLiked(currentUserId, LikeableEntityType.PLAYLIST, playlist.getId());
+
+        List<VocabularyTag> styleTags = graphService.getPlaylistStyles(playlist.getId());
+        List<VocabularyTag> moodTags = graphService.getPlaylistMoods(playlist.getId());
+        List<VocabularyTag> contextTags = graphService.getPlaylistContexts(playlist.getId());
+
+        return new FeaturedPlaylistDto(
+            playlist.getId(), playlist.getTitle(), playlist.getTagline(), playlist.getDescription(),
+            playlist.getCoverImageUrl(), playlist.getSpotifyUrl(), playlist.getType(), playlist.isPublished(),
+            playlist.getLikeCount(), liked, playlist.getTrackCount(), playlist.getDurationMs(), trackDtos,
+            styleTags, moodTags, contextTags, playlist.getCreatedAt(), playlist.getUpdatedAt()
+        );
+    }
+
+    private FeaturedPlaylistTrackDto toFeaturedTrackDto(PlaylistTrack playlistTrack, TrackRatingRepository.TrackRatingStats stats, UUID albumEditorialId) {
+        Track track = playlistTrack.getTrack();
+        Album album = track.getAlbum();
+        return new FeaturedPlaylistTrackDto(
+            track.getId(), track.getName(), albumEditorialId, album.getName(), album.getArtist().getName(),
+            album.getImageUrl(), playlistTrack.getPosition(),
+            stats == null ? null : stats.getAvgRating()
         );
     }
 
@@ -326,8 +548,8 @@ public class PlaylistService {
 
     private PlaylistSummaryDto toSummaryDto(Playlist playlist) {
         return new PlaylistSummaryDto(
-            playlist.getId(), playlist.getSlug(), playlist.getTitle(), playlist.getTagline(),
-            playlist.getCoverImageUrl(), playlist.isPublished(), playlist.getLikeCount(),
+            playlist.getId(), playlist.getTitle(), playlist.getTagline(),
+            playlist.getCoverImageUrl(), playlist.getType(), playlist.isPublished(), playlist.getLikeCount(),
             playlist.getTrackCount(), playlist.getDurationMs(), playlist.getCreatedAt()
         );
     }

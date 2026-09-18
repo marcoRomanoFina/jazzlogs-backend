@@ -152,6 +152,19 @@ public class SavedItemService {
         return new SavedItemSummary(entityId, entityType, resolved.name(), resolved.imageUrl(), savedItem.getCreatedAt());
     }
 
+    /**
+     * Deletes every saved-item row for an entity, regardless of which user
+     * saved it — for hard-deleting the entity itself (see
+     * PlaylistService.delete), not one user's own unsave.
+     *
+     * @param entityType which kind of entity
+     * @param entityId   that entity's own id
+     */
+    @Transactional
+    public void deleteAllFor(SaveableEntityType entityType, UUID entityId) {
+        savedItemRepository.deleteByEntityTypeAndEntityId(entityType, entityId);
+    }
+
     /** @throws ResponseStatusException 404 if no entity of that type/id exists */
     private void assertEntityExists(SaveableEntityType entityType, UUID entityId) {
         if (resolver(entityType).resolve(entityId).isEmpty()) {

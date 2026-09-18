@@ -34,6 +34,7 @@ public class SyncRetryWorker {
         PlaylistTrackAddedSyncRetryHandler playlistTrackAddedHandler,
         PlaylistTrackRemovedSyncRetryHandler playlistTrackRemovedHandler,
         PlaylistTracksReorderedSyncRetryHandler playlistTracksReorderedHandler,
+        PlaylistDeletedSyncRetryHandler playlistDeletedHandler,
         ChatRecommendationMemoryUpdatedSyncRetryHandler chatRecommendationMemoryUpdatedHandler,
         UserCreatedSyncRetryHandler userCreatedHandler,
         @Value("${sync-failure.max-attempts:5}") int maxAttempts
@@ -47,6 +48,7 @@ public class SyncRetryWorker {
             SyncFailureEntityType.PLAYLIST_TRACK_ADDED, playlistTrackAddedHandler,
             SyncFailureEntityType.PLAYLIST_TRACK_REMOVED, playlistTrackRemovedHandler,
             SyncFailureEntityType.PLAYLIST_TRACKS_REORDERED, playlistTracksReorderedHandler,
+            SyncFailureEntityType.PLAYLIST_DELETED, playlistDeletedHandler,
             SyncFailureEntityType.CHAT_RECOMMENDATION_MEMORY_UPDATED, chatRecommendationMemoryUpdatedHandler,
             SyncFailureEntityType.USER_CREATED, userCreatedHandler
         );

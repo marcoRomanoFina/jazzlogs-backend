@@ -37,4 +37,12 @@ public interface LikeRepository extends JpaRepository<Like, LikeId> {
         @Param("entityType") LikeableEntityType entityType,
         @Param("entityId") UUID entityId
     );
+
+    /** For {@code LikeService.deleteAllFor} — hard-deleting the entity itself, not one user's like of it. */
+    @Modifying
+    @Query("DELETE FROM Like l WHERE l.id.entityType = :entityType AND l.id.entityId = :entityId")
+    void deleteByEntityTypeAndEntityId(
+        @Param("entityType") LikeableEntityType entityType,
+        @Param("entityId") UUID entityId
+    );
 }

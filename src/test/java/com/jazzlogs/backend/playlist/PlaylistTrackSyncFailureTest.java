@@ -65,7 +65,7 @@ class PlaylistTrackSyncFailureTest {
         UUID playlistId = persistPlaylist();
         Track track = persistTrack(persistAlbum(persistArtist()));
 
-        playlistService.addTrack(playlistId, track.getId(), null, null);
+        playlistService.addTrack(playlistId, track.getId(), "Track Entry", "curator note");
 
         awaitSyncFailure(SyncFailureEntityType.PLAYLIST_TRACK_ADDED);
     }
@@ -74,7 +74,7 @@ class PlaylistTrackSyncFailureTest {
     void removeTrack_succeedsAndRecordsSyncFailureWhenNeo4jUnavailable() {
         UUID playlistId = persistPlaylist();
         Track track = persistTrack(persistAlbum(persistArtist()));
-        playlistService.addTrack(playlistId, track.getId(), null, null);
+        playlistService.addTrack(playlistId, track.getId(), "Track Entry", "curator note");
 
         playlistService.removeTrack(playlistId, track.getId());
 
@@ -87,8 +87,8 @@ class PlaylistTrackSyncFailureTest {
         Album album = persistAlbum(persistArtist());
         Track trackA = persistTrack(album);
         Track trackB = persistTrack(album);
-        playlistService.addTrack(playlistId, trackA.getId(), null, null);
-        playlistService.addTrack(playlistId, trackB.getId(), null, null);
+        playlistService.addTrack(playlistId, trackA.getId(), "Track Entry", "curator note");
+        playlistService.addTrack(playlistId, trackB.getId(), "Track Entry", "curator note");
 
         playlistService.reorderTracks(playlistId, List.of(trackB.getId(), trackA.getId()));
 
@@ -127,7 +127,7 @@ class PlaylistTrackSyncFailureTest {
 
     private UUID persistPlaylist() {
         Playlist playlist = playlistRepository.save(new Playlist(
-            "test-slug-" + UUID.randomUUID(), "Test Playlist", null, null, null, null, true
+            "Test Playlist", null, null, null, null, PlaylistType.STANDARD
         ));
         return playlist.getId();
     }

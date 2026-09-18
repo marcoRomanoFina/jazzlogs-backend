@@ -5,6 +5,8 @@ import java.util.UUID;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
@@ -25,10 +27,10 @@ public class Playlist {
     @GeneratedValue
     private UUID id;
 
+    // Enforced at the DB level (uq_playlists_title, V29) — no two playlists
+    // can share a title. PlaylistService checks it up front too, for a clean
+    // 409 instead of surfacing the raw constraint violation.
     @Column(nullable = false, unique = true)
-    private String slug;
-
-    @Column(nullable = false)
     private String title;
 
     private String tagline;
@@ -42,6 +44,10 @@ public class Playlist {
     @Column(name = "spotify_url")
     private String spotifyUrl;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private PlaylistType type;
+
     @Column(name = "like_count", nullable = false)
     private int likeCount;
 
@@ -53,6 +59,9 @@ public class Playlist {
 
     @Column(name = "duration_ms", nullable = false)
     private long durationMs;
+    
+    @Column(nullable = false)
+    private boolean featured;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -60,40 +69,38 @@ public class Playlist {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    // Every new playlist starts as a draft (published defaults to false) —
+    // not a constructor param, see PlaylistService.publish/unpublish.
     public Playlist(
-        String slug,
         String title,
         String tagline,
         String description,
         String coverImageUrl,
         String spotifyUrl,
-        boolean published
+        PlaylistType type
     ) {
-        this.slug = slug;
         this.title = title;
         this.tagline = tagline;
         this.description = description;
         this.coverImageUrl = coverImageUrl;
         this.spotifyUrl = spotifyUrl;
-        this.published = published;
+        this.type = type;
     }
 
     public void update(
-        String slug,
         String title,
         String tagline,
         String description,
         String coverImageUrl,
         String spotifyUrl,
-        boolean published
+        PlaylistType type
     ) {
-        this.slug = slug;
         this.title = title;
         this.tagline = tagline;
         this.description = description;
         this.coverImageUrl = coverImageUrl;
         this.spotifyUrl = spotifyUrl;
-        this.published = published;
+        this.type = type;
     }
 
     public void updateTrackStats(int trackCount, long durationMs) {
@@ -105,6 +112,16 @@ public class Playlist {
     // (PlaylistService.setCoverImage), not the metadata upsert.
     public void updateCoverImageUrl(String coverImageUrl) {
         this.coverImageUrl = coverImageUrl;
+    }
+
+    /** See {@code PlaylistService.publish}. */
+    public void publish() {
+        this.published = true;
+    }
+
+    /** See {@code PlaylistService.unpublish}. */
+    public void unpublish() {
+        this.published = false;
     }
 
     @PrePersist

@@ -7,11 +7,9 @@ import java.util.UUID;
 import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.playlist.PlaylistType;
 
-// trackCount/durationMs are denormalized on the Playlist entity, kept in sync
-// by PlaylistService.replaceTracklist. Tags are read from Neo4j, not Postgres —
-// same VocabularyTag(code, label) shape Album's getStyles/getMoods/getContexts
-// already return.
-public record PlaylistDetailDto(
+// Same playlist-level fields as PlaylistDetailDto — only tracks differs,
+// using the leaner FeaturedPlaylistTrackDto instead of PlaylistTrackDetailDto.
+public record FeaturedPlaylistDto(
     UUID id,
     String title,
     String tagline,
@@ -24,7 +22,7 @@ public record PlaylistDetailDto(
     boolean likedByCurrentUser,
     int trackCount,
     long durationMs,
-    List<PlaylistTrackDetailDto> tracks,
+    List<FeaturedPlaylistTrackDto> tracks,
     List<VocabularyTag> styleTags,
     List<VocabularyTag> moodTags,
     List<VocabularyTag> contextTags,

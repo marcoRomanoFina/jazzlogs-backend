@@ -5,6 +5,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -26,4 +27,19 @@ public interface PlaylistTrackRepository extends JpaRepository<PlaylistTrack, UU
     // Single-row lookup for addTrack (existence check)/removeTrack/updateTrackNote —
     // all scoped to one (playlist, track) pair, not the whole tracklist.
     Optional<PlaylistTrack> findByPlaylistIdAndTrackId(UUID playlistId, UUID trackId);
+
+    /**
+     * For {@code PlaylistService.delete} — called explicitly before removing
+     * the Playlist row itself, rather than relying only on the DB-level
+     * cascade (V28). {@code clearAutomatically} detaches whatever
+     * PlaylistTrack rows this session already had loaded (e.g. from an
+     * addTrack call earlier in the same transaction); without it,
+     * Hibernate's dirty-checking chokes on those stale in-memory rows still
+     * pointing at the Playlist the caller removes right after this — a bulk
+     * DELETE alone doesn't clear them, since it bypasses the persistence
+     * context entirely.
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("DELETE FROM PlaylistTrack pt WHERE pt.playlist.id = :playlistId")
+    void deleteByPlaylistId(@Param("playlistId") UUID playlistId);
 }

@@ -861,6 +861,21 @@ public class GraphService {
                 .run());
     }
 
+    /**
+     * Full node delete — {@code DETACH DELETE} removes every relationship
+     * touching this node too (BELONGS_TO, style/mood/context tag edges,
+     * LISTENED, ...), regardless of direction, so no separate cleanup per
+     * edge type is needed. PlaylistService.delete's sync target. A no-op if
+     * the node is already gone (e.g. a retried sync after the first attempt
+     * actually succeeded).
+     */
+    public void deletePlaylistNode(UUID playlistId) {
+        write("delete Playlist node id=" + playlistId, () ->
+            neo4jClient.query("MATCH (p:Playlist {id: $id}) DETACH DELETE p")
+                .bind(playlistId.toString()).to("id")
+                .run());
+    }
+
     /** Single edge delete — PlaylistService.removeTrack's sync target. */
     public void removePlaylistTrack(UUID playlistId, UUID trackId) {
         write("remove BELONGS_TO track=" + trackId + " playlist=" + playlistId, () ->

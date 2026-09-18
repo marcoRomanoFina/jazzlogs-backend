@@ -233,6 +233,21 @@ public class ListenService {
         return listenRepository.existsById(new ListenId(userId, ListenableEntityType.SERIES_CHAPTER, chapterId));
     }
 
+    /**
+     * Deletes every listen of an entity, regardless of which user recorded
+     * it — for hard-deleting the entity itself (see PlaylistService.delete),
+     * not one user's own listen. Postgres-only, same as unmarkPlaylistListened —
+     * doesn't touch the Neo4j LISTENED edges, but those hang off the entity's
+     * own node, so deleting that node (DETACH DELETE) cleans them up too.
+     *
+     * @param entityType which kind of entity
+     * @param entityId   that entity's own id
+     */
+    @Transactional
+    public void deleteAllFor(ListenableEntityType entityType, UUID entityId) {
+        listenRepository.deleteByEntityTypeAndEntityId(entityType, entityId);
+    }
+
     private Track getTrackOrThrow(UUID trackId) {
         return trackRepository.findById(trackId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Track not found: " + trackId));
