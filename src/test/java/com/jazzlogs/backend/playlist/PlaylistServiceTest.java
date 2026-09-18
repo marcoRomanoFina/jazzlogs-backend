@@ -203,9 +203,9 @@ class PlaylistServiceTest {
     /** Valid codes reach GraphService.setPlaylistTags — same call graphService.getPlaylistDetail's tag reads rely on. */
     @Test
     void replaceTags_callsGraphServiceWithValidCodes() {
-        PlaylistDetailDto created = playlistService.create(upsertRequestWithTags("tags-cut", List.of("SWING", "BEBOP")));
+        Playlist created = playlistService.create(upsertRequestWithTags("tags-cut", List.of("SWING", "BEBOP")));
 
-        verify(graphService).setPlaylistTags(created.id(), List.of("SWING", "BEBOP"), List.of(), List.of());
+        verify(graphService).setPlaylistTags(created.getId(), List.of("SWING", "BEBOP"), List.of(), List.of());
     }
 
     @Test
@@ -252,6 +252,16 @@ class PlaylistServiceTest {
     }
 
     @Test
+    void setFeatured_rejectsUnpublishedPlaylist() {
+        UUID playlistId = persistPlaylist("featured-unpublished", false);
+
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> playlistService.setFeatured(playlistId));
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(playlistRepository.findByFeaturedTrue()).isEmpty();
+    }
+
+    @Test
     void unsetFeatured_isNoOpWhenThePlaylistWasNeverFeatured() {
         UUID playlistId = persistPlaylist("unset-never-featured");
 
@@ -278,10 +288,14 @@ class PlaylistServiceTest {
     }
 
     private UUID persistPlaylist(String slug) {
+        return persistPlaylist(slug, true);
+    }
+
+    private UUID persistPlaylist(String slug, boolean published) {
         PlaylistUpsertRequest request = new PlaylistUpsertRequest(
-            slug, "Test Playlist", null, null, null, null, true, List.of(), List.of(), List.of()
+            slug, "Test Playlist", null, null, null, null, published, List.of(), List.of(), List.of()
         );
-        return playlistService.create(request).id();
+        return playlistService.create(request).getId();
     }
 
     private PlaylistUpsertRequest upsertRequestWithTags(String slug, List<String> styleCodes) {

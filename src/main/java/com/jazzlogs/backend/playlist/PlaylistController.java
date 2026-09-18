@@ -1,5 +1,6 @@
 package com.jazzlogs.backend.playlist;
 
+import java.net.URI;
 import java.util.List;
 import java.util.UUID;
 
@@ -72,8 +73,9 @@ public class PlaylistController {
 
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public PlaylistDetailDto create(@Valid @RequestBody PlaylistUpsertRequest request) {
-        return playlistService.create(request);
+    public ResponseEntity<Void> create(@Valid @RequestBody PlaylistUpsertRequest request) {
+        Playlist playlist = playlistService.create(request);
+        return ResponseEntity.created(URI.create("/playlists/" + playlist.getId())).build();
     }
 
     @PutMapping("/{id}")

@@ -56,9 +56,14 @@ public class PlaylistService {
     private final ImageStorageService imageStorageService;
     private final AlbumEditorialRepository albumEditorialRepository;
 
-    /** Metadata only — see PlaylistUpsertRequest; the tracklist is empty until addTrack is called. */
+    /**
+     * Metadata only — see PlaylistUpsertRequest; the tracklist is empty until
+     * addTrack is called. Returns the saved entity, not a DTO — the
+     * controller responds 201 with a Location header, no body, so there's no
+     * caller left that needs the full getPlaylistDetail fan-out here.
+     */
     @Transactional
-    public PlaylistDetailDto create(PlaylistUpsertRequest request) {
+    public Playlist create(PlaylistUpsertRequest request) {
         Playlist playlist = new Playlist(
             request.slug(), request.title(), request.tagline(), request.description(),
             request.coverImageUrl(), request.spotifyUrl(), request.published()
@@ -66,7 +71,7 @@ public class PlaylistService {
         Playlist saved = playlistRepository.save(playlist);
         graphService.syncPlaylistNode(saved.getId(), saved.getTitle());
         replaceTags(saved, request.styleCodes(), request.moodCodes(), request.contextCodes());
-        return getPlaylistDetail(saved.getId(), null, true);
+        return saved;
     }
 
     /** Metadata only — never touches playlist_tracks, see addTrack/removeTrack/updateTrackNote/reorderTracks. */
@@ -106,12 +111,17 @@ public class PlaylistService {
      *
      * @param playlistId the playlist
      * @throws ResponseStatusException 404 if the playlist doesn't exist, 409
-     *                                  if a concurrent call already featured
-     *                                  a different playlist
+     *                                  if it isn't published yet (a featured
+     *                                  playlist non-admins can't see would be
+     *                                  a broken link) or if a concurrent call
+     *                                  already featured a different playlist
      */
     @Transactional
     public void setFeatured(UUID playlistId) {
-        getPlaylistOrThrow(playlistId);
+        Playlist playlist = getPlaylistOrThrow(playlistId);
+        if (!playlist.isPublished()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Playlist isn't published yet, can't be featured");
+        }
         playlistRepository.clearFeatured();
         try {
             playlistRepository.markFeatured(playlistId);
@@ -400,11 +410,11 @@ public class PlaylistService {
 
     private FeaturedPlaylistTrackDto toFeaturedTrackDto(PlaylistTrack playlistTrack, TrackRatingRepository.TrackRatingStats stats, UUID albumEditorialId) {
         Track track = playlistTrack.getTrack();
+        Album album = track.getAlbum();
         return new FeaturedPlaylistTrackDto(
-            track.getId(), albumEditorialId,
-            stats == null ? null : stats.getAvgRating(),
-            playlistTrack.getCuratorNote(), playlistTrack.getPosition(),
-            track.getAlbum().getImageUrl()
+            track.getId(), track.getName(), albumEditorialId, album.getName(), album.getArtist().getName(),
+            album.getImageUrl(), playlistTrack.getPosition(),
+            stats == null ? null : stats.getAvgRating()
         );
     }
 
