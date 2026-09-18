@@ -125,6 +125,7 @@ class EditorialServiceTest {
         editorialService.upsertAlbumEditorial(albumA.getId(), new AlbumEditorialRequest("A", "dek", "byline", List.of()));
         editorialService.upsertAlbumEditorial(albumB.getId(), new AlbumEditorialRequest("B", "dek", "byline", List.of()));
 
+        albumRepository.clearFeatured(); // in case some other album is already featured (real curated data, not test fixtures)
         albumRepository.markFeatured(albumA.getId());
         assertThat(editorialService.getFeatured(UUID.randomUUID()).map(EditorialSummaryDto::ownerId))
             .contains(albumA.getId());
@@ -142,6 +143,7 @@ class EditorialServiceTest {
             artist, "No Editorial Featured Album", null, null, null, 2024, 1, "LOG-FEAT-NO-ED", "LABEL-FEAT-NO-ED",
             VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
         ));
+        albumRepository.clearFeatured(); // in case some other album is already featured (real curated data, not test fixtures)
         albumRepository.markFeatured(album.getId());
 
         assertThat(editorialService.getFeatured(UUID.randomUUID())).isEmpty();
