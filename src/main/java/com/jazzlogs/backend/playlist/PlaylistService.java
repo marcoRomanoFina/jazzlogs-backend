@@ -30,6 +30,7 @@ import com.jazzlogs.backend.listen.ListenService;
 import com.jazzlogs.backend.listen.ListenableEntityType;
 import com.jazzlogs.backend.playlist.dto.FeaturedPlaylistDto;
 import com.jazzlogs.backend.playlist.dto.FeaturedPlaylistTrackDto;
+import com.jazzlogs.backend.playlist.dto.JourneyPlaylistDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistDetailDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistSummaryDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistTrackDetailDto;
@@ -518,12 +519,44 @@ public class PlaylistService {
         );
     }
 
+    /**
+     * The "Journey" section — the most recently published {@code JOURNEY}
+     * playlist, if any (see {@code PlaylistRepository.findFirstByPublishedTrueAndTypeOrderByCreatedAtDesc}
+     * for what "most recently published" actually means here). Unlike
+     * {@link #getFeatured} this is derived, not admin-curated — no
+     * set/unset endpoint, no singleton flag, and no track list in the
+     * response (see {@link JourneyPlaylistDto}), so this skips the
+     * playlist_tracks/rating/editorial fan-out entirely.
+     *
+     * @return the journey playlist, empty if no JOURNEY playlist has been published yet
+     */
+    @Transactional(readOnly = true)
+    public Optional<JourneyPlaylistDto> getJourney(UUID currentUserId) {
+        return playlistRepository.findFirstByPublishedTrueAndTypeOrderByCreatedAtDesc(PlaylistType.JOURNEY)
+            .map(playlist -> toJourneyDto(playlist, currentUserId));
+    }
+
+    private JourneyPlaylistDto toJourneyDto(Playlist playlist, UUID currentUserId) {
+        boolean liked = currentUserId != null && likeService.hasUserLiked(currentUserId, LikeableEntityType.PLAYLIST, playlist.getId());
+
+        List<VocabularyTag> styleTags = graphService.getPlaylistStyles(playlist.getId());
+        List<VocabularyTag> moodTags = graphService.getPlaylistMoods(playlist.getId());
+        List<VocabularyTag> contextTags = graphService.getPlaylistContexts(playlist.getId());
+
+        return new JourneyPlaylistDto(
+            playlist.getId(), playlist.getTitle(), playlist.getTagline(), playlist.getDescription(),
+            playlist.getCoverImageUrl(), playlist.getSpotifyUrl(), playlist.getType(), playlist.isPublished(),
+            playlist.getLikeCount(), liked, playlist.getTrackCount(), playlist.getDurationMs(),
+            styleTags, moodTags, contextTags, playlist.getCreatedAt(), playlist.getUpdatedAt()
+        );
+    }
+
     private FeaturedPlaylistTrackDto toFeaturedTrackDto(PlaylistTrack playlistTrack, TrackRatingRepository.TrackRatingStats stats, UUID albumEditorialId) {
         Track track = playlistTrack.getTrack();
         Album album = track.getAlbum();
         return new FeaturedPlaylistTrackDto(
-            track.getId(), track.getName(), albumEditorialId, album.getName(), album.getArtist().getName(),
-            album.getImageUrl(), playlistTrack.getPosition(),
+            track.getId(), track.getName(), playlistTrack.getTitle(), albumEditorialId, album.getName(),
+            album.getArtist().getName(), album.getImageUrl(), playlistTrack.getPosition(),
             stats == null ? null : stats.getAvgRating()
         );
     }

@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -31,6 +32,7 @@ import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.like.LikeService;
 import com.jazzlogs.backend.like.LikeableEntityType;
 import com.jazzlogs.backend.listen.ListenService;
+import com.jazzlogs.backend.playlist.dto.JourneyPlaylistDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistDetailDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistTrackDetailDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistUpsertRequest;
@@ -267,6 +269,44 @@ class PlaylistServiceTest {
         assertThat(playlistRepository.findById(created.getId()).orElseThrow().getType()).isEqualTo(PlaylistType.JOURNEY);
     }
 
+    // No "returns empty when nothing is published" test here — this table
+    // can carry real, deliberately-created data (unlike every other fixture
+    // in this class), so a test can't assume it starts out with zero
+    // JOURNEY playlists. The tests below only ever assert on which playlist
+    // *wins*, never on the table being otherwise empty.
+
+    @Test
+    void getJourney_ignoresStandardPlaylistsEvenIfNewer() {
+        persistPlaylist("An Old Journey", PlaylistType.JOURNEY, true);
+        persistPlaylist("A Newer Standard Playlist", PlaylistType.STANDARD, true);
+
+        JourneyPlaylistDto journey = playlistService.getJourney(null).orElseThrow();
+
+        assertThat(journey.title()).isEqualTo("An Old Journey");
+    }
+
+    @Test
+    void getJourney_ignoresUnpublishedJourneyPlaylistsEvenIfNewer() {
+        persistPlaylist("The Published Journey", PlaylistType.JOURNEY, true);
+        persistPlaylist("A Newer Draft Journey", PlaylistType.JOURNEY, false);
+
+        JourneyPlaylistDto journey = playlistService.getJourney(null).orElseThrow();
+
+        assertThat(journey.title()).isEqualTo("The Published Journey");
+    }
+
+    /** "Most recently published" is approximated by createdAt — see PlaylistRepository. */
+    @Test
+    void getJourney_returnsTheMostRecentlyCreatedPublishedJourneyPlaylist() {
+        persistPlaylist("The First Journey", PlaylistType.JOURNEY, true);
+        persistPlaylist("The Second Journey", PlaylistType.JOURNEY, true);
+
+        JourneyPlaylistDto journey = playlistService.getJourney(null).orElseThrow();
+
+        assertThat(journey.title()).isEqualTo("The Second Journey");
+        assertThat(journey.type()).isEqualTo(PlaylistType.JOURNEY);
+    }
+
     @Test
     void delete_rejectsUnknownPlaylist() {
         ResponseStatusException ex = catchThrowableOfType(
@@ -395,7 +435,7 @@ class PlaylistServiceTest {
         ResponseStatusException ex = catchThrowableOfType(
             ResponseStatusException.class, () -> playlistService.setFeatured(playlistId));
         assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-        assertThat(playlistRepository.findByFeaturedTrue()).isEmpty();
+        assertThat(playlistRepository.findByFeaturedTrue().map(Playlist::getId)).isNotEqualTo(Optional.of(playlistId));
     }
 
     @Test
@@ -429,8 +469,12 @@ class PlaylistServiceTest {
     }
 
     private UUID persistPlaylist(String title, boolean published) {
+        return persistPlaylist(title, PlaylistType.STANDARD, published);
+    }
+
+    private UUID persistPlaylist(String title, PlaylistType type, boolean published) {
         PlaylistUpsertRequest request = new PlaylistUpsertRequest(
-            title, null, null, null, null, PlaylistType.STANDARD, List.of(), List.of(), List.of()
+            title, null, null, null, null, type, List.of(), List.of(), List.of()
         );
         UUID id = playlistService.create(request).getId();
         if (published) {
