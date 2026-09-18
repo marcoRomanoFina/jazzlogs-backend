@@ -46,4 +46,12 @@ public interface SavedItemRepository extends JpaRepository<SavedItem, SavedItemI
         @Param("entityType") SaveableEntityType entityType,
         @Param("entityId") UUID entityId
     );
+
+    /** For {@code SavedItemService.deleteAllFor} — hard-deleting the entity itself, not one user's save of it. */
+    @Modifying
+    @Query("DELETE FROM SavedItem s WHERE s.id.entityType = :entityType AND s.id.entityId = :entityId")
+    void deleteByEntityTypeAndEntityId(
+        @Param("entityType") SaveableEntityType entityType,
+        @Param("entityId") UUID entityId
+    );
 }

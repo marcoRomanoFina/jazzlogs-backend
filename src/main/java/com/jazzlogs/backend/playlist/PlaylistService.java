@@ -23,12 +23,16 @@ import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.like.LikeService;
 import com.jazzlogs.backend.like.LikeableEntityType;
+import com.jazzlogs.backend.listen.ListenService;
+import com.jazzlogs.backend.listen.ListenableEntityType;
 import com.jazzlogs.backend.playlist.dto.FeaturedPlaylistDto;
 import com.jazzlogs.backend.playlist.dto.FeaturedPlaylistTrackDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistDetailDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistSummaryDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistTrackDetailDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistUpsertRequest;
+import com.jazzlogs.backend.saveditem.SaveableEntityType;
+import com.jazzlogs.backend.saveditem.SavedItemService;
 import com.jazzlogs.backend.storage.ImageStorageService;
 import com.jazzlogs.backend.syncfailure.Neo4jAsyncSyncExecutor;
 import com.jazzlogs.backend.syncfailure.SyncFailureEntityType;
@@ -51,6 +55,8 @@ public class PlaylistService {
     private final TrackRepository trackRepository;
     private final TrackRatingRepository trackRatingRepository;
     private final LikeService likeService;
+    private final ListenService listenService;
+    private final SavedItemService savedItemService;
     private final GraphService graphService;
     private final Neo4jAsyncSyncExecutor syncExecutor;
     private final ImageStorageService imageStorageService;
@@ -85,6 +91,38 @@ public class PlaylistService {
         graphService.syncPlaylistNode(playlist.getId(), playlist.getTitle());
         replaceTags(playlist, request.styleCodes(), request.moodCodes(), request.contextCodes());
         return getPlaylistDetail(id, null, true);
+    }
+
+    /**
+     * Hard-deletes this playlist and everything that points at it:
+     * <ul>
+     *   <li>its playlist_tracks rows — deleted up front (also backed by the
+     *       FK's cascade, see V28, as a safety net for anything that ever
+     *       deletes a playlist row some other way)</li>
+     *   <li>any likes/listens/saved_items referencing it — polymorphic
+     *       tables with no FK to cascade off of, so cleaned up explicitly</li>
+     *   <li>its Neo4j node and every relationship on it (BELONGS_TO, tag
+     *       edges, LISTENED, ...) via {@code DETACH DELETE}, fire-and-forget
+     *       with retry like every other Neo4j write here</li>
+     * </ul>
+     *
+     * @param playlistId the playlist to delete
+     * @throws ResponseStatusException 404 if it doesn't exist
+     */
+    @Transactional
+    public void delete(UUID playlistId) {
+        getPlaylistOrThrow(playlistId);
+        playlistTrackRepository.deleteByPlaylistId(playlistId);
+        likeService.deleteAllFor(LikeableEntityType.PLAYLIST, playlistId);
+        listenService.deleteAllFor(ListenableEntityType.PLAYLIST, playlistId);
+        savedItemService.deleteAllFor(SaveableEntityType.PLAYLIST, playlistId);
+        playlistRepository.deleteById(playlistId);
+
+        syncExecutor.sync(
+            SyncFailureEntityType.PLAYLIST_DELETED,
+            Map.of("playlistId", playlistId.toString()),
+            () -> graphService.deletePlaylistNode(playlistId)
+        );
     }
 
     /** Publishes this playlist, making it visible to non-admins. */

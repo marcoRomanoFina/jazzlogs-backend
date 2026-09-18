@@ -1,6 +1,5 @@
 package com.jazzlogs.backend.playlist;
 
-import java.net.URI;
 import java.util.List;
 import java.util.UUID;
 
@@ -28,6 +27,7 @@ import org.springframework.web.server.ResponseStatusException;
 import com.jazzlogs.backend.listen.ListenService;
 import com.jazzlogs.backend.playlist.dto.FeaturedPlaylistDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistDetailDto;
+import com.jazzlogs.backend.playlist.dto.PlaylistIdDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistSummaryDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistTrackDetailDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistTrackInput;
@@ -73,15 +73,23 @@ public class PlaylistController {
 
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> create(@Valid @RequestBody PlaylistUpsertRequest request) {
+    public ResponseEntity<PlaylistIdDto> create(@Valid @RequestBody PlaylistUpsertRequest request) {
         Playlist playlist = playlistService.create(request);
-        return ResponseEntity.created(URI.create("/playlists/" + playlist.getId())).build();
+        return ResponseEntity.status(HttpStatus.CREATED).body(new PlaylistIdDto(playlist.getId()));
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public PlaylistDetailDto update(@PathVariable UUID id, @Valid @RequestBody PlaylistUpsertRequest request) {
         return playlistService.update(id, request);
+    }
+
+    /** Hard-deletes this playlist and every trace of it — see {@link PlaylistService#delete}. */
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> delete(@PathVariable UUID id) {
+        playlistService.delete(id);
+        return ResponseEntity.noContent().build();
     }
 
     /** Publishes this playlist — see {@link PlaylistService#publish}. */

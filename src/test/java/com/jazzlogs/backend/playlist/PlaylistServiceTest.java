@@ -28,12 +28,19 @@ import com.jazzlogs.backend.album.VocalProfile;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
 import com.jazzlogs.backend.graph.GraphService;
+import com.jazzlogs.backend.like.LikeService;
+import com.jazzlogs.backend.like.LikeableEntityType;
+import com.jazzlogs.backend.listen.ListenService;
 import com.jazzlogs.backend.playlist.dto.PlaylistDetailDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistTrackDetailDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistUpsertRequest;
+import com.jazzlogs.backend.saveditem.SaveableEntityType;
+import com.jazzlogs.backend.saveditem.SavedItemService;
 import com.jazzlogs.backend.storage.ImageStorageService;
 import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackRepository;
+import com.jazzlogs.backend.user.User;
+import com.jazzlogs.backend.user.UserRepository;
 
 // GraphService is mocked here (not the real Neo4jClient-backed bean) — this
 // class tests PlaylistService's own Postgres/validation logic (addTrack/
@@ -62,6 +69,18 @@ class PlaylistServiceTest {
 
     @Autowired
     private TrackRepository trackRepository;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private LikeService likeService;
+
+    @Autowired
+    private ListenService listenService;
+
+    @Autowired
+    private SavedItemService savedItemService;
 
     @MockitoBean
     private GraphService graphService;
@@ -206,6 +225,42 @@ class PlaylistServiceTest {
         Playlist created = playlistService.create(upsertRequestWithTags("tags-cut", List.of("SWING", "BEBOP")));
 
         verify(graphService).setPlaylistTags(created.getId(), List.of("SWING", "BEBOP"), List.of(), List.of());
+    }
+
+    @Test
+    void delete_rejectsUnknownPlaylist() {
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> playlistService.delete(UUID.randomUUID()));
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void delete_cascadesPlaylistTracksAndSyncsTheNodeDeletionToNeo4j() {
+        UUID playlistId = persistPlaylist("delete-cascade-tracks");
+        Track track = persistTrack(persistAlbum(persistArtist()), "Track A");
+        playlistService.addTrack(playlistId, track.getId(), null, null);
+
+        playlistService.delete(playlistId);
+
+        assertThat(playlistRepository.findById(playlistId)).isEmpty();
+        assertThat(playlistTrackRepository.findByPlaylistIdWithTrackDetails(playlistId)).isEmpty();
+        verify(graphService).deletePlaylistNode(playlistId);
+    }
+
+    /** likes/listens/saved_items are polymorphic tables with no FK to the playlist — delete has to clean them up itself. */
+    @Test
+    void delete_removesLikesListensAndSavedItems() {
+        UUID playlistId = persistPlaylist("delete-cross-refs");
+        User user = userRepository.save(new User(UUID.randomUUID(), "delete-test-" + UUID.randomUUID() + "@example.com"));
+        likeService.addLike(user.getId(), LikeableEntityType.PLAYLIST, playlistId);
+        listenService.markPlaylistListened(user.getId(), playlistId);
+        savedItemService.save(user.getId(), SaveableEntityType.PLAYLIST, playlistId);
+
+        playlistService.delete(playlistId);
+
+        assertThat(likeService.hasUserLiked(user.getId(), LikeableEntityType.PLAYLIST, playlistId)).isFalse();
+        assertThat(listenService.hasListenedToPlaylist(user.getId(), playlistId)).isFalse();
+        assertThat(savedItemService.isSaved(user.getId(), SaveableEntityType.PLAYLIST, playlistId)).isFalse();
     }
 
     @Test
