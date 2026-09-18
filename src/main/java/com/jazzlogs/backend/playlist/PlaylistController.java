@@ -136,7 +136,7 @@ public class PlaylistController {
 
     @PatchMapping("/{id}/tracks/{trackId}")
     @PreAuthorize("hasRole('ADMIN')")
-    public PlaylistTrackDetailDto updateTrackNote(@PathVariable UUID id, @PathVariable UUID trackId, @RequestBody UpdateTrackNoteRequest request) {
+    public PlaylistTrackDetailDto updateTrackNote(@PathVariable UUID id, @PathVariable UUID trackId, @Valid @RequestBody UpdateTrackNoteRequest request) {
         return playlistService.updateTrackNote(id, trackId, request.title(), request.curatorNote());
     }
 

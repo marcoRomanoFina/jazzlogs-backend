@@ -95,10 +95,10 @@ class PlaylistServiceTest {
         Track trackA = persistTrack(album, "Track A", 180_000);
         Track trackB = persistTrack(album, "Track B", 240_000);
 
-        PlaylistTrackDetailDto first = playlistService.addTrack(playlistId, trackA.getId(), null, "great opener");
+        PlaylistTrackDetailDto first = playlistService.addTrack(playlistId, trackA.getId(), "Opening Track", "great opener");
         assertThat(first.position()).isEqualTo(0);
 
-        PlaylistTrackDetailDto second = playlistService.addTrack(playlistId, trackB.getId(), null, null);
+        PlaylistTrackDetailDto second = playlistService.addTrack(playlistId, trackB.getId(), "Track Entry", "curator note");
         assertThat(second.position()).isEqualTo(1);
 
         PlaylistDetailDto detail = playlistService.getPlaylistDetail(playlistId, null, true);
@@ -110,10 +110,10 @@ class PlaylistServiceTest {
     void addTrack_rejectsDuplicateTrack() {
         UUID playlistId = persistPlaylist("dup-add");
         Track track = persistTrack(persistAlbum(persistArtist()), "Track A");
-        playlistService.addTrack(playlistId, track.getId(), null, null);
+        playlistService.addTrack(playlistId, track.getId(), "Track Entry", "curator note");
 
         ResponseStatusException ex = catchThrowableOfType(
-            ResponseStatusException.class, () -> playlistService.addTrack(playlistId, track.getId(), null, null));
+            ResponseStatusException.class, () -> playlistService.addTrack(playlistId, track.getId(), "Track Entry", "curator note"));
         assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
     }
 
@@ -122,7 +122,7 @@ class PlaylistServiceTest {
         UUID playlistId = persistPlaylist("missing-track");
 
         ResponseStatusException ex = catchThrowableOfType(
-            ResponseStatusException.class, () -> playlistService.addTrack(playlistId, UUID.randomUUID(), null, null));
+            ResponseStatusException.class, () -> playlistService.addTrack(playlistId, UUID.randomUUID(), "Track Entry", "curator note"));
         assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
@@ -132,8 +132,8 @@ class PlaylistServiceTest {
         Album album = persistAlbum(persistArtist());
         Track trackA = persistTrack(album, "Track A", 180_000);
         Track trackB = persistTrack(album, "Track B", null);
-        playlistService.addTrack(playlistId, trackA.getId(), null, null);
-        playlistService.addTrack(playlistId, trackB.getId(), null, null);
+        playlistService.addTrack(playlistId, trackA.getId(), "Track Entry", "curator note");
+        playlistService.addTrack(playlistId, trackB.getId(), "Track Entry", "curator note");
 
         playlistService.removeTrack(playlistId, trackB.getId());
 
@@ -164,8 +164,8 @@ class PlaylistServiceTest {
         Album album = persistAlbum(persistArtist());
         Track trackA = persistTrack(album, "Track A");
         Track trackB = persistTrack(album, "Track B");
-        playlistService.addTrack(playlistId, trackA.getId(), null, null);
-        playlistService.addTrack(playlistId, trackB.getId(), null, null);
+        playlistService.addTrack(playlistId, trackA.getId(), "Track Entry", "curator note");
+        playlistService.addTrack(playlistId, trackB.getId(), "Track Entry", "curator note");
 
         // Missing trackB, includes an id that isn't in the playlist at all.
         ResponseStatusException ex = catchThrowableOfType(ResponseStatusException.class,
@@ -179,8 +179,8 @@ class PlaylistServiceTest {
         Album album = persistAlbum(persistArtist());
         Track trackA = persistTrack(album, "Track A");
         Track trackB = persistTrack(album, "Track B");
-        playlistService.addTrack(playlistId, trackA.getId(), null, null);
-        playlistService.addTrack(playlistId, trackB.getId(), null, null);
+        playlistService.addTrack(playlistId, trackA.getId(), "Track Entry", "curator note");
+        playlistService.addTrack(playlistId, trackB.getId(), "Track Entry", "curator note");
 
         playlistService.reorderTracks(playlistId, List.of(trackB.getId(), trackA.getId()));
 
@@ -194,7 +194,7 @@ class PlaylistServiceTest {
     void updateTrackNote_updatesTitleAndNoteAndDoesNotCallGraphService() {
         UUID playlistId = persistPlaylist("note-only");
         Track track = persistTrack(persistAlbum(persistArtist()), "Track A");
-        playlistService.addTrack(playlistId, track.getId(), null, null);
+        playlistService.addTrack(playlistId, track.getId(), "Track Entry", "curator note");
         clearInvocations(graphService); // addTrack above already called addPlaylistTrack — only care about what updateTrackNote itself does
 
         PlaylistTrackDetailDto updated = playlistService.updateTrackNote(playlistId, track.getId(), "Chapter One", "new note");
@@ -267,7 +267,7 @@ class PlaylistServiceTest {
     void delete_cascadesPlaylistTracksAndSyncsTheNodeDeletionToNeo4j() {
         UUID playlistId = persistPlaylist("delete-cascade-tracks");
         Track track = persistTrack(persistAlbum(persistArtist()), "Track A");
-        playlistService.addTrack(playlistId, track.getId(), null, null);
+        playlistService.addTrack(playlistId, track.getId(), "Track Entry", "curator note");
 
         playlistService.delete(playlistId);
 
