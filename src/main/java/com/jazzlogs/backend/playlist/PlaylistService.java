@@ -79,7 +79,7 @@ public class PlaylistService {
         assertTitleAvailable(request.title(), null);
         Playlist playlist = new Playlist(
             request.title(), request.tagline(), request.description(),
-            request.coverImageUrl(), request.spotifyUrl()
+            request.coverImageUrl(), request.spotifyUrl(), request.type()
         );
         Playlist saved = playlistRepository.save(playlist);
         flushOrThrowOnTitleConflict(request.title());
@@ -101,7 +101,7 @@ public class PlaylistService {
         assertTitleAvailable(request.title(), id);
         playlist.update(
             request.title(), request.tagline(), request.description(),
-            request.coverImageUrl(), request.spotifyUrl()
+            request.coverImageUrl(), request.spotifyUrl(), request.type()
         );
         flushOrThrowOnTitleConflict(request.title());
         graphService.syncPlaylistNode(playlist.getId(), playlist.getTitle());
@@ -456,7 +456,7 @@ public class PlaylistService {
 
         return new PlaylistDetailDto(
             playlist.getId(), playlist.getTitle(), playlist.getTagline(), playlist.getDescription(),
-            playlist.getCoverImageUrl(), playlist.getSpotifyUrl(), playlist.isPublished(),
+            playlist.getCoverImageUrl(), playlist.getSpotifyUrl(), playlist.getType(), playlist.isPublished(),
             playlist.getLikeCount(), liked, playlist.getTrackCount(), playlist.getDurationMs(), trackDtos,
             styleTags, moodTags, contextTags, playlist.getCreatedAt(), playlist.getUpdatedAt()
         );
@@ -512,7 +512,7 @@ public class PlaylistService {
 
         return new FeaturedPlaylistDto(
             playlist.getId(), playlist.getTitle(), playlist.getTagline(), playlist.getDescription(),
-            playlist.getCoverImageUrl(), playlist.getSpotifyUrl(), playlist.isPublished(),
+            playlist.getCoverImageUrl(), playlist.getSpotifyUrl(), playlist.getType(), playlist.isPublished(),
             playlist.getLikeCount(), liked, playlist.getTrackCount(), playlist.getDurationMs(), trackDtos,
             styleTags, moodTags, contextTags, playlist.getCreatedAt(), playlist.getUpdatedAt()
         );
@@ -549,7 +549,7 @@ public class PlaylistService {
     private PlaylistSummaryDto toSummaryDto(Playlist playlist) {
         return new PlaylistSummaryDto(
             playlist.getId(), playlist.getTitle(), playlist.getTagline(),
-            playlist.getCoverImageUrl(), playlist.isPublished(), playlist.getLikeCount(),
+            playlist.getCoverImageUrl(), playlist.getType(), playlist.isPublished(), playlist.getLikeCount(),
             playlist.getTrackCount(), playlist.getDurationMs(), playlist.getCreatedAt()
         );
     }

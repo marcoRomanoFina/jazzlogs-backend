@@ -257,6 +257,17 @@ class PlaylistServiceTest {
     }
 
     @Test
+    void create_persistsType() {
+        PlaylistUpsertRequest request = new PlaylistUpsertRequest(
+            "The Long Road", null, null, null, null, PlaylistType.JOURNEY, List.of(), List.of(), List.of()
+        );
+
+        Playlist created = playlistService.create(request);
+
+        assertThat(playlistRepository.findById(created.getId()).orElseThrow().getType()).isEqualTo(PlaylistType.JOURNEY);
+    }
+
+    @Test
     void delete_rejectsUnknownPlaylist() {
         ResponseStatusException ex = catchThrowableOfType(
             ResponseStatusException.class, () -> playlistService.delete(UUID.randomUUID()));
@@ -419,7 +430,7 @@ class PlaylistServiceTest {
 
     private UUID persistPlaylist(String title, boolean published) {
         PlaylistUpsertRequest request = new PlaylistUpsertRequest(
-            title, null, null, null, null, List.of(), List.of(), List.of()
+            title, null, null, null, null, PlaylistType.STANDARD, List.of(), List.of(), List.of()
         );
         UUID id = playlistService.create(request).getId();
         if (published) {
@@ -429,7 +440,7 @@ class PlaylistServiceTest {
     }
 
     private PlaylistUpsertRequest upsertRequestWithTags(String title, List<String> styleCodes) {
-        return new PlaylistUpsertRequest(title, null, null, null, null, styleCodes, List.of(), List.of());
+        return new PlaylistUpsertRequest(title, null, null, null, null, PlaylistType.STANDARD, styleCodes, List.of(), List.of());
     }
 
     private Artist persistArtist() {

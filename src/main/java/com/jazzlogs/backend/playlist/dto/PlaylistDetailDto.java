@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.UUID;
 
 import com.jazzlogs.backend.graph.VocabularyTag;
+import com.jazzlogs.backend.playlist.PlaylistType;
 
 // trackCount/durationMs are denormalized on the Playlist entity, kept in sync
 // by PlaylistService.replaceTracklist. Tags are read from Neo4j, not Postgres —
@@ -17,6 +18,7 @@ public record PlaylistDetailDto(
     String description,
     String coverImageUrl,
     String spotifyUrl,
+    PlaylistType type,
     boolean published,
     int likeCount,
     boolean likedByCurrentUser,

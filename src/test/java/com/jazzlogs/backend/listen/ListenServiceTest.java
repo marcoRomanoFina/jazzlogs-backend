@@ -17,6 +17,7 @@ import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
 import com.jazzlogs.backend.playlist.Playlist;
 import com.jazzlogs.backend.playlist.PlaylistRepository;
+import com.jazzlogs.backend.playlist.PlaylistType;
 import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackRepository;
 import com.jazzlogs.backend.user.User;
@@ -110,7 +111,7 @@ class ListenServiceTest {
     // and which would require a live Neo4j to succeed.
     private Playlist persistPlaylist() {
         return playlistRepository.save(new Playlist(
-            "Test Playlist", null, null, null, null
+            "Test Playlist", null, null, null, null, PlaylistType.STANDARD
         ));
     }
 

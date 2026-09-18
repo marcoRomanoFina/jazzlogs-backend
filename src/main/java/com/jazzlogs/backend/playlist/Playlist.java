@@ -5,6 +5,8 @@ import java.util.UUID;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
@@ -42,6 +44,10 @@ public class Playlist {
     @Column(name = "spotify_url")
     private String spotifyUrl;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private PlaylistType type;
+
     @Column(name = "like_count", nullable = false)
     private int likeCount;
 
@@ -70,13 +76,15 @@ public class Playlist {
         String tagline,
         String description,
         String coverImageUrl,
-        String spotifyUrl
+        String spotifyUrl,
+        PlaylistType type
     ) {
         this.title = title;
         this.tagline = tagline;
         this.description = description;
         this.coverImageUrl = coverImageUrl;
         this.spotifyUrl = spotifyUrl;
+        this.type = type;
     }
 
     public void update(
@@ -84,13 +92,15 @@ public class Playlist {
         String tagline,
         String description,
         String coverImageUrl,
-        String spotifyUrl
+        String spotifyUrl,
+        PlaylistType type
     ) {
         this.title = title;
         this.tagline = tagline;
         this.description = description;
         this.coverImageUrl = coverImageUrl;
         this.spotifyUrl = spotifyUrl;
+        this.type = type;
     }
 
     public void updateTrackStats(int trackCount, long durationMs) {

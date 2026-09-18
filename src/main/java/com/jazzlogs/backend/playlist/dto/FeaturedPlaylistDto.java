@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.UUID;
 
 import com.jazzlogs.backend.graph.VocabularyTag;
+import com.jazzlogs.backend.playlist.PlaylistType;
 
 // Same playlist-level fields as PlaylistDetailDto — only tracks differs,
 // using the leaner FeaturedPlaylistTrackDto instead of PlaylistTrackDetailDto.
@@ -15,6 +16,7 @@ public record FeaturedPlaylistDto(
     String description,
     String coverImageUrl,
     String spotifyUrl,
+    PlaylistType type,
     boolean published,
     int likeCount,
     boolean likedByCurrentUser,
