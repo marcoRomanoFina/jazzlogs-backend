@@ -10,12 +10,16 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -29,11 +33,12 @@ import com.jazzlogs.backend.album.VocalProfile;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
 import com.jazzlogs.backend.graph.GraphService;
+import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.like.LikeService;
 import com.jazzlogs.backend.like.LikeableEntityType;
 import com.jazzlogs.backend.listen.ListenService;
-import com.jazzlogs.backend.playlist.dto.JourneyPlaylistDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistDetailDto;
+import com.jazzlogs.backend.playlist.dto.PlaylistSummaryDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistTrackDetailDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistUpsertRequest;
 import com.jazzlogs.backend.saveditem.SaveableEntityType;
@@ -280,7 +285,7 @@ class PlaylistServiceTest {
         persistPlaylist("An Old Journey", PlaylistType.JOURNEY, true);
         persistPlaylist("A Newer Standard Playlist", PlaylistType.STANDARD, true);
 
-        JourneyPlaylistDto journey = playlistService.getJourney(null).orElseThrow();
+        PlaylistSummaryDto journey = playlistService.getJourney(null).orElseThrow();
 
         assertThat(journey.title()).isEqualTo("An Old Journey");
     }
@@ -290,7 +295,7 @@ class PlaylistServiceTest {
         persistPlaylist("The Published Journey", PlaylistType.JOURNEY, true);
         persistPlaylist("A Newer Draft Journey", PlaylistType.JOURNEY, false);
 
-        JourneyPlaylistDto journey = playlistService.getJourney(null).orElseThrow();
+        PlaylistSummaryDto journey = playlistService.getJourney(null).orElseThrow();
 
         assertThat(journey.title()).isEqualTo("The Published Journey");
     }
@@ -301,10 +306,96 @@ class PlaylistServiceTest {
         persistPlaylist("The First Journey", PlaylistType.JOURNEY, true);
         persistPlaylist("The Second Journey", PlaylistType.JOURNEY, true);
 
-        JourneyPlaylistDto journey = playlistService.getJourney(null).orElseThrow();
+        PlaylistSummaryDto journey = playlistService.getJourney(null).orElseThrow();
 
         assertThat(journey.title()).isEqualTo("The Second Journey");
         assertThat(journey.type()).isEqualTo(PlaylistType.JOURNEY);
+    }
+
+    /** Newest-first, no other filters — see PlaylistRepository.findByType. */
+    private static final Sort CATALOGUE_SORT = Sort.by(Sort.Direction.DESC, "createdAt");
+
+    @Test
+    void getCatalogue_returnsOnlyPlaylistsOfTheRequestedType() {
+        persistPlaylist("The Cinematic Standard", PlaylistType.STANDARD, true);
+        persistPlaylist("Some Random Journey For Catalogue", PlaylistType.JOURNEY, true);
+
+        Page<PlaylistSummaryDto> page = playlistService.getCatalogue(
+            PlaylistType.STANDARD, false, null, PageRequest.of(0, 50, CATALOGUE_SORT)
+        );
+
+        assertThat(page.getContent()).extracting(PlaylistSummaryDto::title)
+            .contains("The Cinematic Standard")
+            .doesNotContain("Some Random Journey For Catalogue");
+    }
+
+    @Test
+    void getCatalogue_excludesDraftsUnlessIncludeUnpublished() {
+        UUID publishedId = persistPlaylist("Published Standard For Catalogue", PlaylistType.STANDARD, true);
+        UUID draftId = persistPlaylist("Draft Standard For Catalogue", PlaylistType.STANDARD, false);
+
+        Page<PlaylistSummaryDto> nonAdminPage = playlistService.getCatalogue(
+            PlaylistType.STANDARD, false, null, PageRequest.of(0, 50, CATALOGUE_SORT)
+        );
+        assertThat(nonAdminPage.getContent()).extracting(PlaylistSummaryDto::id).contains(publishedId).doesNotContain(draftId);
+
+        Page<PlaylistSummaryDto> adminPage = playlistService.getCatalogue(
+            PlaylistType.STANDARD, true, null, PageRequest.of(0, 50, CATALOGUE_SORT)
+        );
+        assertThat(adminPage.getContent()).extracting(PlaylistSummaryDto::id).contains(publishedId, draftId);
+    }
+
+    @Test
+    void getCatalogue_ordersNewestFirst() {
+        UUID olderId = persistPlaylist("Older Standard For Catalogue", PlaylistType.STANDARD, true);
+        UUID newerId = persistPlaylist("Newer Standard For Catalogue", PlaylistType.STANDARD, true);
+
+        Page<PlaylistSummaryDto> page = playlistService.getCatalogue(
+            PlaylistType.STANDARD, false, null, PageRequest.of(0, 50, CATALOGUE_SORT)
+        );
+
+        List<UUID> ids = page.getContent().stream().map(PlaylistSummaryDto::id).toList();
+        assertThat(ids.indexOf(newerId)).isLessThan(ids.indexOf(olderId));
+    }
+
+    /** styleTags/moodTags/contextTags come from 3 batch queries for the whole page — see GraphService.getPlaylistStylesBatch. */
+    @Test
+    void getCatalogue_marksLikedByCurrentUserAndAttachesBatchedTags() {
+        UUID playlistId = persistPlaylist("Tagged Standard For Catalogue", PlaylistType.STANDARD, true);
+        User user = userRepository.save(new User(UUID.randomUUID(), "catalogue-test-" + UUID.randomUUID() + "@example.com"));
+        likeService.addLike(user.getId(), LikeableEntityType.PLAYLIST, playlistId);
+        when(graphService.getPlaylistStylesBatch(any())).thenReturn(Map.of(playlistId, List.of(new VocabularyTag("SWING", "Swing"))));
+
+        Page<PlaylistSummaryDto> page = playlistService.getCatalogue(
+            PlaylistType.STANDARD, false, user.getId(), PageRequest.of(0, 50, CATALOGUE_SORT)
+        );
+
+        PlaylistSummaryDto dto = page.getContent().stream().filter(p -> p.id().equals(playlistId)).findFirst().orElseThrow();
+        assertThat(dto.likedByCurrentUser()).isTrue();
+        assertThat(dto.styleTags()).containsExactly(new VocabularyTag("SWING", "Swing"));
+    }
+
+    /** The every-type overload — same query shape, just no type filter. */
+    @Test
+    void getCatalogue_withoutATypeFilter_mixesJourneyAndStandard() {
+        UUID journeyId = persistPlaylist("Mixed Catalogue Journey", PlaylistType.JOURNEY, true);
+        UUID standardId = persistPlaylist("Mixed Catalogue Standard", PlaylistType.STANDARD, true);
+
+        Page<PlaylistSummaryDto> page = playlistService.getCatalogue(false, null, PageRequest.of(0, 50, CATALOGUE_SORT));
+
+        assertThat(page.getContent()).extracting(PlaylistSummaryDto::id).contains(journeyId, standardId);
+    }
+
+    @Test
+    void getCatalogue_withoutATypeFilter_excludesDraftsUnlessIncludeUnpublished() {
+        UUID publishedId = persistPlaylist("Mixed Catalogue Published", PlaylistType.STANDARD, true);
+        UUID draftId = persistPlaylist("Mixed Catalogue Draft", PlaylistType.JOURNEY, false);
+
+        Page<PlaylistSummaryDto> nonAdminPage = playlistService.getCatalogue(false, null, PageRequest.of(0, 50, CATALOGUE_SORT));
+        assertThat(nonAdminPage.getContent()).extracting(PlaylistSummaryDto::id).contains(publishedId).doesNotContain(draftId);
+
+        Page<PlaylistSummaryDto> adminPage = playlistService.getCatalogue(true, null, PageRequest.of(0, 50, CATALOGUE_SORT));
+        assertThat(adminPage.getContent()).extracting(PlaylistSummaryDto::id).contains(publishedId, draftId);
     }
 
     @Test
