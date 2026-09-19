@@ -6,6 +6,8 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -49,6 +51,23 @@ public interface PlaylistRepository extends LikeableRepository<Playlist>, SavedI
      * actual publish moment.
      */
     Optional<Playlist> findFirstByPublishedTrueAndTypeOrderByCreatedAtDesc(PlaylistType type);
+
+    /**
+     * For {@code PlaylistService.getCatalogue} — one page of a single type,
+     * newest first, no other filters (no {@code q}/vocab params, unlike
+     * editorials' catalogue). Admin-only path: includes drafts.
+     */
+    Page<Playlist> findByType(PlaylistType type, Pageable pageable);
+
+    /** Same as {@link #findByType}, but for non-admins — drafts stay invisible. */
+    Page<Playlist> findByTypeAndPublishedTrue(PlaylistType type, Pageable pageable);
+
+    /**
+     * For {@code PlaylistService.getCatalogue}'s every-type overload — non-admin
+     * path. Admins use the inherited {@link #findAll(Pageable)} instead, no
+     * override needed since drafts are just included.
+     */
+    Page<Playlist> findByPublishedTrue(Pageable pageable);
 
     /**
      * The normal-path way to clear the previous featured row before marking

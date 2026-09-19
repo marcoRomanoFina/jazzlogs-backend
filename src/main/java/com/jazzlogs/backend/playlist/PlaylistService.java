@@ -11,6 +11,9 @@ import java.util.stream.Collectors;
 
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,7 +33,6 @@ import com.jazzlogs.backend.listen.ListenService;
 import com.jazzlogs.backend.listen.ListenableEntityType;
 import com.jazzlogs.backend.playlist.dto.FeaturedPlaylistDto;
 import com.jazzlogs.backend.playlist.dto.FeaturedPlaylistTrackDto;
-import com.jazzlogs.backend.playlist.dto.JourneyPlaylistDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistDetailDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistSummaryDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistTrackDetailDto;
@@ -415,11 +417,11 @@ public class PlaylistService {
     }
 
     @Transactional(readOnly = true)
-    public List<PlaylistSummaryDto> list(boolean includeUnpublished) {
+    public List<PlaylistSummaryDto> list(boolean includeUnpublished, UUID currentUserId) {
         List<Playlist> playlists = includeUnpublished
             ? playlistRepository.findAllByOrderByCreatedAtDesc()
             : playlistRepository.findByPublishedTrueOrderByCreatedAtDesc();
-        return playlists.stream().map(this::toSummaryDto).toList();
+        return toSummaryDtos(playlists, currentUserId);
     }
 
     /**
@@ -524,31 +526,81 @@ public class PlaylistService {
      * playlist, if any (see {@code PlaylistRepository.findFirstByPublishedTrueAndTypeOrderByCreatedAtDesc}
      * for what "most recently published" actually means here). Unlike
      * {@link #getFeatured} this is derived, not admin-curated — no
-     * set/unset endpoint, no singleton flag, and no track list in the
-     * response (see {@link JourneyPlaylistDto}), so this skips the
-     * playlist_tracks/rating/editorial fan-out entirely.
+     * set/unset endpoint, no singleton flag.
      *
      * @return the journey playlist, empty if no JOURNEY playlist has been published yet
      */
     @Transactional(readOnly = true)
-    public Optional<JourneyPlaylistDto> getJourney(UUID currentUserId) {
+    public Optional<PlaylistSummaryDto> getJourney(UUID currentUserId) {
         return playlistRepository.findFirstByPublishedTrueAndTypeOrderByCreatedAtDesc(PlaylistType.JOURNEY)
-            .map(playlist -> toJourneyDto(playlist, currentUserId));
+            .map(playlist -> toSummaryDtos(List.of(playlist), currentUserId).get(0));
     }
 
-    private JourneyPlaylistDto toJourneyDto(Playlist playlist, UUID currentUserId) {
-        boolean liked = currentUserId != null && likeService.hasUserLiked(currentUserId, LikeableEntityType.PLAYLIST, playlist.getId());
+    /**
+     * A page of one {@code type}, newest first, no other filters — the
+     * playlist equivalent of "The Catalogue". Tags are fetched in 3 batch
+     * queries for the whole page (see {@code GraphService.getPlaylistStylesBatch}
+     * and its mood/context siblings) instead of 3 per playlist — the
+     * per-row fan-out {@link #getFeatured}/{@link #getJourney} do is fine
+     * for a single playlist, not for a page of them.
+     *
+     * @param type               which type to list — JOURNEY or STANDARD, one at a time
+     * @param includeUnpublished true for admins (drafts included), false otherwise
+     * @param currentUserId      for likedByCurrentUser per row, or null if not resolvable
+     * @param pageable           page/size/sort — callers default to createdAt desc
+     * @return the matching page
+     */
+    @Transactional(readOnly = true)
+    public Page<PlaylistSummaryDto> getCatalogue(PlaylistType type, boolean includeUnpublished, UUID currentUserId, Pageable pageable) {
+        Page<Playlist> page = includeUnpublished
+            ? playlistRepository.findByType(type, pageable)
+            : playlistRepository.findByTypeAndPublishedTrue(type, pageable);
+        return toSummaryPage(page, currentUserId);
+    }
 
-        List<VocabularyTag> styleTags = graphService.getPlaylistStyles(playlist.getId());
-        List<VocabularyTag> moodTags = graphService.getPlaylistMoods(playlist.getId());
-        List<VocabularyTag> contextTags = graphService.getPlaylistContexts(playlist.getId());
+    /**
+     * Same as {@link #getCatalogue(PlaylistType, boolean, UUID, Pageable)},
+     * every type mixed together instead of one at a time — {@code GET
+     * /playlists/catalogue}, the one that doesn't split journeys from the rest.
+     *
+     * @param includeUnpublished true for admins (drafts included), false otherwise
+     * @param currentUserId      for likedByCurrentUser per row, or null if not resolvable
+     * @param pageable           page/size/sort — callers default to createdAt desc
+     * @return the matching page
+     */
+    @Transactional(readOnly = true)
+    public Page<PlaylistSummaryDto> getCatalogue(boolean includeUnpublished, UUID currentUserId, Pageable pageable) {
+        Page<Playlist> page = includeUnpublished
+            ? playlistRepository.findAll(pageable)
+            : playlistRepository.findByPublishedTrue(pageable);
+        return toSummaryPage(page, currentUserId);
+    }
 
-        return new JourneyPlaylistDto(
-            playlist.getId(), playlist.getTitle(), playlist.getTagline(), playlist.getDescription(),
-            playlist.getCoverImageUrl(), playlist.getSpotifyUrl(), playlist.getType(), playlist.isPublished(),
-            playlist.getLikeCount(), liked, playlist.getTrackCount(), playlist.getDurationMs(),
-            styleTags, moodTags, contextTags, playlist.getCreatedAt(), playlist.getUpdatedAt()
-        );
+    private Page<PlaylistSummaryDto> toSummaryPage(Page<Playlist> page, UUID currentUserId) {
+        return new PageImpl<>(toSummaryDtos(page.getContent(), currentUserId), page.getPageable(), page.getTotalElements());
+    }
+
+    /** Shared by list/getJourney/getCatalogue — one batch of likes + one batch per tag type for the whole set, not one per playlist. */
+    private List<PlaylistSummaryDto> toSummaryDtos(List<Playlist> playlists, UUID currentUserId) {
+        List<UUID> playlistIds = playlists.stream().map(Playlist::getId).toList();
+        Set<UUID> likedIds = currentUserId == null
+            ? Set.of()
+            : likeService.hasUserLikedBatch(currentUserId, LikeableEntityType.PLAYLIST, playlistIds);
+        Map<UUID, List<VocabularyTag>> styleTagsByPlaylist = graphService.getPlaylistStylesBatch(playlistIds);
+        Map<UUID, List<VocabularyTag>> moodTagsByPlaylist = graphService.getPlaylistMoodsBatch(playlistIds);
+        Map<UUID, List<VocabularyTag>> contextTagsByPlaylist = graphService.getPlaylistContextsBatch(playlistIds);
+
+        return playlists.stream()
+            .map(playlist -> new PlaylistSummaryDto(
+                playlist.getId(), playlist.getTitle(), playlist.getTagline(), playlist.getDescription(),
+                playlist.getCoverImageUrl(), playlist.getSpotifyUrl(), playlist.getType(), playlist.isPublished(),
+                playlist.getLikeCount(), likedIds.contains(playlist.getId()), playlist.getTrackCount(), playlist.getDurationMs(),
+                styleTagsByPlaylist.getOrDefault(playlist.getId(), List.of()),
+                moodTagsByPlaylist.getOrDefault(playlist.getId(), List.of()),
+                contextTagsByPlaylist.getOrDefault(playlist.getId(), List.of()),
+                playlist.getCreatedAt(), playlist.getUpdatedAt()
+            ))
+            .toList();
     }
 
     private FeaturedPlaylistTrackDto toFeaturedTrackDto(PlaylistTrack playlistTrack, TrackRatingRepository.TrackRatingStats stats, UUID albumEditorialId) {
@@ -576,14 +628,6 @@ public class PlaylistService {
             playlistTrack.getPosition(), playlistTrack.getTitle(), playlistTrack.getCuratorNote(),
             stats == null ? null : stats.getAvgRating(),
             stats == null ? 0 : stats.getCount()
-        );
-    }
-
-    private PlaylistSummaryDto toSummaryDto(Playlist playlist) {
-        return new PlaylistSummaryDto(
-            playlist.getId(), playlist.getTitle(), playlist.getTagline(),
-            playlist.getCoverImageUrl(), playlist.getType(), playlist.isPublished(), playlist.getLikeCount(),
-            playlist.getTrackCount(), playlist.getDurationMs(), playlist.getCreatedAt()
         );
     }
 
