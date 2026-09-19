@@ -5,6 +5,10 @@ import java.util.UUID;
 
 import jakarta.validation.Valid;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -26,7 +30,6 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.listen.ListenService;
 import com.jazzlogs.backend.playlist.dto.FeaturedPlaylistDto;
-import com.jazzlogs.backend.playlist.dto.JourneyPlaylistDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistDetailDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistIdDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistSummaryDto;
@@ -55,7 +58,8 @@ public class PlaylistController {
     // Non-admins only see published playlists; admins see everything.
     @GetMapping
     public List<PlaylistSummaryDto> list(@AuthenticationPrincipal Jwt jwt) {
-        return playlistService.list(isAdmin(jwt));
+        User user = userService.resolveFromJwt(jwt);
+        return playlistService.list(user.getRole() == UserRole.ADMIN, user.getId());
     }
 
     @GetMapping("/{id}")
@@ -74,10 +78,40 @@ public class PlaylistController {
 
     /** The most recently published JOURNEY playlist — see {@link PlaylistService#getJourney}. */
     @GetMapping("/journey")
-    public JourneyPlaylistDto getJourney(@AuthenticationPrincipal Jwt jwt) {
+    public PlaylistSummaryDto getJourney(@AuthenticationPrincipal Jwt jwt) {
         User user = userService.resolveFromJwt(jwt);
         return playlistService.getJourney(user.getId())
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No journey playlist has been published"));
+    }
+
+    /** The playlist "Catalogue", JOURNEY only — see {@link PlaylistService#getCatalogue}. */
+    @GetMapping("/journeys")
+    public Page<PlaylistSummaryDto> listJourneys(
+        @PageableDefault(size = 12, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
+        @AuthenticationPrincipal Jwt jwt
+    ) {
+        User user = userService.resolveFromJwt(jwt);
+        return playlistService.getCatalogue(PlaylistType.JOURNEY, user.getRole() == UserRole.ADMIN, user.getId(), pageable);
+    }
+
+    /** The playlist "Catalogue", STANDARD only — see {@link PlaylistService#getCatalogue}. */
+    @GetMapping("/standard")
+    public Page<PlaylistSummaryDto> listStandard(
+        @PageableDefault(size = 12, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
+        @AuthenticationPrincipal Jwt jwt
+    ) {
+        User user = userService.resolveFromJwt(jwt);
+        return playlistService.getCatalogue(PlaylistType.STANDARD, user.getRole() == UserRole.ADMIN, user.getId(), pageable);
+    }
+
+    /** The playlist "Catalogue", every type mixed together — see {@link PlaylistService#getCatalogue(boolean, UUID, Pageable)}. */
+    @GetMapping("/catalogue")
+    public Page<PlaylistSummaryDto> listCatalogue(
+        @PageableDefault(size = 12, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
+        @AuthenticationPrincipal Jwt jwt
+    ) {
+        User user = userService.resolveFromJwt(jwt);
+        return playlistService.getCatalogue(user.getRole() == UserRole.ADMIN, user.getId(), pageable);
     }
 
     @PostMapping
@@ -182,10 +216,6 @@ public class PlaylistController {
     public ResponseEntity<Void> unmarkListened(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
         listenService.unmarkPlaylistListened(currentUserId(jwt), id);
         return ResponseEntity.noContent().build();
-    }
-
-    private boolean isAdmin(Jwt jwt) {
-        return userService.resolveFromJwt(jwt).getRole() == UserRole.ADMIN;
     }
 
     private UUID currentUserId(Jwt jwt) {

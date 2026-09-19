@@ -942,6 +942,48 @@ public class GraphService {
         return getTags("Playlist", playlistId, "PERFECT_FOR", "Context");
     }
 
+    /**
+     * Batch versions of getPlaylistStyles/Moods/Contexts — one query for a
+     * whole catalogue page instead of one per playlist (see
+     * PlaylistService.toCatalogueDto). Same shape as getTagsForAlbum,
+     * grouped by playlistId instead of trackId; a playlist with none of this
+     * tag type simply has no entry, callers treat that as an empty list.
+     */
+    public Map<UUID, List<VocabularyTag>> getPlaylistStylesBatch(List<UUID> playlistIds) {
+        return getTagsForPlaylists(playlistIds, "BELONGS_TO", "Style");
+    }
+
+    public Map<UUID, List<VocabularyTag>> getPlaylistMoodsBatch(List<UUID> playlistIds) {
+        return getTagsForPlaylists(playlistIds, "EVOKES_MOOD", "Mood");
+    }
+
+    public Map<UUID, List<VocabularyTag>> getPlaylistContextsBatch(List<UUID> playlistIds) {
+        return getTagsForPlaylists(playlistIds, "PERFECT_FOR", "Context");
+    }
+
+    private Map<UUID, List<VocabularyTag>> getTagsForPlaylists(List<UUID> playlistIds, String relationshipType, String targetLabel) {
+        if (playlistIds.isEmpty()) {
+            return Map.of();
+        }
+        List<String> ids = playlistIds.stream().map(UUID::toString).toList();
+        return read("read " + relationshipType + " for playlists=" + playlistIds.size(), () ->
+            neo4jClient.query(
+                    "MATCH (p:Playlist)-[:" + relationshipType + "]->(n:" + targetLabel + ") "
+                        + "WHERE p.id IN $playlistIds "
+                        + "RETURN p.id AS playlistId, n.code AS code, n.label AS label")
+                .bind(ids).to("playlistIds")
+                .fetch()
+                .all()
+                .stream()
+                .collect(Collectors.groupingBy(
+                    row -> UUID.fromString((String) row.get("playlistId")),
+                    Collectors.mapping(
+                        row -> new VocabularyTag((String) row.get("code"), (String) row.get("label")),
+                        Collectors.toList()
+                    )
+                )));
+    }
+
     private void replaceVocabEdges(UUID playlistId, String vocabLabel, String relationshipType, List<String> codes) {
         neo4jClient.query(
                 "MATCH (:Playlist {id: $playlistId})-[r:" + relationshipType + "]->(:" + vocabLabel + ") DELETE r")
