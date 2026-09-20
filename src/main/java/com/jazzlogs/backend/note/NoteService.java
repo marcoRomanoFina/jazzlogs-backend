@@ -27,6 +27,9 @@ import lombok.AllArgsConstructor;
 @AllArgsConstructor
 public class NoteService {
 
+    /** See {@link NoteRepository#findTopNPerTrackByTrackIdInAndUserId} for why this is capped per track, not just an overall limit. */
+    public static final int MAX_MY_NOTES_PER_TRACK_IN_PLAYLIST_DETAIL = 5;
+
     private final NoteRepository noteRepository;
     private final UserRepository userRepository;
     private final TrackRepository trackRepository;
@@ -119,6 +122,31 @@ public class NoteService {
         return notes.stream()
             .collect(Collectors.groupingBy(
                 Note::getUserId,
+                Collectors.mapping(note -> toDto(note, liked.contains(note.getId()), names.get(note.getUserId())), Collectors.toList())
+            ));
+    }
+
+    /**
+     * One user's own notes across a whole set of tracks, grouped by track —
+     * for PlaylistService.getPlaylistDetail, so each playlist track can show
+     * "your note on this track" without a query per track.
+     *
+     * @param trackIds the tracks (e.g. a playlist's whole tracklist)
+     * @param userId   whose notes to fetch — also the viewer, for likedByCurrentUser
+     * @return that user's notes, grouped by track id (missing key = no notes on that track)
+     */
+    @Transactional(readOnly = true)
+    public Map<UUID, List<NoteDto>> getMyNotesForTracks(List<UUID> trackIds, UUID userId) {
+        if (trackIds.isEmpty()) {
+            return Map.of();
+        }
+        List<Note> notes = noteRepository.findTopNPerTrackByTrackIdInAndUserId(trackIds, userId, MAX_MY_NOTES_PER_TRACK_IN_PLAYLIST_DETAIL);
+        Set<UUID> liked = likedIds(notes, userId);
+        Map<UUID, String> names = namesByUserId(notes);
+
+        return notes.stream()
+            .collect(Collectors.groupingBy(
+                note -> note.getTrack().getId(),
                 Collectors.mapping(note -> toDto(note, liked.contains(note.getId()), names.get(note.getUserId())), Collectors.toList())
             ));
     }

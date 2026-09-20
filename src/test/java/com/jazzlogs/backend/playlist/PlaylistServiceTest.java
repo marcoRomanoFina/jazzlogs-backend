@@ -37,6 +37,10 @@ import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.like.LikeService;
 import com.jazzlogs.backend.like.LikeableEntityType;
 import com.jazzlogs.backend.listen.ListenService;
+import com.jazzlogs.backend.note.Note;
+import com.jazzlogs.backend.note.NoteRepository;
+import com.jazzlogs.backend.note.NoteService;
+import com.jazzlogs.backend.note.dto.NoteDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistDetailDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistSummaryDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistTrackDetailDto;
@@ -88,6 +92,9 @@ class PlaylistServiceTest {
 
     @Autowired
     private SavedItemService savedItemService;
+
+    @Autowired
+    private NoteRepository noteRepository;
 
     @MockitoBean
     private GraphService graphService;
@@ -432,6 +439,34 @@ class PlaylistServiceTest {
         assertThat(likeService.hasUserLiked(user.getId(), LikeableEntityType.PLAYLIST, playlistId)).isFalse();
         assertThat(listenService.hasListenedToPlaylist(user.getId(), playlistId)).isFalse();
         assertThat(savedItemService.isSaved(user.getId(), SaveableEntityType.PLAYLIST, playlistId)).isFalse();
+    }
+
+    /**
+     * A track can accumulate arbitrarily many notes from the same user (no
+     * uniqueness constraint on Note) — getPlaylistDetail must not blindly
+     * return all of them: only the viewer's own notes, capped per track, and
+     * never another user's notes on the same track.
+     */
+    @Test
+    void getPlaylistDetail_includesOnlyTheViewersOwnNotesPerTrack_cappedPerTrack() {
+        UUID playlistId = persistPlaylist("notes-detail");
+        Track track = persistTrack(persistAlbum(persistArtist()), "Track A");
+        playlistService.addTrack(playlistId, track.getId(), "Track Entry", "curator note");
+
+        User viewer = userRepository.save(new User(UUID.randomUUID(), "notes-viewer-" + UUID.randomUUID() + "@example.com"));
+        User otherUser = userRepository.save(new User(UUID.randomUUID(), "notes-other-" + UUID.randomUUID() + "@example.com"));
+
+        int notesLeftByViewer = NoteService.MAX_MY_NOTES_PER_TRACK_IN_PLAYLIST_DETAIL + 2;
+        for (int i = 0; i < notesLeftByViewer; i++) {
+            noteRepository.save(new Note(viewer, track, "Note " + i, "text " + i, null));
+        }
+        noteRepository.save(new Note(otherUser, track, "Not mine", "someone else's note", null));
+
+        PlaylistDetailDto detail = playlistService.getPlaylistDetail(playlistId, viewer.getId(), true);
+        List<NoteDto> myNotes = detail.tracks().get(0).myNotes();
+
+        assertThat(myNotes).hasSize(NoteService.MAX_MY_NOTES_PER_TRACK_IN_PLAYLIST_DETAIL);
+        assertThat(myNotes).allMatch(note -> note.userId().equals(viewer.getId()));
     }
 
     @Test

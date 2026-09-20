@@ -79,4 +79,36 @@ public interface NoteRepository extends LikeableRepository<Note> {
     // own FK column without a query.
     @Query("SELECT n FROM Note n JOIN FETCH n.track WHERE n.track.album.id = :albumId AND n.user.id IN :userIds")
     List<Note> findByAlbumIdAndUserIdIn(@Param("albumId") UUID albumId, @Param("userIds") Collection<UUID> userIds);
+
+    /**
+     * For {@code NoteService.getMyNotesForTracks} — one user's own notes
+     * across a whole playlist's tracks, one query for every track instead of
+     * one per track. Capped to {@code limit} notes per track (most recent
+     * first) via {@code ROW_NUMBER() OVER (PARTITION BY track_id ...)},
+     * native SQL rather than JPQL/Pageable — a JPQL LIMIT would cap the
+     * whole result set, not each track's share of it, so a user who spammed
+     * thousands of notes on one track could crowd out every other track's
+     * notes entirely (or, unbounded, blow up this query and the response
+     * size — nothing else stops a user from leaving arbitrarily many notes
+     * on the same track).
+     *
+     * @param trackIds the tracks (e.g. a playlist's whole tracklist)
+     * @param userId   whose notes to fetch
+     * @param limit    max notes to return per track
+     * @return that user's {@code limit} most recent notes on each track
+     */
+    @Query(value = """
+        SELECT ranked.id, ranked.user_id, ranked.track_id, ranked.title, ranked.text,
+               ranked.timestamp_seconds, ranked.like_count, ranked.created_at
+        FROM (
+            SELECT n.*, ROW_NUMBER() OVER (PARTITION BY n.track_id ORDER BY n.created_at DESC) AS rn
+            FROM notes n
+            WHERE n.track_id IN (:trackIds) AND n.user_id = :userId
+        ) ranked
+        WHERE ranked.rn <= :limit
+        ORDER BY ranked.track_id, ranked.created_at ASC
+        """, nativeQuery = true)
+    List<Note> findTopNPerTrackByTrackIdInAndUserId(
+        @Param("trackIds") Collection<UUID> trackIds, @Param("userId") UUID userId, @Param("limit") int limit
+    );
 }
