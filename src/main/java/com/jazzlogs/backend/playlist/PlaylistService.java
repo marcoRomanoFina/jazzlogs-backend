@@ -1,5 +1,6 @@
 package com.jazzlogs.backend.playlist;
 
+import java.math.BigDecimal;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -43,6 +44,7 @@ import com.jazzlogs.backend.syncfailure.Neo4jAsyncSyncExecutor;
 import com.jazzlogs.backend.syncfailure.SyncFailureEntityType;
 import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackRepository;
+import com.jazzlogs.backend.trackrating.TrackRating;
 import com.jazzlogs.backend.trackrating.TrackRatingRepository;
 import com.jazzlogs.backend.vocabulary.ContextVocabulary;
 import com.jazzlogs.backend.vocabulary.MoodVocabulary;
@@ -286,7 +288,7 @@ public class PlaylistService {
             () -> graphService.addPlaylistTrack(playlistId, trackId, position)
         );
 
-        return toTrackDetailDto(playlistTrack, ratingStatsFor(trackId), false, List.of());
+        return toTrackDetailDto(playlistTrack, ratingStatsFor(trackId), null, false, List.of());
     }
 
     private Map<String, Object> trackAddedPayload(UUID playlistId, UUID trackId, int position) {
@@ -338,7 +340,7 @@ public class PlaylistService {
         playlistTrack.updateDetails(title, curatorNote);
         playlistTrackRepository.save(playlistTrack);
 
-        return toTrackDetailDto(playlistTrack, ratingStatsFor(trackId), false, List.of());
+        return toTrackDetailDto(playlistTrack, ratingStatsFor(trackId), null, false, List.of());
     }
 
     /**
@@ -448,11 +450,15 @@ public class PlaylistService {
 
         Set<UUID> listenedTrackIds = currentUserId == null ? Set.of() : listenService.getListenedTrackIds(currentUserId, trackIds);
         Map<UUID, List<NoteDto>> myNotesByTrack = currentUserId == null ? Map.of() : noteService.getMyNotesForTracks(trackIds, currentUserId);
+        Map<UUID, BigDecimal> myRatingByTrack = currentUserId == null || trackIds.isEmpty()
+            ? Map.of()
+            : trackRatingRepository.findByUserIdAndTrackIdIn(currentUserId, trackIds).stream()
+                .collect(Collectors.toMap(tr -> tr.getTrack().getId(), TrackRating::getRating));
 
         List<PlaylistTrackDetailDto> trackDtos = playlistTracks.stream()
             .map(pt -> toTrackDetailDto(
-                pt, statsByTrack.get(pt.getTrack().getId()), listenedTrackIds.contains(pt.getTrack().getId()),
-                myNotesByTrack.getOrDefault(pt.getTrack().getId(), List.of())
+                pt, statsByTrack.get(pt.getTrack().getId()), myRatingByTrack.get(pt.getTrack().getId()),
+                listenedTrackIds.contains(pt.getTrack().getId()), myNotesByTrack.getOrDefault(pt.getTrack().getId(), List.of())
             ))
             .toList();
 
@@ -575,19 +581,19 @@ public class PlaylistService {
     }
 
     private PlaylistTrackDetailDto toTrackDetailDto(
-        PlaylistTrack playlistTrack, TrackRatingRepository.TrackRatingStats stats, boolean listened, List<NoteDto> myNotes
+        PlaylistTrack playlistTrack, TrackRatingRepository.TrackRatingStats stats, BigDecimal myRating, boolean listened, List<NoteDto> myNotes
     ) {
         Track track = playlistTrack.getTrack();
         Album album = track.getAlbum();
         Artist artist = album.getArtist();
         return new PlaylistTrackDetailDto(
-            track.getId(), track.getName(), track.getDurationMs(),
+            track.getId(), track.getName(), track.getDurationMs(), track.getSpotifyUrl(),
             album.getId(), album.getName(), album.getImageUrl(),
             artist.getId(), artist.getName(),
             playlistTrack.getPosition(), playlistTrack.getTitle(), playlistTrack.getCuratorNote(),
             stats == null ? null : stats.getAvgRating(),
             stats == null ? 0 : stats.getCount(),
-            listened, myNotes
+            myRating, listened, myNotes
         );
     }
 

@@ -14,6 +14,7 @@ public record PlaylistTrackDetailDto(
     UUID trackId,
     String trackName,
     Integer durationMs,
+    String spotifyUrl,
     UUID albumId,
     String albumName,
     String albumImageUrl,
@@ -24,6 +25,7 @@ public record PlaylistTrackDetailDto(
     String curatorNote,
     BigDecimal avgRating,
     long ratingCount,
+    BigDecimal myRating,
     boolean listenedByCurrentUser,
     List<NoteDto> myNotes
 ) {
