@@ -42,20 +42,32 @@ public class SeriesService {
     private final ListenService listenService;
     private final ListenRepository listenRepository;
 
-    /** Metadata only — the chapter list starts empty, see addChapter. */
+    /** Metadata only, always starts as a draft — the chapter list starts empty too, see addChapter/publish. */
     @Transactional
     public SeriesDetailDto create(SeriesUpsertRequest request) {
-        Series series = new Series(request.title(), request.dek(), request.description(), request.coverImageUrl(), request.status());
+        Series series = new Series(request.title(), request.dek(), request.description(), request.coverImageUrl());
         Series saved = seriesRepository.save(series);
         return getSeriesDetail(saved.getId(), null, true);
     }
 
-    /** Metadata only — never touches series_chapters, see addChapter/removeChapter/updateChapter/reorderChapters. */
+    /** Metadata only — never touches series_chapters or status, see addChapter/removeChapter/updateChapter/reorderChapters/publish/unpublish. */
     @Transactional
     public SeriesDetailDto update(UUID id, SeriesUpsertRequest request) {
         Series series = getSeriesOrThrow(id);
-        series.update(request.title(), request.dek(), request.description(), request.coverImageUrl(), request.status());
+        series.update(request.title(), request.dek(), request.description(), request.coverImageUrl());
         return getSeriesDetail(id, null, true);
+    }
+
+    /** Publishes this series, making it visible to non-admins. */
+    @Transactional
+    public void publish(UUID seriesId) {
+        getSeriesOrThrow(seriesId).publish();
+    }
+
+    /** Reverts this series to draft — a no-op if it was already a draft. */
+    @Transactional
+    public void unpublish(UUID seriesId) {
+        getSeriesOrThrow(seriesId).unpublish();
     }
 
     /** Appends a chapter at the end (position = current chapter count). No Neo4j — Series stays out of the graph. */

@@ -37,6 +37,9 @@ class SeriesServiceTest {
     private SeriesService seriesService;
 
     @Autowired
+    private SeriesRepository seriesRepository;
+
+    @Autowired
     private SeriesChapterRepository seriesChapterRepository;
 
     @Autowired
@@ -179,6 +182,48 @@ class SeriesServiceTest {
         assertThat(reordered).extracting(SeriesChapter::getPosition).containsExactly(0, 1);
     }
 
+    @Test
+    void create_alwaysStartsAsADraft() {
+        SeriesUpsertRequest request = new SeriesUpsertRequest("Draft By Default", null, null, null);
+
+        UUID seriesId = seriesService.create(request).id();
+
+        assertThat(seriesRepository.findById(seriesId).orElseThrow().isPublished()).isFalse();
+    }
+
+    @Test
+    void publish_marksTheSeriesPublished() {
+        SeriesUpsertRequest request = new SeriesUpsertRequest("To Publish", null, null, null);
+        UUID seriesId = seriesService.create(request).id();
+
+        seriesService.publish(seriesId);
+
+        assertThat(seriesRepository.findById(seriesId).orElseThrow().isPublished()).isTrue();
+    }
+
+    @Test
+    void publish_rejectsUnknownSeries() {
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> seriesService.publish(UUID.randomUUID()));
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void unpublish_revertsToDraft() {
+        UUID seriesId = persistSeries();
+
+        seriesService.unpublish(seriesId);
+
+        assertThat(seriesRepository.findById(seriesId).orElseThrow().isPublished()).isFalse();
+    }
+
+    @Test
+    void unpublish_rejectsUnknownSeries() {
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> seriesService.unpublish(UUID.randomUUID()));
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
     private ChapterStatus statusOf(SeriesDetailDto detail, UUID chapterId) {
         return detail.chapters().stream()
             .filter(chapter -> chapter.id().equals(chapterId))
@@ -192,8 +237,10 @@ class SeriesServiceTest {
     }
 
     private UUID persistSeries() {
-        SeriesUpsertRequest request = new SeriesUpsertRequest("Test Series", null, null, null, SeriesStatus.PUBLISHED);
-        return seriesService.create(request).id();
+        SeriesUpsertRequest request = new SeriesUpsertRequest("Test Series", null, null, null);
+        UUID id = seriesService.create(request).id();
+        seriesService.publish(id);
+        return id;
     }
 
     private User persistUser() {

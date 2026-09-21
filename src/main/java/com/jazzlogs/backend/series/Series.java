@@ -54,24 +54,35 @@ public class Series {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    public Series(String title, String dek, String description, String coverImageUrl, SeriesStatus status) {
+    // Every new series starts as a draft (status defaults to DRAFT) — not a
+    // constructor param, see SeriesService.publish/unpublish.
+    public Series(String title, String dek, String description, String coverImageUrl) {
         this.title = title;
         this.dek = dek;
         this.description = description;
         this.coverImageUrl = coverImageUrl;
-        this.status = status;
+        this.status = SeriesStatus.DRAFT;
     }
 
-    public void update(String title, String dek, String description, String coverImageUrl, SeriesStatus status) {
+    public void update(String title, String dek, String description, String coverImageUrl) {
         this.title = title;
         this.dek = dek;
         this.description = description;
         this.coverImageUrl = coverImageUrl;
-        this.status = status;
     }
 
     public boolean isPublished() {
         return status == SeriesStatus.PUBLISHED;
+    }
+
+    /** See {@code SeriesService.publish}. */
+    public void publish() {
+        this.status = SeriesStatus.PUBLISHED;
+    }
+
+    /** See {@code SeriesService.unpublish}. */
+    public void unpublish() {
+        this.status = SeriesStatus.DRAFT;
     }
 
     @PrePersist

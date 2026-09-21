@@ -67,6 +67,22 @@ public class SeriesController {
         return seriesService.update(id, request);
     }
 
+    /** Publishes this series — see {@link SeriesService#publish}. */
+    @PostMapping("/{id}/publish")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> publish(@PathVariable UUID id) {
+        seriesService.publish(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Reverts this series to draft — see {@link SeriesService#unpublish}. */
+    @DeleteMapping("/{id}/publish")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> unpublish(@PathVariable UUID id) {
+        seriesService.unpublish(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/{id}/chapters")
     @PreAuthorize("hasRole('ADMIN')")
     public SeriesChapterDetailDto addChapter(@PathVariable UUID id, @Valid @RequestBody SeriesChapterInput request, @AuthenticationPrincipal Jwt jwt) {
