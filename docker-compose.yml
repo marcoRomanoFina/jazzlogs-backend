@@ -81,6 +81,8 @@ services:
   # then exits — so a fresh `docker compose up` needs no manual `mc` step.
   # Public-read (not presigned URLs) so a stored object is a plain,
   # permanent URL — same shape as every Spotify-sourced imageUrl already is.
+  # jazzlogs-audio stays private (default) — AudioStorageService hands back
+  # an object key, not a public URL; nothing streams it back out yet.
   createbuckets:
     image: quay.io/minio/mc:latest
     depends_on:
@@ -91,6 +93,7 @@ services:
       mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-jazzlogs-dev-password};
       mc mb --ignore-existing local/jazzlogs-images;
       mc anonymous set download local/jazzlogs-images;
+      mc mb --ignore-existing local/jazzlogs-audio;
       "
 
 volumes:

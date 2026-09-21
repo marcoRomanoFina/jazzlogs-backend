@@ -10,15 +10,17 @@ import com.jazzlogs.backend.series.ChapterType;
 // either way. trackId is required iff type = TRACK (mirrors the DB CHECK
 // constraint; SeriesService.resolveTrackForType gives a 400 before it ever
 // reaches Postgres). position isn't sent — addChapter appends at the end,
-// reordering is a separate endpoint.
+// reordering is a separate endpoint. No audioObjectKey/audioContentType/
+// audioFileSizeBytes here — those only ever come from a real upload via
+// PUT /series/{id}/chapters/{chapterId}/audio (SeriesService.setChapterAudio),
+// same reasoning as the cover/landscape images not living on this input.
+// audioDurationMs stays here — nothing in this codebase decodes audio to
+// derive it from the uploaded file, so it's still admin-supplied metadata.
 public record SeriesChapterInput(
     @NotNull ChapterType type,
     UUID trackId,
     String title,
     String note,
-    String audioObjectKey,
-    Integer audioDurationMs,
-    String audioContentType,
-    Long audioFileSizeBytes
+    Integer audioDurationMs
 ) {
 }

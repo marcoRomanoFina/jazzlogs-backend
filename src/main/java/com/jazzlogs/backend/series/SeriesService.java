@@ -27,6 +27,7 @@ import com.jazzlogs.backend.series.dto.SeriesChapterInput;
 import com.jazzlogs.backend.series.dto.SeriesDetailDto;
 import com.jazzlogs.backend.series.dto.SeriesSummaryDto;
 import com.jazzlogs.backend.series.dto.SeriesUpsertRequest;
+import com.jazzlogs.backend.storage.AudioStorageService;
 import com.jazzlogs.backend.storage.ImageStorageService;
 import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackRepository;
@@ -44,6 +45,7 @@ public class SeriesService {
     private final ListenService listenService;
     private final ListenRepository listenRepository;
     private final ImageStorageService imageStorageService;
+    private final AudioStorageService audioStorageService;
 
     /** Metadata only, always starts as a draft with no cover — the chapter list starts empty too, see addChapter/publish/setCoverImage. */
     @Transactional
@@ -113,6 +115,29 @@ public class SeriesService {
         chapter.updateLandscapeImageUrl(url);
     }
 
+    /**
+     * Uploads the audio for one chapter — see {@link AudioStorageService#upload}.
+     * One object per chapter ({@code series/{seriesId}/chapters/{chapterId}/audio.<ext>}),
+     * so re-uploading overwrites the old one instead of leaving it orphaned
+     * in storage. audioObjectKey/audioContentType/audioFileSizeBytes all
+     * come from the upload itself, never from client-supplied strings —
+     * audioDurationMs is the one piece still set separately, via
+     * addChapter/updateChapter, since nothing here decodes audio to derive it.
+     *
+     * @param seriesId  the series
+     * @param chapterId the chapter, must belong to this series
+     * @param file      the audio file (mp3/m4a/wav only)
+     */
+    @Transactional
+    public void setChapterAudio(UUID seriesId, UUID chapterId, MultipartFile file) {
+        getSeriesOrThrow(seriesId);
+        SeriesChapter chapter = getChapterOrThrow(seriesId, chapterId);
+        AudioStorageService.UploadedAudio uploaded = audioStorageService.upload(
+            "series/" + seriesId + "/chapters/" + chapterId + "/audio", file
+        );
+        chapter.updateAudio(uploaded.objectKey(), uploaded.contentType(), uploaded.fileSizeBytes());
+    }
+
     /** Publishes this series, making it visible to non-admins. */
     @Transactional
     public void publish(UUID seriesId) {
@@ -133,8 +158,7 @@ public class SeriesService {
 
         int position = (int) seriesChapterRepository.countBySeriesId(seriesId);
         SeriesChapter chapter = seriesChapterRepository.save(new SeriesChapter(
-            series, position, input.type(), track, input.title(), input.note(),
-            input.audioObjectKey(), input.audioDurationMs(), input.audioContentType(), input.audioFileSizeBytes()
+            series, position, input.type(), track, input.title(), input.note(), input.audioDurationMs()
         ));
 
         return toChapterDto(seriesId, userId, chapter.getId());
@@ -155,10 +179,7 @@ public class SeriesService {
         SeriesChapter chapter = getChapterOrThrow(seriesId, chapterId);
         Track track = resolveTrackForType(input.type(), input.trackId());
 
-        chapter.updateDetails(
-            input.type(), track, input.title(), input.note(),
-            input.audioObjectKey(), input.audioDurationMs(), input.audioContentType(), input.audioFileSizeBytes()
-        );
+        chapter.updateDetails(input.type(), track, input.title(), input.note(), input.audioDurationMs());
         seriesChapterRepository.save(chapter);
 
         return toChapterDto(seriesId, userId, chapterId);

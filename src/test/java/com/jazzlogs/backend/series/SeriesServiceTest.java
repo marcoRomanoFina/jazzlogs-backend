@@ -27,6 +27,7 @@ import com.jazzlogs.backend.series.dto.SeriesChapterDetailDto;
 import com.jazzlogs.backend.series.dto.SeriesChapterInput;
 import com.jazzlogs.backend.series.dto.SeriesDetailDto;
 import com.jazzlogs.backend.series.dto.SeriesUpsertRequest;
+import com.jazzlogs.backend.storage.AudioStorageService;
 import com.jazzlogs.backend.storage.ImageStorageService;
 import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackRepository;
@@ -61,6 +62,9 @@ class SeriesServiceTest {
     @MockitoBean
     private ImageStorageService imageStorageService;
 
+    @MockitoBean
+    private AudioStorageService audioStorageService;
+
     @Test
     void addChapter_appendsAtEndWithSequentialPositions() {
         UUID seriesId = persistSeries();
@@ -89,7 +93,7 @@ class SeriesServiceTest {
     @Test
     void addChapter_rejectsTrackTypeWithoutTrackId() {
         UUID seriesId = persistSeries();
-        SeriesChapterInput input = new SeriesChapterInput(ChapterType.TRACK, null, "Ep 1", null, null, null, null, null);
+        SeriesChapterInput input = new SeriesChapterInput(ChapterType.TRACK, null, "Ep 1", null, null);
 
         ResponseStatusException ex = catchThrowableOfType(
             ResponseStatusException.class, () -> seriesService.addChapter(seriesId, null, input));
@@ -100,7 +104,7 @@ class SeriesServiceTest {
     void addChapter_rejectsNonTrackTypeWithTrackId() {
         UUID seriesId = persistSeries();
         Track track = persistTrack(persistAlbum(persistArtist()));
-        SeriesChapterInput input = new SeriesChapterInput(ChapterType.INTRO, track.getId(), null, null, null, null, null, null);
+        SeriesChapterInput input = new SeriesChapterInput(ChapterType.INTRO, track.getId(), null, null, null);
 
         ResponseStatusException ex = catchThrowableOfType(
             ResponseStatusException.class, () -> seriesService.addChapter(seriesId, null, input));
@@ -280,6 +284,36 @@ class SeriesServiceTest {
         assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
+    /** audioObjectKey/audioContentType/audioFileSizeBytes all come from the upload itself, never client-supplied. */
+    @Test
+    void setChapterAudio_uploadsUnderTheChapterOwnKeyAndPersistsObjectKeyContentTypeAndSize() {
+        UUID seriesId = persistSeries();
+        SeriesChapterDetailDto chapter = seriesService.addChapter(seriesId, null, introInput());
+        MockMultipartFile file = new MockMultipartFile("file", "audio.mp3", "audio/mpeg", "fake-audio-bytes".getBytes());
+        String expectedKey = "series/" + seriesId + "/chapters/" + chapter.id() + "/audio.mp3";
+        when(audioStorageService.upload("series/" + seriesId + "/chapters/" + chapter.id() + "/audio", file))
+            .thenReturn(new AudioStorageService.UploadedAudio(expectedKey, "audio/mpeg", file.getSize()));
+
+        seriesService.setChapterAudio(seriesId, chapter.id(), file);
+
+        SeriesChapterDetailDto reloaded = seriesService.getSeriesDetail(seriesId, null, true).chapters().get(0);
+        assertThat(reloaded.audioObjectKey()).isEqualTo(expectedKey);
+        assertThat(reloaded.audioContentType()).isEqualTo("audio/mpeg");
+        assertThat(reloaded.audioFileSizeBytes()).isEqualTo(file.getSize());
+    }
+
+    @Test
+    void setChapterAudio_rejectsUnknownChapter() {
+        UUID seriesId = persistSeries();
+        MockMultipartFile file = new MockMultipartFile("file", "audio.mp3", "audio/mpeg", "fake-bytes".getBytes());
+
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> seriesService.setChapterAudio(seriesId, UUID.randomUUID(), file)
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
     @Test
     void publish_marksTheSeriesPublished() {
         SeriesUpsertRequest request = new SeriesUpsertRequest("To Publish", null, null, SeriesVoice.MARK);
@@ -322,7 +356,7 @@ class SeriesServiceTest {
     }
 
     private SeriesChapterInput introInput() {
-        return new SeriesChapterInput(ChapterType.INTRO, null, null, null, null, null, null, null);
+        return new SeriesChapterInput(ChapterType.INTRO, null, null, null, null);
     }
 
     private UUID persistSeries() {

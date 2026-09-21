@@ -141,6 +141,20 @@ public class SeriesController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Uploads the audio for one chapter — see {@link SeriesService#setChapterAudio}.
+     *
+     * @param id        the series
+     * @param chapterId the chapter, must belong to this series
+     * @param file      the audio file (mp3/m4a/wav only, see {@code AudioStorageService})
+     */
+    @PutMapping(value = "/{id}/chapters/{chapterId}/audio", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> setChapterAudio(@PathVariable UUID id, @PathVariable UUID chapterId, @RequestParam("file") MultipartFile file) {
+        seriesService.setChapterAudio(id, chapterId, file);
+        return ResponseEntity.noContent().build();
+    }
+
     @PatchMapping("/{id}/chapters/{chapterId}")
     @PreAuthorize("hasRole('ADMIN')")
     public SeriesChapterDetailDto updateChapter(

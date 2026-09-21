@@ -80,6 +80,9 @@ public class SeriesChapter {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    // audioObjectKey/audioContentType/audioFileSizeBytes aren't constructor
+    // params — a chapter starts with no audio, they're only ever set together
+    // via updateAudio, after a real upload (see SeriesService.setChapterAudio).
     public SeriesChapter(
         Series series,
         int position,
@@ -87,10 +90,7 @@ public class SeriesChapter {
         Track track,
         String title,
         String note,
-        String audioObjectKey,
-        Integer audioDurationMs,
-        String audioContentType,
-        Long audioFileSizeBytes
+        Integer audioDurationMs
     ) {
         this.series = series;
         this.position = position;
@@ -98,10 +98,7 @@ public class SeriesChapter {
         this.track = track;
         this.title = title;
         this.note = note;
-        this.audioObjectKey = audioObjectKey;
         this.audioDurationMs = audioDurationMs;
-        this.audioContentType = audioContentType;
-        this.audioFileSizeBytes = audioFileSizeBytes;
     }
 
     public void updatePosition(int position) {
@@ -121,24 +118,21 @@ public class SeriesChapter {
         this.landscapeImageUrl = landscapeImageUrl;
     }
 
-    public void updateDetails(
-        ChapterType type,
-        Track track,
-        String title,
-        String note,
-        String audioObjectKey,
-        Integer audioDurationMs,
-        String audioContentType,
-        Long audioFileSizeBytes
-    ) {
+    // Separate from updateDetails(...) — set via its own upload endpoint
+    // (SeriesService.setChapterAudio), never accepted as raw strings on the
+    // chapter upsert. All three change together, from the same upload.
+    public void updateAudio(String audioObjectKey, String audioContentType, Long audioFileSizeBytes) {
+        this.audioObjectKey = audioObjectKey;
+        this.audioContentType = audioContentType;
+        this.audioFileSizeBytes = audioFileSizeBytes;
+    }
+
+    public void updateDetails(ChapterType type, Track track, String title, String note, Integer audioDurationMs) {
         this.type = type;
         this.track = track;
         this.title = title;
         this.note = note;
-        this.audioObjectKey = audioObjectKey;
         this.audioDurationMs = audioDurationMs;
-        this.audioContentType = audioContentType;
-        this.audioFileSizeBytes = audioFileSizeBytes;
     }
 
     @PrePersist
