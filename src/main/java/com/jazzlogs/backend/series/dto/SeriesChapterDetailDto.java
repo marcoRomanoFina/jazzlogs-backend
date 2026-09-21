@@ -15,7 +15,7 @@ public record SeriesChapterDetailDto(
     String title,
     String note,
     String audioObjectKey,
-    Integer audioDurationMs,
+    Integer audioDurationSeconds,
     String audioContentType,
     Long audioFileSizeBytes,
     String imageUrl,

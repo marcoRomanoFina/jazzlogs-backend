@@ -101,10 +101,20 @@ class SeriesServiceTest {
     }
 
     @Test
-    void addChapter_rejectsNonTrackTypeWithTrackId() {
+    void addChapter_rejectsIntroTypeWithoutTrackId() {
+        UUID seriesId = persistSeries();
+        SeriesChapterInput input = new SeriesChapterInput(ChapterType.INTRO, null, null, null, null);
+
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> seriesService.addChapter(seriesId, null, input));
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void addChapter_rejectsOutroTypeWithTrackId() {
         UUID seriesId = persistSeries();
         Track track = persistTrack(persistAlbum(persistArtist()));
-        SeriesChapterInput input = new SeriesChapterInput(ChapterType.INTRO, track.getId(), null, null, null);
+        SeriesChapterInput input = new SeriesChapterInput(ChapterType.OUTRO, track.getId(), null, null, null);
 
         ResponseStatusException ex = catchThrowableOfType(
             ResponseStatusException.class, () -> seriesService.addChapter(seriesId, null, input));
@@ -395,8 +405,10 @@ class SeriesServiceTest {
             .status();
     }
 
+    /** INTRO chapters need a trackId too now (only OUTRO doesn't) — gives each call its own fresh track. */
     private SeriesChapterInput introInput() {
-        return new SeriesChapterInput(ChapterType.INTRO, null, null, null, null);
+        Track track = persistTrack(persistAlbum(persistArtist()));
+        return new SeriesChapterInput(ChapterType.INTRO, track.getId(), null, null, null);
     }
 
     private UUID persistSeries() {

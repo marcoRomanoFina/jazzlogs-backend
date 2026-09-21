@@ -121,7 +121,7 @@ public class SeriesService {
      * so re-uploading overwrites the old one instead of leaving it orphaned
      * in storage. audioObjectKey/audioContentType/audioFileSizeBytes all
      * come from the upload itself, never from client-supplied strings —
-     * audioDurationMs is the one piece still set separately, via
+     * audioDurationSeconds is the one piece still set separately, via
      * addChapter/updateChapter, since nothing here decodes audio to derive it.
      *
      * @param seriesId  the series
@@ -192,7 +192,7 @@ public class SeriesService {
 
         int position = (int) seriesChapterRepository.countBySeriesId(seriesId);
         SeriesChapter chapter = seriesChapterRepository.save(new SeriesChapter(
-            series, position, input.type(), track, input.title(), input.note(), input.audioDurationMs()
+            series, position, input.type(), track, input.title(), input.note(), input.audioDurationSeconds()
         ));
 
         return toChapterDto(seriesId, userId, chapter.getId());
@@ -213,7 +213,7 @@ public class SeriesService {
         SeriesChapter chapter = getChapterOrThrow(seriesId, chapterId);
         Track track = resolveTrackForType(input.type(), input.trackId());
 
-        chapter.updateDetails(input.type(), track, input.title(), input.note(), input.audioDurationMs());
+        chapter.updateDetails(input.type(), track, input.title(), input.note(), input.audioDurationSeconds());
         seriesChapterRepository.save(chapter);
 
         return toChapterDto(seriesId, userId, chapterId);
@@ -355,19 +355,19 @@ public class SeriesService {
         return new HashSet<>(listenRepository.findListenedEntityIds(userId, ListenableEntityType.SERIES_CHAPTER, chapterIds));
     }
 
-    /** Ahead of the DB's CHECK constraint on purpose — same rule, a clear 400 beats a raw constraint-violation error. */
+    /** trackId is required for INTRO/TRACK chapters, forbidden for OUTRO ones. */
     private Track resolveTrackForType(ChapterType type, UUID trackId) {
-        if (type == ChapterType.TRACK) {
-            if (trackId == null) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "trackId is required for TRACK chapters");
+        if (type == ChapterType.OUTRO) {
+            if (trackId != null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "trackId must be null for OUTRO chapters");
             }
-            return trackRepository.findById(trackId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Track not found: " + trackId));
+            return null;
         }
-        if (trackId != null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "trackId must be null for " + type + " chapters");
+        if (trackId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "trackId is required for " + type + " chapters");
         }
-        return null;
+        return trackRepository.findById(trackId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Track not found: " + trackId));
     }
 
     private SeriesChapterDetailDto toChapterDetailDto(SeriesChapter chapter, ChapterStatus status) {
@@ -376,7 +376,7 @@ public class SeriesService {
             chapter.getId(), chapter.getPosition(), chapter.getType(),
             track == null ? null : track.getId(), track == null ? null : track.getName(),
             chapter.getTitle(), chapter.getNote(),
-            chapter.getAudioObjectKey(), chapter.getAudioDurationMs(), chapter.getAudioContentType(), chapter.getAudioFileSizeBytes(),
+            chapter.getAudioObjectKey(), chapter.getAudioDurationSeconds(), chapter.getAudioContentType(), chapter.getAudioFileSizeBytes(),
             chapter.getImageUrl(), chapter.getLandscapeImageUrl(), status
         );
     }
