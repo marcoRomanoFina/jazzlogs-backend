@@ -1,5 +1,6 @@
 package com.jazzlogs.backend.playlist;
 
+import java.math.BigDecimal;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -24,15 +25,14 @@ import jakarta.persistence.EntityManager;
 
 import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.artist.Artist;
-import com.jazzlogs.backend.editorial.AlbumEditorialRepository;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.like.LikeService;
 import com.jazzlogs.backend.like.LikeableEntityType;
 import com.jazzlogs.backend.listen.ListenService;
 import com.jazzlogs.backend.listen.ListenableEntityType;
-import com.jazzlogs.backend.playlist.dto.FeaturedPlaylistDto;
-import com.jazzlogs.backend.playlist.dto.FeaturedPlaylistTrackDto;
+import com.jazzlogs.backend.note.NoteService;
+import com.jazzlogs.backend.note.dto.NoteDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistDetailDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistSummaryDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistTrackDetailDto;
@@ -44,6 +44,7 @@ import com.jazzlogs.backend.syncfailure.Neo4jAsyncSyncExecutor;
 import com.jazzlogs.backend.syncfailure.SyncFailureEntityType;
 import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackRepository;
+import com.jazzlogs.backend.trackrating.TrackRating;
 import com.jazzlogs.backend.trackrating.TrackRatingRepository;
 import com.jazzlogs.backend.vocabulary.ContextVocabulary;
 import com.jazzlogs.backend.vocabulary.MoodVocabulary;
@@ -63,10 +64,10 @@ public class PlaylistService {
     private final LikeService likeService;
     private final ListenService listenService;
     private final SavedItemService savedItemService;
+    private final NoteService noteService;
     private final GraphService graphService;
     private final Neo4jAsyncSyncExecutor syncExecutor;
     private final ImageStorageService imageStorageService;
-    private final AlbumEditorialRepository albumEditorialRepository;
     private final EntityManager entityManager;
 
     /**
@@ -287,7 +288,7 @@ public class PlaylistService {
             () -> graphService.addPlaylistTrack(playlistId, trackId, position)
         );
 
-        return toTrackDetailDto(playlistTrack, ratingStatsFor(trackId));
+        return toTrackDetailDto(playlistTrack, ratingStatsFor(trackId), null, false, List.of());
     }
 
     private Map<String, Object> trackAddedPayload(UUID playlistId, UUID trackId, int position) {
@@ -339,7 +340,7 @@ public class PlaylistService {
         playlistTrack.updateDetails(title, curatorNote);
         playlistTrackRepository.save(playlistTrack);
 
-        return toTrackDetailDto(playlistTrack, ratingStatsFor(trackId));
+        return toTrackDetailDto(playlistTrack, ratingStatsFor(trackId), null, false, List.of());
     }
 
     /**
@@ -447,11 +448,22 @@ public class PlaylistService {
             : trackRatingRepository.getRatingStatsForTracks(trackIds).stream()
                 .collect(Collectors.toMap(TrackRatingRepository.TrackRatingStats::getTrackId, stats -> stats));
 
+        Set<UUID> listenedTrackIds = currentUserId == null ? Set.of() : listenService.getListenedTrackIds(currentUserId, trackIds);
+        Map<UUID, List<NoteDto>> myNotesByTrack = currentUserId == null ? Map.of() : noteService.getMyNotesForTracks(trackIds, currentUserId);
+        Map<UUID, BigDecimal> myRatingByTrack = currentUserId == null || trackIds.isEmpty()
+            ? Map.of()
+            : trackRatingRepository.findByUserIdAndTrackIdIn(currentUserId, trackIds).stream()
+                .collect(Collectors.toMap(tr -> tr.getTrack().getId(), TrackRating::getRating));
+
         List<PlaylistTrackDetailDto> trackDtos = playlistTracks.stream()
-            .map(pt -> toTrackDetailDto(pt, statsByTrack.get(pt.getTrack().getId())))
+            .map(pt -> toTrackDetailDto(
+                pt, statsByTrack.get(pt.getTrack().getId()), myRatingByTrack.get(pt.getTrack().getId()),
+                listenedTrackIds.contains(pt.getTrack().getId()), myNotesByTrack.getOrDefault(pt.getTrack().getId(), List.of())
+            ))
             .toList();
 
         boolean liked = currentUserId != null && likeService.hasUserLiked(currentUserId, LikeableEntityType.PLAYLIST, id);
+        boolean saved = currentUserId != null && savedItemService.isSaved(currentUserId, SaveableEntityType.PLAYLIST, id);
 
         List<VocabularyTag> styleTags = graphService.getPlaylistStyles(id);
         List<VocabularyTag> moodTags = graphService.getPlaylistMoods(id);
@@ -460,7 +472,7 @@ public class PlaylistService {
         return new PlaylistDetailDto(
             playlist.getId(), playlist.getTitle(), playlist.getTagline(), playlist.getDescription(),
             playlist.getCoverImageUrl(), playlist.getSpotifyUrl(), playlist.getType(), playlist.isPublished(),
-            playlist.getLikeCount(), liked, playlist.getTrackCount(), playlist.getDurationMs(), trackDtos,
+            playlist.getLikeCount(), liked, saved, playlist.getTrackCount(), playlist.getDurationMs(), trackDtos,
             styleTags, moodTags, contextTags, playlist.getCreatedAt(), playlist.getUpdatedAt()
         );
     }
@@ -468,57 +480,18 @@ public class PlaylistService {
     /**
      * The singleton featured playlist — see {@code Playlist#featured}/{@code
      * idx_playlists_only_one_featured} (V26), same "at most one" pattern as
-     * {@code Album#featured}. Each track's row is intentionally leaner than
-     * {@link #getPlaylistDetail}'s ({@link FeaturedPlaylistTrackDto} instead
-     * of {@link PlaylistTrackDetailDto}) — only what the featured section
-     * actually renders, not the full track/album/artist fan-out.
+     * {@code Album#featured}. Same lean summary shape as every other playlist
+     * listing (no tracklist) — see {@link PlaylistDetailDto}/{@code GET
+     * /playlists/{id}} for the full track/album/artist fan-out.
      *
      * @return the featured playlist, empty if none is featured, or if the
      *         featured one isn't published and the caller isn't an admin
      */
     @Transactional(readOnly = true)
-    public Optional<FeaturedPlaylistDto> getFeatured(UUID currentUserId, boolean isAdmin) {
+    public Optional<PlaylistSummaryDto> getFeatured(UUID currentUserId, boolean isAdmin) {
         return playlistRepository.findByFeaturedTrue()
             .filter(playlist -> playlist.isPublished() || isAdmin)
-            .map(playlist -> toFeaturedDto(playlist, currentUserId));
-    }
-
-    private FeaturedPlaylistDto toFeaturedDto(Playlist playlist, UUID currentUserId) {
-        List<PlaylistTrack> playlistTracks = playlistTrackRepository.findByPlaylistIdWithTrackDetails(playlist.getId());
-        List<UUID> trackIds = playlistTracks.stream().map(pt -> pt.getTrack().getId()).toList();
-        List<UUID> albumIds = playlistTracks.stream().map(pt -> pt.getTrack().getAlbum().getId()).distinct().toList();
-
-        Map<UUID, TrackRatingRepository.TrackRatingStats> statsByTrack = trackIds.isEmpty()
-            ? Map.of()
-            : trackRatingRepository.getRatingStatsForTracks(trackIds).stream()
-                .collect(Collectors.toMap(TrackRatingRepository.TrackRatingStats::getTrackId, stats -> stats));
-
-        Map<UUID, UUID> editorialIdByAlbum = albumIds.isEmpty()
-            ? Map.of()
-            : albumEditorialRepository.findIdsByAlbumIds(albumIds).stream()
-                .collect(Collectors.toMap(
-                    AlbumEditorialRepository.AlbumEditorialIdRow::getAlbumId,
-                    AlbumEditorialRepository.AlbumEditorialIdRow::getEditorialId
-                ));
-
-        List<FeaturedPlaylistTrackDto> trackDtos = playlistTracks.stream()
-            .map(pt -> toFeaturedTrackDto(
-                pt, statsByTrack.get(pt.getTrack().getId()), editorialIdByAlbum.get(pt.getTrack().getAlbum().getId())
-            ))
-            .toList();
-
-        boolean liked = currentUserId != null && likeService.hasUserLiked(currentUserId, LikeableEntityType.PLAYLIST, playlist.getId());
-
-        List<VocabularyTag> styleTags = graphService.getPlaylistStyles(playlist.getId());
-        List<VocabularyTag> moodTags = graphService.getPlaylistMoods(playlist.getId());
-        List<VocabularyTag> contextTags = graphService.getPlaylistContexts(playlist.getId());
-
-        return new FeaturedPlaylistDto(
-            playlist.getId(), playlist.getTitle(), playlist.getTagline(), playlist.getDescription(),
-            playlist.getCoverImageUrl(), playlist.getSpotifyUrl(), playlist.getType(), playlist.isPublished(),
-            playlist.getLikeCount(), liked, playlist.getTrackCount(), playlist.getDurationMs(), trackDtos,
-            styleTags, moodTags, contextTags, playlist.getCreatedAt(), playlist.getUpdatedAt()
-        );
+            .map(playlist -> toSummaryDtos(List.of(playlist), currentUserId).get(0));
     }
 
     /**
@@ -603,31 +576,24 @@ public class PlaylistService {
             .toList();
     }
 
-    private FeaturedPlaylistTrackDto toFeaturedTrackDto(PlaylistTrack playlistTrack, TrackRatingRepository.TrackRatingStats stats, UUID albumEditorialId) {
-        Track track = playlistTrack.getTrack();
-        Album album = track.getAlbum();
-        return new FeaturedPlaylistTrackDto(
-            track.getId(), track.getName(), playlistTrack.getTitle(), albumEditorialId, album.getName(),
-            album.getArtist().getName(), album.getImageUrl(), playlistTrack.getPosition(),
-            stats == null ? null : stats.getAvgRating()
-        );
-    }
-
     private TrackRatingRepository.TrackRatingStats ratingStatsFor(UUID trackId) {
         return trackRatingRepository.getRatingStatsForTracks(List.of(trackId)).stream().findFirst().orElse(null);
     }
 
-    private PlaylistTrackDetailDto toTrackDetailDto(PlaylistTrack playlistTrack, TrackRatingRepository.TrackRatingStats stats) {
+    private PlaylistTrackDetailDto toTrackDetailDto(
+        PlaylistTrack playlistTrack, TrackRatingRepository.TrackRatingStats stats, BigDecimal myRating, boolean listened, List<NoteDto> myNotes
+    ) {
         Track track = playlistTrack.getTrack();
         Album album = track.getAlbum();
         Artist artist = album.getArtist();
         return new PlaylistTrackDetailDto(
-            track.getId(), track.getName(), track.getDurationMs(),
+            track.getId(), track.getName(), track.getDurationMs(), track.getSpotifyUrl(),
             album.getId(), album.getName(), album.getImageUrl(),
             artist.getId(), artist.getName(),
             playlistTrack.getPosition(), playlistTrack.getTitle(), playlistTrack.getCuratorNote(),
             stats == null ? null : stats.getAvgRating(),
-            stats == null ? 0 : stats.getCount()
+            stats == null ? 0 : stats.getCount(),
+            myRating, listened, myNotes
         );
     }
 

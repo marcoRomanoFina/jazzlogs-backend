@@ -22,6 +22,7 @@ public record PlaylistDetailDto(
     boolean published,
     int likeCount,
     boolean likedByCurrentUser,
+    boolean savedByCurrentUser,
     int trackCount,
     long durationMs,
     List<PlaylistTrackDetailDto> tracks,

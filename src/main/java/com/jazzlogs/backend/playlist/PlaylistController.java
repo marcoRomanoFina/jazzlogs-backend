@@ -29,7 +29,6 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.listen.ListenService;
-import com.jazzlogs.backend.playlist.dto.FeaturedPlaylistDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistDetailDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistIdDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistSummaryDto;
@@ -70,7 +69,7 @@ public class PlaylistController {
 
     /** The featured playlist — see {@link PlaylistService#getFeatured}. */
     @GetMapping("/featured")
-    public FeaturedPlaylistDto getFeatured(@AuthenticationPrincipal Jwt jwt) {
+    public PlaylistSummaryDto getFeatured(@AuthenticationPrincipal Jwt jwt) {
         User user = userService.resolveFromJwt(jwt);
         return playlistService.getFeatured(user.getId(), user.getRole() == UserRole.ADMIN)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No playlist is featured"));
