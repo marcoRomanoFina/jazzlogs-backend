@@ -138,6 +138,40 @@ public class SeriesService {
         chapter.updateAudio(uploaded.objectKey(), uploaded.contentType(), uploaded.fileSizeBytes());
     }
 
+    /**
+     * A short-lived URL to actually play this chapter's audio — the
+     * bucket is private, so {@code audioObjectKey} alone isn't fetchable by
+     * a client; this is the only way to turn it into something playable.
+     * Generated fresh on every call, not cached or stored — see {@link
+     * AudioStorageService#presignPlaybackUrl}. Same visibility rule as the
+     * rest of the series (draft series/chapters are admin-only); this is
+     * also the choke point a future subscription check would go through,
+     * since a signed URL is the last gate before the audio bytes themselves
+     * leave storage.
+     *
+     * @param seriesId      the series
+     * @param chapterId     the chapter, must belong to this series
+     * @param currentUserId unused today, kept for a future entitlement check
+     * @param isAdmin       admins can play draft chapters too
+     * @return a presigned URL valid for a limited time
+     * @throws ResponseStatusException 404 if the series/chapter doesn't
+     *                                  exist (or isn't visible to this
+     *                                  caller), or if this chapter has no
+     *                                  audio uploaded yet
+     */
+    @Transactional(readOnly = true)
+    public String getChapterAudioUrl(UUID seriesId, UUID chapterId, UUID currentUserId, boolean isAdmin) {
+        Series series = getSeriesOrThrow(seriesId);
+        if (!series.isPublished() && !isAdmin) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Series not found: " + seriesId);
+        }
+        SeriesChapter chapter = getChapterOrThrow(seriesId, chapterId);
+        if (chapter.getAudioObjectKey() == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Chapter has no audio yet: " + chapterId);
+        }
+        return audioStorageService.presignPlaybackUrl(chapter.getAudioObjectKey());
+    }
+
     /** Publishes this series, making it visible to non-admins. */
     @Transactional
     public void publish(UUID seriesId) {

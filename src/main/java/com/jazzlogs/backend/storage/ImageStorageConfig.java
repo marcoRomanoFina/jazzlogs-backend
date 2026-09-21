@@ -10,11 +10,16 @@ import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3Configuration;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 /**
- * The S3-compatible client used to talk to MinIO (see {@code
+ * The S3-compatible clients used to talk to MinIO (see {@code
  * docker-compose.yml}) — the same client/API works unchanged against real
- * S3 in prod, just different endpoint/credentials.
+ * S3 in prod, just different endpoint/credentials. Reused for both image
+ * storage ({@link ImageStorageService}) and audio storage ({@link
+ * AudioStorageService}) — one MinIO instance, different buckets — despite
+ * the class's name predating the second use.
  */
 @Configuration
 public class ImageStorageConfig {
@@ -34,6 +39,22 @@ public class ImageStorageConfig {
             // (http://bucket.host:port/key) — MinIO's default setup (and a bare
             // host:port like localhost:9000) doesn't resolve the latter.
             .forcePathStyle(true)
+            .build();
+    }
+
+    /** Signs temporary GET URLs — see {@link AudioStorageService#presignPlaybackUrl}. */
+    @Bean
+    public S3Presigner s3Presigner(
+        @Value("${image-storage.endpoint}") String endpoint,
+        @Value("${image-storage.region}") String region,
+        @Value("${image-storage.access-key}") String accessKey,
+        @Value("${image-storage.secret-key}") String secretKey
+    ) {
+        return S3Presigner.builder()
+            .endpointOverride(URI.create(endpoint))
+            .region(Region.of(region))
+            .credentialsProvider(StaticCredentialsProvider.create(AwsBasicCredentials.create(accessKey, secretKey)))
+            .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
             .build();
     }
 }

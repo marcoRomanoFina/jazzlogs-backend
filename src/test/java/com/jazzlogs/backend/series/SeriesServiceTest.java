@@ -284,7 +284,7 @@ class SeriesServiceTest {
         assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
-    /** audioObjectKey/audioContentType/audioFileSizeBytes all come from the upload itself, never client-supplied. */
+    /** audioUrl/audioContentType/audioFileSizeBytes all come from the upload itself, never client-supplied. */
     @Test
     void setChapterAudio_uploadsUnderTheChapterOwnKeyAndPersistsObjectKeyContentTypeAndSize() {
         UUID seriesId = persistSeries();
@@ -300,6 +300,46 @@ class SeriesServiceTest {
         assertThat(reloaded.audioObjectKey()).isEqualTo(expectedKey);
         assertThat(reloaded.audioContentType()).isEqualTo("audio/mpeg");
         assertThat(reloaded.audioFileSizeBytes()).isEqualTo(file.getSize());
+    }
+
+    @Test
+    void getChapterAudioUrl_returnsAPresignedUrlForTheStoredKey() {
+        UUID seriesId = persistSeries();
+        SeriesChapterDetailDto chapter = seriesService.addChapter(seriesId, null, introInput());
+        MockMultipartFile file = new MockMultipartFile("file", "audio.mp3", "audio/mpeg", "fake-audio-bytes".getBytes());
+        String key = "series/" + seriesId + "/chapters/" + chapter.id() + "/audio.mp3";
+        String presignedUrl = "http://localhost:9000/jazzlogs-audio/" + key + "?X-Amz-Signature=fake";
+        when(audioStorageService.upload("series/" + seriesId + "/chapters/" + chapter.id() + "/audio", file))
+            .thenReturn(new AudioStorageService.UploadedAudio(key, "audio/mpeg", file.getSize()));
+        seriesService.setChapterAudio(seriesId, chapter.id(), file);
+        when(audioStorageService.presignPlaybackUrl(key)).thenReturn(presignedUrl);
+
+        String url = seriesService.getChapterAudioUrl(seriesId, chapter.id(), null, false);
+
+        assertThat(url).isEqualTo(presignedUrl);
+    }
+
+    @Test
+    void getChapterAudioUrl_rejectsAChapterWithNoAudioUploadedYet() {
+        UUID seriesId = persistSeries();
+        SeriesChapterDetailDto chapter = seriesService.addChapter(seriesId, null, introInput());
+
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> seriesService.getChapterAudioUrl(seriesId, chapter.id(), null, false)
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void getChapterAudioUrl_rejectsUnknownChapter() {
+        UUID seriesId = persistSeries();
+
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> seriesService.getChapterAudioUrl(seriesId, UUID.randomUUID(), null, false)
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     @Test

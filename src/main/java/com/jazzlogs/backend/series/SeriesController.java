@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.jazzlogs.backend.series.dto.ChapterAudioUrlDto;
 import com.jazzlogs.backend.series.dto.ReorderSeriesChaptersRequest;
 import com.jazzlogs.backend.series.dto.SeriesChapterDetailDto;
 import com.jazzlogs.backend.series.dto.SeriesChapterInput;
@@ -153,6 +154,19 @@ public class SeriesController {
     public ResponseEntity<Void> setChapterAudio(@PathVariable UUID id, @PathVariable UUID chapterId, @RequestParam("file") MultipartFile file) {
         seriesService.setChapterAudio(id, chapterId, file);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * A short-lived URL to play this chapter's audio — see {@link SeriesService#getChapterAudioUrl}.
+     * Not admin-only: any authenticated user viewing a published series can call this.
+     *
+     * @param id        the series
+     * @param chapterId the chapter, must belong to this series
+     */
+    @GetMapping("/{id}/chapters/{chapterId}/audio-url")
+    public ChapterAudioUrlDto getChapterAudioUrl(@PathVariable UUID id, @PathVariable UUID chapterId, @AuthenticationPrincipal Jwt jwt) {
+        User user = userService.resolveFromJwt(jwt);
+        return new ChapterAudioUrlDto(seriesService.getChapterAudioUrl(id, chapterId, user.getId(), user.getRole() == UserRole.ADMIN));
     }
 
     @PatchMapping("/{id}/chapters/{chapterId}")

@@ -121,6 +121,7 @@ public class SeriesChapter {
     // Separate from updateDetails(...) — set via its own upload endpoint
     // (SeriesService.setChapterAudio), never accepted as raw strings on the
     // chapter upsert. All three change together, from the same upload.
+    // audioObjectKey is a plain S3 key, not a URL — see AudioStorageService.presignPlaybackUrl.
     public void updateAudio(String audioObjectKey, String audioContentType, Long audioFileSizeBytes) {
         this.audioObjectKey = audioObjectKey;
         this.audioContentType = audioContentType;

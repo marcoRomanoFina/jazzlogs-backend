@@ -77,12 +77,14 @@ services:
       timeout: 5s
       retries: 5
 
-  # One-shot: creates the jazzlogs-images bucket and makes it public-read,
-  # then exits — so a fresh `docker compose up` needs no manual `mc` step.
-  # Public-read (not presigned URLs) so a stored object is a plain,
-  # permanent URL — same shape as every Spotify-sourced imageUrl already is.
-  # jazzlogs-audio stays private (default) — AudioStorageService hands back
-  # an object key, not a public URL; nothing streams it back out yet.
+  # One-shot: creates the jazzlogs-images bucket (public-read) and the
+  # jazzlogs-audio bucket (private), then exits — so a fresh `docker compose
+  # up` needs no manual `mc` step. Images are public-read so a stored object
+  # is a plain, permanent URL — same shape as every Spotify-sourced imageUrl
+  # already is. Audio stays private on purpose — series may end up gated
+  # behind a subscription, so playback goes through a presigned, short-lived
+  # URL (AudioStorageService.presignPlaybackUrl) instead of a permanent
+  # public one, giving the backend a choke point to add that check later.
   createbuckets:
     image: quay.io/minio/mc:latest
     depends_on:
