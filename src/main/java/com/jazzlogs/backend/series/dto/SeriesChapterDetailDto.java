@@ -18,6 +18,8 @@ public record SeriesChapterDetailDto(
     Integer audioDurationMs,
     String audioContentType,
     Long audioFileSizeBytes,
+    String imageUrl,
+    String landscapeImageUrl,
     ChapterStatus status
 ) {
 }

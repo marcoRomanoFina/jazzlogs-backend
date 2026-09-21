@@ -2,6 +2,7 @@ package com.jazzlogs.backend.series;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
+import static org.mockito.Mockito.when;
 
 import java.util.List;
 import java.util.UUID;
@@ -10,6 +11,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpStatus;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -24,6 +27,7 @@ import com.jazzlogs.backend.series.dto.SeriesChapterDetailDto;
 import com.jazzlogs.backend.series.dto.SeriesChapterInput;
 import com.jazzlogs.backend.series.dto.SeriesDetailDto;
 import com.jazzlogs.backend.series.dto.SeriesUpsertRequest;
+import com.jazzlogs.backend.storage.ImageStorageService;
 import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackRepository;
 import com.jazzlogs.backend.user.User;
@@ -53,6 +57,9 @@ class SeriesServiceTest {
 
     @Autowired
     private TrackRepository trackRepository;
+
+    @MockitoBean
+    private ImageStorageService imageStorageService;
 
     @Test
     void addChapter_appendsAtEndWithSequentialPositions() {
@@ -184,7 +191,7 @@ class SeriesServiceTest {
 
     @Test
     void create_alwaysStartsAsADraft() {
-        SeriesUpsertRequest request = new SeriesUpsertRequest("Draft By Default", null, null, null);
+        SeriesUpsertRequest request = new SeriesUpsertRequest("Draft By Default", null, null, SeriesVoice.MARK);
 
         UUID seriesId = seriesService.create(request).id();
 
@@ -192,8 +199,90 @@ class SeriesServiceTest {
     }
 
     @Test
+    void setCoverImage_uploadsUnderTheSeriesOwnKeyAndPersistsTheReturnedUrl() {
+        UUID seriesId = persistSeries();
+        MockMultipartFile file = new MockMultipartFile("file", "cover.jpg", "image/jpeg", "fake-bytes".getBytes());
+        when(imageStorageService.upload("series/" + seriesId + "/cover", file))
+            .thenReturn("http://localhost:9000/jazzlogs-images/series/" + seriesId + "/cover.jpg");
+
+        seriesService.setCoverImage(seriesId, file);
+
+        SeriesDetailDto detail = seriesService.getSeriesDetail(seriesId, null, true);
+        assertThat(detail.coverImageUrl()).isEqualTo("http://localhost:9000/jazzlogs-images/series/" + seriesId + "/cover.jpg");
+    }
+
+    @Test
+    void setCoverImage_rejectsUnknownSeries() {
+        MockMultipartFile file = new MockMultipartFile("file", "cover.jpg", "image/jpeg", "fake-bytes".getBytes());
+
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> seriesService.setCoverImage(UUID.randomUUID(), file)
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void setChapterCoverImage_uploadsUnderTheChapterOwnKeyAndPersistsTheReturnedUrl() {
+        UUID seriesId = persistSeries();
+        SeriesChapterDetailDto chapter = seriesService.addChapter(seriesId, null, introInput());
+        MockMultipartFile file = new MockMultipartFile("file", "cover.jpg", "image/jpeg", "fake-bytes".getBytes());
+        String expectedUrl = "http://localhost:9000/jazzlogs-images/series/" + seriesId + "/chapters/" + chapter.id() + "/cover.jpg";
+        when(imageStorageService.upload("series/" + seriesId + "/chapters/" + chapter.id() + "/cover", file)).thenReturn(expectedUrl);
+
+        seriesService.setChapterCoverImage(seriesId, chapter.id(), file);
+
+        SeriesDetailDto detail = seriesService.getSeriesDetail(seriesId, null, true);
+        assertThat(detail.chapters().get(0).imageUrl()).isEqualTo(expectedUrl);
+    }
+
+    @Test
+    void setChapterCoverImage_rejectsUnknownChapter() {
+        UUID seriesId = persistSeries();
+        MockMultipartFile file = new MockMultipartFile("file", "cover.jpg", "image/jpeg", "fake-bytes".getBytes());
+
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> seriesService.setChapterCoverImage(seriesId, UUID.randomUUID(), file)
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    /** Distinct from setChapterCoverImage/imageUrl — its own column, its own key, never overwrites the other. */
+    @Test
+    void setChapterLandscapeImage_uploadsUnderItsOwnKeyAndPersistsTheReturnedUrl_separateFromCoverImage() {
+        UUID seriesId = persistSeries();
+        SeriesChapterDetailDto chapter = seriesService.addChapter(seriesId, null, introInput());
+        MockMultipartFile coverFile = new MockMultipartFile("file", "cover.jpg", "image/jpeg", "cover-bytes".getBytes());
+        MockMultipartFile landscapeFile = new MockMultipartFile("file", "landscape.jpg", "image/jpeg", "landscape-bytes".getBytes());
+        String coverUrl = "http://localhost:9000/jazzlogs-images/series/" + seriesId + "/chapters/" + chapter.id() + "/cover.jpg";
+        String landscapeUrl = "http://localhost:9000/jazzlogs-images/series/" + seriesId + "/chapters/" + chapter.id() + "/landscape-cover.jpg";
+        when(imageStorageService.upload("series/" + seriesId + "/chapters/" + chapter.id() + "/cover", coverFile)).thenReturn(coverUrl);
+        when(imageStorageService.upload("series/" + seriesId + "/chapters/" + chapter.id() + "/landscape-cover", landscapeFile)).thenReturn(landscapeUrl);
+
+        seriesService.setChapterCoverImage(seriesId, chapter.id(), coverFile);
+        seriesService.setChapterLandscapeImage(seriesId, chapter.id(), landscapeFile);
+
+        SeriesChapterDetailDto reloaded = seriesService.getSeriesDetail(seriesId, null, true).chapters().get(0);
+        assertThat(reloaded.imageUrl()).isEqualTo(coverUrl);
+        assertThat(reloaded.landscapeImageUrl()).isEqualTo(landscapeUrl);
+    }
+
+    @Test
+    void setChapterLandscapeImage_rejectsUnknownChapter() {
+        UUID seriesId = persistSeries();
+        MockMultipartFile file = new MockMultipartFile("file", "landscape.jpg", "image/jpeg", "fake-bytes".getBytes());
+
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> seriesService.setChapterLandscapeImage(seriesId, UUID.randomUUID(), file)
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
     void publish_marksTheSeriesPublished() {
-        SeriesUpsertRequest request = new SeriesUpsertRequest("To Publish", null, null, null);
+        SeriesUpsertRequest request = new SeriesUpsertRequest("To Publish", null, null, SeriesVoice.MARK);
         UUID seriesId = seriesService.create(request).id();
 
         seriesService.publish(seriesId);
@@ -237,7 +326,7 @@ class SeriesServiceTest {
     }
 
     private UUID persistSeries() {
-        SeriesUpsertRequest request = new SeriesUpsertRequest("Test Series", null, null, null);
+        SeriesUpsertRequest request = new SeriesUpsertRequest("Test Series", null, null, SeriesVoice.MARK);
         UUID id = seriesService.create(request).id();
         seriesService.publish(id);
         return id;

@@ -13,6 +13,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.like.LikeService;
@@ -26,6 +27,7 @@ import com.jazzlogs.backend.series.dto.SeriesChapterInput;
 import com.jazzlogs.backend.series.dto.SeriesDetailDto;
 import com.jazzlogs.backend.series.dto.SeriesSummaryDto;
 import com.jazzlogs.backend.series.dto.SeriesUpsertRequest;
+import com.jazzlogs.backend.storage.ImageStorageService;
 import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackRepository;
 
@@ -41,11 +43,12 @@ public class SeriesService {
     private final LikeService likeService;
     private final ListenService listenService;
     private final ListenRepository listenRepository;
+    private final ImageStorageService imageStorageService;
 
-    /** Metadata only, always starts as a draft — the chapter list starts empty too, see addChapter/publish. */
+    /** Metadata only, always starts as a draft with no cover — the chapter list starts empty too, see addChapter/publish/setCoverImage. */
     @Transactional
     public SeriesDetailDto create(SeriesUpsertRequest request) {
-        Series series = new Series(request.title(), request.dek(), request.description(), request.coverImageUrl());
+        Series series = new Series(request.title(), request.dek(), request.description(), request.voice());
         Series saved = seriesRepository.save(series);
         return getSeriesDetail(saved.getId(), null, true);
     }
@@ -54,8 +57,60 @@ public class SeriesService {
     @Transactional
     public SeriesDetailDto update(UUID id, SeriesUpsertRequest request) {
         Series series = getSeriesOrThrow(id);
-        series.update(request.title(), request.dek(), request.description(), request.coverImageUrl());
+        series.update(request.title(), request.dek(), request.description(), request.voice());
         return getSeriesDetail(id, null, true);
+    }
+
+    /**
+     * Uploads a new cover image for this series — see {@link
+     * ImageStorageService#upload}. One object per series ({@code
+     * series/{id}/cover.<ext>}), so re-uploading overwrites the old cover
+     * instead of leaving it orphaned in storage.
+     *
+     * @param id   the series
+     * @param file the image file (jpeg/png/webp only)
+     */
+    @Transactional
+    public void setCoverImage(UUID id, MultipartFile file) {
+        Series series = getSeriesOrThrow(id);
+        String url = imageStorageService.upload("series/" + id + "/cover", file);
+        series.updateCoverImageUrl(url);
+    }
+
+    /**
+     * Uploads a cover image for one chapter — see {@link
+     * ImageStorageService#upload}. One object per chapter ({@code
+     * series/{seriesId}/chapters/{chapterId}/cover.<ext>}), so re-uploading
+     * overwrites the old one instead of leaving it orphaned in storage.
+     *
+     * @param seriesId  the series
+     * @param chapterId the chapter, must belong to this series
+     * @param file      the image file (jpeg/png/webp only)
+     */
+    @Transactional
+    public void setChapterCoverImage(UUID seriesId, UUID chapterId, MultipartFile file) {
+        getSeriesOrThrow(seriesId);
+        SeriesChapter chapter = getChapterOrThrow(seriesId, chapterId);
+        String url = imageStorageService.upload("series/" + seriesId + "/chapters/" + chapterId + "/cover", file);
+        chapter.updateImageUrl(url);
+    }
+
+    /**
+     * Uploads the landscape/hero image for one chapter — a second, distinct
+     * image from {@link #setChapterCoverImage}'s, not a size variant of it.
+     * One object per chapter ({@code series/{seriesId}/chapters/{chapterId}/landscape-cover.<ext>}),
+     * so re-uploading overwrites the old one instead of leaving it orphaned in storage.
+     *
+     * @param seriesId  the series
+     * @param chapterId the chapter, must belong to this series
+     * @param file      the image file (jpeg/png/webp only)
+     */
+    @Transactional
+    public void setChapterLandscapeImage(UUID seriesId, UUID chapterId, MultipartFile file) {
+        getSeriesOrThrow(seriesId);
+        SeriesChapter chapter = getChapterOrThrow(seriesId, chapterId);
+        String url = imageStorageService.upload("series/" + seriesId + "/chapters/" + chapterId + "/landscape-cover", file);
+        chapter.updateLandscapeImageUrl(url);
     }
 
     /** Publishes this series, making it visible to non-admins. */
@@ -204,7 +259,7 @@ public class SeriesService {
 
         return new SeriesDetailDto(
             series.getId(), series.getTitle(), series.getDek(), series.getDescription(), series.getCoverImageUrl(),
-            series.getStatus(), series.getLikeCount(), liked, totalListenings, chapterDtos,
+            series.getStatus(), series.getVoice(), series.getLikeCount(), liked, totalListenings, chapterDtos,
             series.getCreatedAt(), series.getUpdatedAt()
         );
     }
@@ -267,14 +322,14 @@ public class SeriesService {
             track == null ? null : track.getId(), track == null ? null : track.getName(),
             chapter.getTitle(), chapter.getNote(),
             chapter.getAudioObjectKey(), chapter.getAudioDurationMs(), chapter.getAudioContentType(), chapter.getAudioFileSizeBytes(),
-            status
+            chapter.getImageUrl(), chapter.getLandscapeImageUrl(), status
         );
     }
 
     private SeriesSummaryDto toSummaryDto(Series series) {
         return new SeriesSummaryDto(
             series.getId(), series.getTitle(), series.getDek(), series.getCoverImageUrl(),
-            series.getStatus(), series.getLikeCount(), series.getCreatedAt()
+            series.getStatus(), series.getVoice(), series.getLikeCount(), series.getCreatedAt()
         );
     }
 

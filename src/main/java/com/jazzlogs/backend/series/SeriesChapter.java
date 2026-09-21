@@ -68,6 +68,12 @@ public class SeriesChapter {
     @Column(name = "audio_file_size_bytes")
     private Long audioFileSizeBytes;
 
+    @Column(name = "image_url")
+    private String imageUrl;
+
+    @Column(name = "landscape_image_url")
+    private String landscapeImageUrl;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -100,6 +106,19 @@ public class SeriesChapter {
 
     public void updatePosition(int position) {
         this.position = position;
+    }
+
+    // Separate from updateDetails(...) — set via their own upload endpoints
+    // (SeriesService.setChapterCoverImage/setChapterLandscapeImage), not the
+    // chapter upsert. Two distinct images, not a size variant of one —
+    // imageUrl is the chapter's own square-ish cover, landscapeImageUrl a
+    // separate wide/hero image.
+    public void updateImageUrl(String imageUrl) {
+        this.imageUrl = imageUrl;
+    }
+
+    public void updateLandscapeImageUrl(String landscapeImageUrl) {
+        this.landscapeImageUrl = landscapeImageUrl;
     }
 
     public void updateDetails(

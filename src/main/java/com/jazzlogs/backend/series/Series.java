@@ -43,6 +43,12 @@ public class Series {
     @Column(nullable = false)
     private SeriesStatus status;
 
+    // Which narrator reads this series — pure classification, no behavior
+    // difference (same reasoning as Playlist.type).
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private SeriesVoice voice;
+
     // Denormalized, same contract as Playlist/Review/Note.likeCount — mutated
     // only via SeriesRepository's atomic increment/decrement UPDATE queries.
     @Column(name = "like_count", nullable = false)
@@ -55,19 +61,27 @@ public class Series {
     private Instant updatedAt;
 
     // Every new series starts as a draft (status defaults to DRAFT) — not a
-    // constructor param, see SeriesService.publish/unpublish.
-    public Series(String title, String dek, String description, String coverImageUrl) {
+    // constructor param, see SeriesService.publish/unpublish. coverImageUrl
+    // isn't one either — it's only ever set via updateCoverImageUrl, after an
+    // upload (see SeriesService.setCoverImage).
+    public Series(String title, String dek, String description, SeriesVoice voice) {
         this.title = title;
         this.dek = dek;
         this.description = description;
-        this.coverImageUrl = coverImageUrl;
+        this.voice = voice;
         this.status = SeriesStatus.DRAFT;
     }
 
-    public void update(String title, String dek, String description, String coverImageUrl) {
+    public void update(String title, String dek, String description, SeriesVoice voice) {
         this.title = title;
         this.dek = dek;
         this.description = description;
+        this.voice = voice;
+    }
+
+    // Separate from update(...) — set via its own upload endpoint
+    // (SeriesService.setCoverImage), not the metadata upsert.
+    public void updateCoverImageUrl(String coverImageUrl) {
         this.coverImageUrl = coverImageUrl;
     }
 

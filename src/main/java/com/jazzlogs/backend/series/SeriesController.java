@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -19,7 +20,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.jazzlogs.backend.series.dto.ReorderSeriesChaptersRequest;
 import com.jazzlogs.backend.series.dto.SeriesChapterDetailDto;
@@ -67,6 +70,19 @@ public class SeriesController {
         return seriesService.update(id, request);
     }
 
+    /**
+     * Uploads a new cover image for this series — see {@link SeriesService#setCoverImage}.
+     *
+     * @param id   the series
+     * @param file the image file (jpeg/png/webp only, see {@code ImageStorageService})
+     */
+    @PutMapping(value = "/{id}/cover", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> setCoverImage(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
+        seriesService.setCoverImage(id, file);
+        return ResponseEntity.noContent().build();
+    }
+
     /** Publishes this series — see {@link SeriesService#publish}. */
     @PostMapping("/{id}/publish")
     @PreAuthorize("hasRole('ADMIN')")
@@ -93,6 +109,35 @@ public class SeriesController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> removeChapter(@PathVariable UUID id, @PathVariable UUID chapterId) {
         seriesService.removeChapter(id, chapterId);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Uploads a cover image for one chapter — see {@link SeriesService#setChapterCoverImage}.
+     *
+     * @param id        the series
+     * @param chapterId the chapter, must belong to this series
+     * @param file      the image file (jpeg/png/webp only, see {@code ImageStorageService})
+     */
+    @PutMapping(value = "/{id}/chapters/{chapterId}/cover", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> setChapterCoverImage(@PathVariable UUID id, @PathVariable UUID chapterId, @RequestParam("file") MultipartFile file) {
+        seriesService.setChapterCoverImage(id, chapterId, file);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Uploads the landscape/hero image for one chapter — see {@link SeriesService#setChapterLandscapeImage}.
+     * A second, distinct image from {@code /cover}'s, not a size variant of it.
+     *
+     * @param id        the series
+     * @param chapterId the chapter, must belong to this series
+     * @param file      the image file (jpeg/png/webp only, see {@code ImageStorageService})
+     */
+    @PutMapping(value = "/{id}/chapters/{chapterId}/landscape-cover", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> setChapterLandscapeImage(@PathVariable UUID id, @PathVariable UUID chapterId, @RequestParam("file") MultipartFile file) {
+        seriesService.setChapterLandscapeImage(id, chapterId, file);
         return ResponseEntity.noContent().build();
     }
 
