@@ -296,16 +296,17 @@ class SeriesServiceTest {
         assertThat(statusOf(afterFirstCompletion, c.id())).isEqualTo(ChapterStatus.LOCKED);
     }
 
+    /** LOCKED is display-only — completing out of order is allowed. */
     @Test
-    void completeChapter_rejectsLockedChapter() {
+    void completeChapter_allowsCompletingALockedChapter() {
         UUID seriesId = persistSeries();
         seriesService.addChapter(seriesId, null, introInput());
         SeriesChapterDetailDto lockedChapter = seriesService.addChapter(seriesId, null, introInput());
         User user = persistUser();
 
-        ResponseStatusException ex = catchThrowableOfType(ResponseStatusException.class,
-            () -> seriesService.completeChapter(seriesId, lockedChapter.id(), user.getId()));
-        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        SeriesChapterDetailDto completed = seriesService.completeChapter(seriesId, lockedChapter.id(), user.getId());
+
+        assertThat(completed.status()).isEqualTo(ChapterStatus.DONE);
     }
 
     @Test

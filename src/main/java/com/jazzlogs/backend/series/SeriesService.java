@@ -499,19 +499,14 @@ public class SeriesService {
         seriesChapterRepository.saveAll(byId.values());
     }
 
-    /** 403 if the chapter is LOCKED for this user; idempotent on CURRENT/DONE. */
+    /**
+     * No gating — LOCKED is display-only (see {@link #computeStatuses}), a
+     * user can complete chapters in any order. Idempotent if already done.
+     */
     @Transactional
     public SeriesChapterDetailDto completeChapter(UUID seriesId, UUID chapterId, UUID userId) {
         getSeriesOrThrow(seriesId);
-        List<SeriesChapter> chapters = seriesChapterRepository.findBySeriesIdOrderByPosition(seriesId);
-        if (chapters.stream().noneMatch(chapter -> chapter.getId().equals(chapterId))) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Chapter not found: " + chapterId);
-        }
-
-        Map<UUID, ChapterStatus> statuses = computeStatuses(chapters, listenedChapterIds(userId, chapters));
-        if (statuses.get(chapterId) == ChapterStatus.LOCKED) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Chapter is locked: " + chapterId);
-        }
+        getChapterOrThrow(seriesId, chapterId);
 
         listenService.markSeriesChapterListened(userId, chapterId);
 
