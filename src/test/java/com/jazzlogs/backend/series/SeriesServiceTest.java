@@ -379,6 +379,78 @@ class SeriesServiceTest {
     }
 
     @Test
+    void setPrincipalImage_uploadsUnderTheSeriesOwnKeyAndPersistsTheReturnedUrl() {
+        UUID seriesId = persistSeries();
+        MockMultipartFile file = new MockMultipartFile("file", "principal.jpg", "image/jpeg", "fake-bytes".getBytes());
+        when(imageStorageService.upload("series/" + seriesId + "/principal", file))
+            .thenReturn("http://localhost:9000/jazzlogs-images/series/" + seriesId + "/principal.jpg");
+
+        seriesService.setPrincipalImage(seriesId, file);
+
+        SeriesDetailDto detail = seriesService.getSeriesDetail(seriesId, null, true);
+        assertThat(detail.principalImageUrl()).isEqualTo("http://localhost:9000/jazzlogs-images/series/" + seriesId + "/principal.jpg");
+    }
+
+    @Test
+    void setPrincipalImage_rejectsUnknownSeries() {
+        MockMultipartFile file = new MockMultipartFile("file", "principal.jpg", "image/jpeg", "fake-bytes".getBytes());
+
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> seriesService.setPrincipalImage(UUID.randomUUID(), file)
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void setBannerImage_uploadsUnderTheSeriesOwnKeyAndPersistsTheReturnedUrl() {
+        UUID seriesId = persistSeries();
+        MockMultipartFile file = new MockMultipartFile("file", "banner.jpg", "image/jpeg", "fake-bytes".getBytes());
+        when(imageStorageService.upload("series/" + seriesId + "/banner", file))
+            .thenReturn("http://localhost:9000/jazzlogs-images/series/" + seriesId + "/banner.jpg");
+
+        seriesService.setBannerImage(seriesId, file);
+
+        SeriesDetailDto detail = seriesService.getSeriesDetail(seriesId, null, true);
+        assertThat(detail.bannerImageUrl()).isEqualTo("http://localhost:9000/jazzlogs-images/series/" + seriesId + "/banner.jpg");
+    }
+
+    @Test
+    void setBannerImage_rejectsUnknownSeries() {
+        MockMultipartFile file = new MockMultipartFile("file", "banner.jpg", "image/jpeg", "fake-bytes".getBytes());
+
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> seriesService.setBannerImage(UUID.randomUUID(), file)
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void setFooterImage_uploadsUnderTheSeriesOwnKeyAndPersistsTheReturnedUrl() {
+        UUID seriesId = persistSeries();
+        MockMultipartFile file = new MockMultipartFile("file", "footer.jpg", "image/jpeg", "fake-bytes".getBytes());
+        when(imageStorageService.upload("series/" + seriesId + "/footer", file))
+            .thenReturn("http://localhost:9000/jazzlogs-images/series/" + seriesId + "/footer.jpg");
+
+        seriesService.setFooterImage(seriesId, file);
+
+        SeriesDetailDto detail = seriesService.getSeriesDetail(seriesId, null, true);
+        assertThat(detail.footerImageUrl()).isEqualTo("http://localhost:9000/jazzlogs-images/series/" + seriesId + "/footer.jpg");
+    }
+
+    @Test
+    void setFooterImage_rejectsUnknownSeries() {
+        MockMultipartFile file = new MockMultipartFile("file", "footer.jpg", "image/jpeg", "fake-bytes".getBytes());
+
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> seriesService.setFooterImage(UUID.randomUUID(), file)
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
     void setChapterCoverImage_uploadsUnderTheChapterOwnKeyAndPersistsTheReturnedUrl() {
         UUID seriesId = persistSeries();
         SeriesChapterDetailDto chapter = seriesService.addChapter(seriesId, null, introInput());

@@ -182,6 +182,50 @@ public class SeriesService {
     }
 
     /**
+     * Uploads the principal/hero image for this series' detail page — a
+     * fourth, distinct image from cover/banner/footer. One object per
+     * series ({@code series/{id}/principal.<ext>}), so re-uploading
+     * overwrites the old one instead of leaving it orphaned in storage.
+     *
+     * @param id   the series
+     * @param file the image file (jpeg/png/webp only)
+     */
+    @Transactional
+    public void setPrincipalImage(UUID id, MultipartFile file) {
+        Series series = getSeriesOrThrow(id);
+        String url = imageStorageService.upload("series/" + id + "/principal", file);
+        series.updatePrincipalImageUrl(url);
+    }
+
+    /**
+     * Uploads the banner image for this series' detail page — see {@link
+     * #setPrincipalImage}. One object per series ({@code series/{id}/banner.<ext>}).
+     *
+     * @param id   the series
+     * @param file the image file (jpeg/png/webp only)
+     */
+    @Transactional
+    public void setBannerImage(UUID id, MultipartFile file) {
+        Series series = getSeriesOrThrow(id);
+        String url = imageStorageService.upload("series/" + id + "/banner", file);
+        series.updateBannerImageUrl(url);
+    }
+
+    /**
+     * Uploads the footer image for this series' detail page — see {@link
+     * #setPrincipalImage}. One object per series ({@code series/{id}/footer.<ext>}).
+     *
+     * @param id   the series
+     * @param file the image file (jpeg/png/webp only)
+     */
+    @Transactional
+    public void setFooterImage(UUID id, MultipartFile file) {
+        Series series = getSeriesOrThrow(id);
+        String url = imageStorageService.upload("series/" + id + "/footer", file);
+        series.updateFooterImageUrl(url);
+    }
+
+    /**
      * Uploads a cover image for one chapter — see {@link
      * ImageStorageService#upload}. One object per chapter ({@code
      * series/{seriesId}/chapters/{chapterId}/cover.<ext>}), so re-uploading
@@ -541,6 +585,7 @@ public class SeriesService {
 
         return new SeriesDetailDto(
             series.getId(), series.getTitle(), series.getDek(), series.getDescription(), series.getCoverImageUrl(),
+            series.getPrincipalImageUrl(), series.getBannerImageUrl(), series.getFooterImageUrl(),
             series.getStatus(), series.getVoice(), series.getLikeCount(), liked, totalListenings, chapterDtos,
             styleTags, moodTags, contextTags, featuredInstruments, series.getCreatedAt(), series.getUpdatedAt()
         );

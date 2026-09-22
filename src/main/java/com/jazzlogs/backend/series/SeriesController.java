@@ -115,6 +115,45 @@ public class SeriesController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Uploads the principal/hero image for this series' detail page — see {@link SeriesService#setPrincipalImage}.
+     *
+     * @param id   the series
+     * @param file the image file (jpeg/png/webp only, see {@code ImageStorageService})
+     */
+    @PutMapping(value = "/{id}/principal-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> setPrincipalImage(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
+        seriesService.setPrincipalImage(id, file);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Uploads the banner image for this series' detail page — see {@link SeriesService#setBannerImage}.
+     *
+     * @param id   the series
+     * @param file the image file (jpeg/png/webp only, see {@code ImageStorageService})
+     */
+    @PutMapping(value = "/{id}/banner-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> setBannerImage(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
+        seriesService.setBannerImage(id, file);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Uploads the footer image for this series' detail page — see {@link SeriesService#setFooterImage}.
+     *
+     * @param id   the series
+     * @param file the image file (jpeg/png/webp only, see {@code ImageStorageService})
+     */
+    @PutMapping(value = "/{id}/footer-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> setFooterImage(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
+        seriesService.setFooterImage(id, file);
+        return ResponseEntity.noContent().build();
+    }
+
     /** Publishes this series — see {@link SeriesService#publish}. */
     @PostMapping("/{id}/publish")
     @PreAuthorize("hasRole('ADMIN')")

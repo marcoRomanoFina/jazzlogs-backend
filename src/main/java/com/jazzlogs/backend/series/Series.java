@@ -43,6 +43,18 @@ public class Series {
     @Column(name = "cover_image_url")
     private String coverImageUrl;
 
+    // Three more, distinct from coverImageUrl (the catalogue/card thumbnail)
+    // — used to lay out the series detail page. Same upload-only contract as
+    // coverImageUrl: never set via update(...), only via their own endpoints.
+    @Column(name = "principal_image_url")
+    private String principalImageUrl;
+
+    @Column(name = "banner_image_url")
+    private String bannerImageUrl;
+
+    @Column(name = "footer_image_url")
+    private String footerImageUrl;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private SeriesStatus status;
@@ -90,6 +102,18 @@ public class Series {
     // (SeriesService.setCoverImage), not the metadata upsert.
     public void updateCoverImageUrl(String coverImageUrl) {
         this.coverImageUrl = coverImageUrl;
+    }
+
+    public void updatePrincipalImageUrl(String principalImageUrl) {
+        this.principalImageUrl = principalImageUrl;
+    }
+
+    public void updateBannerImageUrl(String bannerImageUrl) {
+        this.bannerImageUrl = bannerImageUrl;
+    }
+
+    public void updateFooterImageUrl(String footerImageUrl) {
+        this.footerImageUrl = footerImageUrl;
     }
 
     public boolean isPublished() {
