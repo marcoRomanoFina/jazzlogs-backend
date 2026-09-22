@@ -28,7 +28,11 @@ public class Series {
     @GeneratedValue
     private UUID id;
 
-    @Column(nullable = false)
+    // Enforced at the DB level (uq_series_title, V39) — no two series can
+    // share a title. SeriesService checks it up front too, for a clean 409
+    // instead of surfacing the raw constraint violation. SeriesService.getOnboardingSeries
+    // relies on this to look a series up by title safely.
+    @Column(nullable = false, unique = true)
     private String title;
 
     private String dek;
@@ -53,6 +57,9 @@ public class Series {
     // only via SeriesRepository's atomic increment/decrement UPDATE queries.
     @Column(name = "like_count", nullable = false)
     private int likeCount;
+
+    @Column(nullable = false)
+    private boolean featured;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;

@@ -6,7 +6,9 @@ import jakarta.validation.Valid;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -23,8 +25,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.series.dto.ChapterAudioUrlDto;
+import com.jazzlogs.backend.series.dto.FeaturedSeriesDto;
 import com.jazzlogs.backend.series.dto.ReorderSeriesChaptersRequest;
 import com.jazzlogs.backend.series.dto.SeriesChapterDetailDto;
 import com.jazzlogs.backend.series.dto.SeriesChapterInput;
@@ -57,6 +61,33 @@ public class SeriesController {
     public SeriesDetailDto getDetail(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
         User user = userService.resolveFromJwt(jwt);
         return seriesService.getSeriesDetail(id, user.getId(), user.getRole() == UserRole.ADMIN);
+    }
+
+    /** The featured series — see {@link SeriesService#getFeatured}. */
+    @GetMapping("/featured")
+    public FeaturedSeriesDto getFeatured(@AuthenticationPrincipal Jwt jwt) {
+        return seriesService.getFeatured(isAdmin(jwt))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No series is featured"));
+    }
+
+    /**
+     * The series "Catalogue", newest first — see {@link SeriesService#getCatalogue}.
+     * {@code voice} is optional; omit it for every voice mixed together.
+     */
+    @GetMapping("/catalogue")
+    public Page<SeriesSummaryDto> getCatalogue(
+        @RequestParam(required = false) SeriesVoice voice,
+        @PageableDefault(size = 12, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
+        @AuthenticationPrincipal Jwt jwt
+    ) {
+        return seriesService.getCatalogue(voice, isAdmin(jwt), pageable);
+    }
+
+    /** The app's onboarding/tour series — see {@link SeriesService#getOnboardingSeries}. */
+    @GetMapping("/onboarding")
+    public SeriesSummaryDto getOnboardingSeries(@AuthenticationPrincipal Jwt jwt) {
+        return seriesService.getOnboardingSeries(isAdmin(jwt))
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Onboarding series not found"));
     }
 
     @PostMapping
@@ -97,6 +128,22 @@ public class SeriesController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> unpublish(@PathVariable UUID id) {
         seriesService.unpublish(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Marks this series as THE featured one — see {@link SeriesService#setFeatured}. */
+    @PostMapping("/{id}/featured")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> setFeatured(@PathVariable UUID id) {
+        seriesService.setFeatured(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Removes this series from being featured — see {@link SeriesService#unsetFeatured}. */
+    @DeleteMapping("/{id}/featured")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> unsetFeatured(@PathVariable UUID id) {
+        seriesService.unsetFeatured(id);
         return ResponseEntity.noContent().build();
     }
 

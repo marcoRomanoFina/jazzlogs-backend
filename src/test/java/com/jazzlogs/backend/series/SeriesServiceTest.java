@@ -5,11 +5,15 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -26,6 +30,8 @@ import com.jazzlogs.backend.series.dto.ChapterStatus;
 import com.jazzlogs.backend.series.dto.SeriesChapterDetailDto;
 import com.jazzlogs.backend.series.dto.SeriesChapterInput;
 import com.jazzlogs.backend.series.dto.SeriesDetailDto;
+import com.jazzlogs.backend.series.dto.FeaturedSeriesDto;
+import com.jazzlogs.backend.series.dto.SeriesSummaryDto;
 import com.jazzlogs.backend.series.dto.SeriesUpsertRequest;
 import com.jazzlogs.backend.storage.AudioStorageService;
 import com.jazzlogs.backend.storage.ImageStorageService;
@@ -64,6 +70,101 @@ class SeriesServiceTest {
 
     @MockitoBean
     private AudioStorageService audioStorageService;
+
+    @Test
+    void create_rejectsDuplicateTitle() {
+        SeriesUpsertRequest request = new SeriesUpsertRequest("Behind The Bandstand", null, null, SeriesVoice.MARK);
+        seriesService.create(request);
+
+        ResponseStatusException ex = catchThrowableOfType(ResponseStatusException.class, () -> seriesService.create(request));
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
+    void update_rejectsRenamingToAnotherSeriesTitle() {
+        seriesService.create(new SeriesUpsertRequest("Behind The Bandstand", null, null, SeriesVoice.MARK));
+        UUID otherId = seriesService.create(
+            new SeriesUpsertRequest("Standards Explained", null, null, SeriesVoice.LAURA)
+        ).id();
+
+        ResponseStatusException ex = catchThrowableOfType(ResponseStatusException.class,
+            () -> seriesService.update(otherId, new SeriesUpsertRequest("Behind The Bandstand", null, null, SeriesVoice.LAURA)));
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    /** Saving a series' metadata without changing its title must not trip over its own row. */
+    @Test
+    void update_allowsSavingUnderItsOwnUnchangedTitle() {
+        UUID seriesId = seriesService.create(
+            new SeriesUpsertRequest("Behind The Bandstand", null, null, SeriesVoice.MARK)
+        ).id();
+
+        SeriesDetailDto updated = seriesService.update(
+            seriesId, new SeriesUpsertRequest("Behind The Bandstand", null, null, SeriesVoice.MARK)
+        );
+
+        assertThat(updated.title()).isEqualTo("Behind The Bandstand");
+    }
+
+    private static final Sort CATALOGUE_SORT = Sort.by(Sort.Direction.DESC, "createdAt");
+
+    @Test
+    void getCatalogue_returnsOnlyTheRequestedVoice() {
+        persistSeries("Catalogue Mark", SeriesVoice.MARK, true);
+        persistSeries("Catalogue Laura", SeriesVoice.LAURA, true);
+
+        Page<SeriesSummaryDto> page = seriesService.getCatalogue(SeriesVoice.MARK, false, PageRequest.of(0, 50, CATALOGUE_SORT));
+
+        assertThat(page.getContent()).extracting(SeriesSummaryDto::title)
+            .contains("Catalogue Mark")
+            .doesNotContain("Catalogue Laura");
+    }
+
+    @Test
+    void getCatalogue_excludesDraftsUnlessIncludeUnpublished() {
+        UUID publishedId = persistSeries("Catalogue Published", SeriesVoice.JAMES, true);
+        UUID draftId = persistSeries("Catalogue Draft", SeriesVoice.JAMES, false);
+
+        Page<SeriesSummaryDto> nonAdminPage = seriesService.getCatalogue(SeriesVoice.JAMES, false, PageRequest.of(0, 50, CATALOGUE_SORT));
+        assertThat(nonAdminPage.getContent()).extracting(SeriesSummaryDto::id).contains(publishedId).doesNotContain(draftId);
+
+        Page<SeriesSummaryDto> adminPage = seriesService.getCatalogue(SeriesVoice.JAMES, true, PageRequest.of(0, 50, CATALOGUE_SORT));
+        assertThat(adminPage.getContent()).extracting(SeriesSummaryDto::id).contains(publishedId, draftId);
+    }
+
+    @Test
+    void getCatalogue_ordersNewestFirst() {
+        UUID olderId = persistSeries("Catalogue Older", SeriesVoice.ALICE, true);
+        UUID newerId = persistSeries("Catalogue Newer", SeriesVoice.ALICE, true);
+
+        Page<SeriesSummaryDto> page = seriesService.getCatalogue(SeriesVoice.ALICE, false, PageRequest.of(0, 50, CATALOGUE_SORT));
+
+        List<UUID> ids = page.getContent().stream().map(SeriesSummaryDto::id).toList();
+        assertThat(ids.indexOf(newerId)).isLessThan(ids.indexOf(olderId));
+    }
+
+    /** The no-voice-filter overload — same query shape, just every voice mixed together. */
+    @Test
+    void getCatalogue_withoutAVoiceFilter_mixesEveryVoice() {
+        UUID markId = persistSeries("Mixed Catalogue Mark", SeriesVoice.MARK, true);
+        UUID adamId = persistSeries("Mixed Catalogue Adam", SeriesVoice.ADAM, true);
+
+        Page<SeriesSummaryDto> page = seriesService.getCatalogue(null, false, PageRequest.of(0, 50, CATALOGUE_SORT));
+
+        assertThat(page.getContent()).extracting(SeriesSummaryDto::id).contains(markId, adamId);
+    }
+
+    @Test
+    void getCatalogue_withoutAVoiceFilter_excludesDraftsUnlessIncludeUnpublished() {
+        UUID publishedId = persistSeries("Mixed Catalogue Published", SeriesVoice.MARK, true);
+        UUID draftId = persistSeries("Mixed Catalogue Draft", SeriesVoice.ADAM, false);
+
+        Page<SeriesSummaryDto> nonAdminPage = seriesService.getCatalogue(null, false, PageRequest.of(0, 50, CATALOGUE_SORT));
+        assertThat(nonAdminPage.getContent()).extracting(SeriesSummaryDto::id).contains(publishedId).doesNotContain(draftId);
+
+        Page<SeriesSummaryDto> adminPage = seriesService.getCatalogue(null, true, PageRequest.of(0, 50, CATALOGUE_SORT));
+        assertThat(adminPage.getContent()).extracting(SeriesSummaryDto::id).contains(publishedId, draftId);
+    }
 
     @Test
     void addChapter_appendsAtEndWithSequentialPositions() {
@@ -397,6 +498,135 @@ class SeriesServiceTest {
         assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
+    @Test
+    void unpublish_clearsTheFeaturedFlagIfItWasTheFeaturedSeries() {
+        UUID seriesId = persistSeries();
+        seriesService.setFeatured(seriesId);
+
+        seriesService.unpublish(seriesId);
+
+        Series reloaded = seriesRepository.findById(seriesId).orElseThrow();
+        assertThat(reloaded.isPublished()).isFalse();
+        assertThat(reloaded.isFeatured()).isFalse();
+    }
+
+    @Test
+    void setFeatured_marksExactlyOneSeries_clearingWhicheverWasFeaturedBefore() {
+        UUID seriesA = persistSeries();
+        UUID seriesB = persistSeries();
+
+        seriesService.setFeatured(seriesA);
+        assertThat(seriesRepository.findByFeaturedTrue().map(Series::getId)).contains(seriesA);
+
+        seriesService.setFeatured(seriesB);
+        assertThat(seriesRepository.findByFeaturedTrue().map(Series::getId)).contains(seriesB);
+    }
+
+    @Test
+    void setFeatured_rejectsUnknownSeries() {
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> seriesService.setFeatured(UUID.randomUUID()));
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void setFeatured_rejectsUnpublishedSeries() {
+        UUID seriesId = persistSeries(false);
+
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> seriesService.setFeatured(seriesId));
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(seriesRepository.findByFeaturedTrue().map(Series::getId)).isNotEqualTo(Optional.of(seriesId));
+    }
+
+    @Test
+    void unsetFeatured_isNoOpWhenTheSeriesWasNeverFeatured() {
+        UUID seriesId = persistSeries();
+
+        seriesService.unsetFeatured(seriesId);
+
+        assertThat(seriesRepository.findById(seriesId).orElseThrow().isFeatured()).isFalse();
+    }
+
+    @Test
+    void unsetFeatured_removesTheFeaturedFlag() {
+        UUID seriesId = persistSeries();
+        seriesService.setFeatured(seriesId);
+
+        seriesService.unsetFeatured(seriesId);
+
+        assertThat(seriesRepository.findById(seriesId).orElseThrow().isFeatured()).isFalse();
+    }
+
+    @Test
+    void unsetFeatured_rejectsUnknownSeries() {
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> seriesService.unsetFeatured(UUID.randomUUID()));
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void getFeatured_returnsTheFeaturedSeries() {
+        UUID seriesId = persistSeries();
+        seriesService.setFeatured(seriesId);
+
+        Optional<FeaturedSeriesDto> featured = seriesService.getFeatured(false);
+
+        assertThat(featured).isPresent();
+        assertThat(featured.get().id()).isEqualTo(seriesId);
+    }
+
+    @Test
+    void getFeatured_includesEachChaptersTitleAndNote() {
+        UUID seriesId = persistSeries();
+        seriesService.addChapter(seriesId, null, new SeriesChapterInput(ChapterType.OUTRO, null, "Wrap-up", "Thanks for listening", null));
+        seriesService.setFeatured(seriesId);
+
+        FeaturedSeriesDto featured = seriesService.getFeatured(false).orElseThrow();
+
+        assertThat(featured.chapters()).hasSize(1);
+        assertThat(featured.chapters().get(0).title()).isEqualTo("Wrap-up");
+        assertThat(featured.chapters().get(0).note()).isEqualTo("Thanks for listening");
+    }
+
+    // The real "Let Me Show You Around" series already exists in the dev DB
+    // (real content, not mock data) — these tests use it directly rather than
+    // creating another row under the same title (uq_series_title, V39, would
+    // reject that anyway). No "doesn't exist yet" test for the same reason
+    // the Journey playlist tests don't assert on an empty table.
+
+    @Test
+    void getOnboardingSeries_returnsTheSeriesWithTheFixedTitle() {
+        UUID id = seriesRepository.findByTitle(SeriesService.ONBOARDING_SERIES_TITLE).orElseThrow().getId();
+        seriesService.publish(id);
+
+        SeriesSummaryDto onboarding = seriesService.getOnboardingSeries(false).orElseThrow();
+
+        assertThat(onboarding.id()).isEqualTo(id);
+    }
+
+    @Test
+    void getOnboardingSeries_hidesAnUnpublishedOneFromNonAdmins() {
+        UUID id = seriesRepository.findByTitle(SeriesService.ONBOARDING_SERIES_TITLE).orElseThrow().getId();
+        seriesService.unpublish(id);
+
+        assertThat(seriesService.getOnboardingSeries(false)).isEmpty();
+        assertThat(seriesService.getOnboardingSeries(true)).isPresent();
+    }
+
+    @Test
+    void getFeatured_hidesAnUnpublishedFeaturedSeriesFromNonAdmins() {
+        UUID seriesId = persistSeries();
+        seriesService.setFeatured(seriesId);
+        seriesService.unpublish(seriesId);
+        // unpublish clears featured too, so mark it featured again directly to
+        // exercise getFeatured's own admin check in isolation.
+        seriesRepository.markFeatured(seriesId);
+
+        assertThat(seriesService.getFeatured(false)).isEmpty();
+        assertThat(seriesService.getFeatured(true)).isPresent();
+    }
+
     private ChapterStatus statusOf(SeriesDetailDto detail, UUID chapterId) {
         return detail.chapters().stream()
             .filter(chapter -> chapter.id().equals(chapterId))
@@ -412,9 +642,19 @@ class SeriesServiceTest {
     }
 
     private UUID persistSeries() {
-        SeriesUpsertRequest request = new SeriesUpsertRequest("Test Series", null, null, SeriesVoice.MARK);
+        return persistSeries(true);
+    }
+
+    private UUID persistSeries(boolean published) {
+        return persistSeries("Test Series " + UUID.randomUUID(), SeriesVoice.MARK, published);
+    }
+
+    private UUID persistSeries(String title, SeriesVoice voice, boolean published) {
+        SeriesUpsertRequest request = new SeriesUpsertRequest(title, null, null, voice);
         UUID id = seriesService.create(request).id();
-        seriesService.publish(id);
+        if (published) {
+            seriesService.publish(id);
+        }
         return id;
     }
 
