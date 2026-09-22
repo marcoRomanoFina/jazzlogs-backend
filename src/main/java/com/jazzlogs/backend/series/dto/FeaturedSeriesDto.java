@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.series.SeriesStatus;
 import com.jazzlogs.backend.series.SeriesVoice;
 
@@ -18,6 +19,10 @@ public record FeaturedSeriesDto(
     SeriesVoice voice,
     int likeCount,
     List<FeaturedSeriesChapterDto> chapters,
+    List<VocabularyTag> styleTags,
+    List<VocabularyTag> moodTags,
+    List<VocabularyTag> contextTags,
+    List<VocabularyTag> featuredInstruments,
     Instant createdAt
 ) {
 }

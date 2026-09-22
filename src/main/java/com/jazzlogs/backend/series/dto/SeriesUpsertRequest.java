@@ -1,5 +1,7 @@
 package com.jazzlogs.backend.series.dto;
 
+import java.util.List;
+
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
@@ -13,11 +15,18 @@ import com.jazzlogs.backend.series.SeriesVoice;
 // PUT /series/{id}/cover (SeriesService.setCoverImage), never a raw URL the
 // client hands us. voice, unlike status, IS part of this upsert — it's a
 // plain classification, not a guarded state transition (same reasoning as
-// Playlist.type).
+// Playlist.type). styleCodes/moodCodes/contextCodes/instrumentCodes:
+// null/omitted is treated as an empty list (clears that vocabulary),
+// validated against StyleVocabulary/MoodVocabulary/ContextVocabulary/
+// InstrumentVocabulary before anything is written — see SeriesService.replaceTags.
 public record SeriesUpsertRequest(
     @NotBlank String title,
     String dek,
     String description,
-    @NotNull SeriesVoice voice
+    @NotNull SeriesVoice voice,
+    List<String> styleCodes,
+    List<String> moodCodes,
+    List<String> contextCodes,
+    List<String> instrumentCodes
 ) {
 }

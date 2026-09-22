@@ -14,10 +14,10 @@ import com.jazzlogs.backend.playlist.PlaylistType;
 // /playlists/{id}/publish, same reasoning as featured/cover having their own
 // endpoints instead of living on this upsert. type, unlike published, IS
 // part of this upsert — it's a plain classification, not a guarded state
-// transition, so it doesn't need its own endpoint. styleCodes/moodCodes/contextCodes:
-// null/omitted is treated as an empty list (clears that vocabulary), validated
-// against StyleVocabulary/MoodVocabulary/ContextVocabulary before anything is
-// written — see PlaylistService.replaceTags.
+// transition, so it doesn't need its own endpoint. styleCodes/moodCodes/contextCodes/
+// instrumentCodes: null/omitted is treated as an empty list (clears that
+// vocabulary), validated against StyleVocabulary/MoodVocabulary/ContextVocabulary/
+// InstrumentVocabulary before anything is written — see PlaylistService.replaceTags.
 public record PlaylistUpsertRequest(
     @NotBlank String title,
     String tagline,
@@ -27,6 +27,7 @@ public record PlaylistUpsertRequest(
     @NotNull PlaylistType type,
     List<String> styleCodes,
     List<String> moodCodes,
-    List<String> contextCodes
+    List<String> contextCodes,
+    List<String> instrumentCodes
 ) {
 }

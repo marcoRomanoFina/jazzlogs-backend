@@ -238,7 +238,7 @@ class PlaylistServiceTest {
     void replaceTags_callsGraphServiceWithValidCodes() {
         Playlist created = playlistService.create(upsertRequestWithTags("tags-cut", List.of("SWING", "BEBOP")));
 
-        verify(graphService).setPlaylistTags(created.getId(), List.of("SWING", "BEBOP"), List.of(), List.of());
+        verify(graphService).setPlaylistTags(created.getId(), List.of("SWING", "BEBOP"), List.of(), List.of(), List.of());
     }
 
     @Test
@@ -273,7 +273,7 @@ class PlaylistServiceTest {
     @Test
     void create_persistsType() {
         PlaylistUpsertRequest request = new PlaylistUpsertRequest(
-            "The Long Road", null, null, null, null, PlaylistType.JOURNEY, List.of(), List.of(), List.of()
+            "The Long Road", null, null, null, null, PlaylistType.JOURNEY, List.of(), List.of(), List.of(), List.of()
         );
 
         Playlist created = playlistService.create(request);
@@ -380,6 +380,26 @@ class PlaylistServiceTest {
         PlaylistSummaryDto dto = page.getContent().stream().filter(p -> p.id().equals(playlistId)).findFirst().orElseThrow();
         assertThat(dto.likedByCurrentUser()).isTrue();
         assertThat(dto.styleTags()).containsExactly(new VocabularyTag("SWING", "Swing"));
+    }
+
+    @Test
+    void replaceTags_setsFeaturedInstrumentsToo() {
+        Playlist created = playlistService.create(new PlaylistUpsertRequest(
+            "instrument-tags", null, null, null, null, PlaylistType.STANDARD,
+            List.of(), List.of(), List.of(), List.of("PIANO", "DRUMS")
+        ));
+
+        verify(graphService).setPlaylistTags(created.getId(), List.of(), List.of(), List.of(), List.of("PIANO", "DRUMS"));
+    }
+
+    @Test
+    void getPlaylistDetail_includesFeaturedInstruments() {
+        UUID playlistId = persistPlaylist("instrument-detail");
+        when(graphService.getPlaylistFeaturedInstruments(playlistId)).thenReturn(List.of(new VocabularyTag("PIANO", "Piano")));
+
+        PlaylistDetailDto detail = playlistService.getPlaylistDetail(playlistId, null, true);
+
+        assertThat(detail.featuredInstruments()).containsExactly(new VocabularyTag("PIANO", "Piano"));
     }
 
     /** The every-type overload — same query shape, just no type filter. */
@@ -600,7 +620,7 @@ class PlaylistServiceTest {
 
     private UUID persistPlaylist(String title, PlaylistType type, boolean published) {
         PlaylistUpsertRequest request = new PlaylistUpsertRequest(
-            title, null, null, null, null, type, List.of(), List.of(), List.of()
+            title, null, null, null, null, type, List.of(), List.of(), List.of(), List.of()
         );
         UUID id = playlistService.create(request).getId();
         if (published) {
@@ -610,7 +630,7 @@ class PlaylistServiceTest {
     }
 
     private PlaylistUpsertRequest upsertRequestWithTags(String title, List<String> styleCodes) {
-        return new PlaylistUpsertRequest(title, null, null, null, null, PlaylistType.STANDARD, styleCodes, List.of(), List.of());
+        return new PlaylistUpsertRequest(title, null, null, null, null, PlaylistType.STANDARD, styleCodes, List.of(), List.of(), List.of());
     }
 
     private Artist persistArtist() {

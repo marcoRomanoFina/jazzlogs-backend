@@ -81,6 +81,18 @@ public class GraphService {
         }
     }
 
+    /** Brings a Series into the graph, tags-only — no other relationships (BELONGS_TO/track edges) apply to series. */
+    public void syncSeriesNode(UUID seriesId, String name) {
+        try {
+            neo4jClient.query("MERGE (s:Series {id: $id}) SET s.name = $name")
+                .bind(seriesId.toString()).to("id")
+                .bind(name).to("name")
+                .run();
+        } catch (Exception ex) {
+            log.error("Failed to sync Neo4j :Series node for id={}", seriesId, ex);
+        }
+    }
+
     public void addTrackToAlbum(UUID albumId, UUID trackId, int trackNumber) {
         write("add CONTAINS album=" + albumId + " track=" + trackId, () ->
             neo4jClient.query("""
@@ -922,11 +934,26 @@ public class GraphService {
      * nothing to fall back to). Targets nodes already seeded by VocabularySeeder;
      * never creates vocabulary nodes here.
      */
-    public void setPlaylistTags(UUID playlistId, List<String> styleCodes, List<String> moodCodes, List<String> contextCodes) {
+    public void setPlaylistTags(
+        UUID playlistId, List<String> styleCodes, List<String> moodCodes, List<String> contextCodes, List<String> instrumentCodes
+    ) {
         write("set tags for playlist=" + playlistId, () -> {
-            replaceVocabEdges(playlistId, "Style", "BELONGS_TO", styleCodes);
-            replaceVocabEdges(playlistId, "Mood", "EVOKES_MOOD", moodCodes);
-            replaceVocabEdges(playlistId, "Context", "PERFECT_FOR", contextCodes);
+            replaceVocabEdges("Playlist", playlistId, "Style", "BELONGS_TO", styleCodes);
+            replaceVocabEdges("Playlist", playlistId, "Mood", "EVOKES_MOOD", moodCodes);
+            replaceVocabEdges("Playlist", playlistId, "Context", "PERFECT_FOR", contextCodes);
+            replaceVocabEdges("Playlist", playlistId, "Instrument", "FEATURES_INSTRUMENT", instrumentCodes);
+        });
+    }
+
+    /** Same as {@link #setPlaylistTags} — a Series' style/mood/context/featured instruments, always recreated as one unit from SeriesService. */
+    public void setSeriesTags(
+        UUID seriesId, List<String> styleCodes, List<String> moodCodes, List<String> contextCodes, List<String> instrumentCodes
+    ) {
+        write("set tags for series=" + seriesId, () -> {
+            replaceVocabEdges("Series", seriesId, "Style", "BELONGS_TO", styleCodes);
+            replaceVocabEdges("Series", seriesId, "Mood", "EVOKES_MOOD", moodCodes);
+            replaceVocabEdges("Series", seriesId, "Context", "PERFECT_FOR", contextCodes);
+            replaceVocabEdges("Series", seriesId, "Instrument", "FEATURES_INSTRUMENT", instrumentCodes);
         });
     }
 
@@ -942,9 +969,29 @@ public class GraphService {
         return getTags("Playlist", playlistId, "PERFECT_FOR", "Context");
     }
 
+    public List<VocabularyTag> getPlaylistFeaturedInstruments(UUID playlistId) {
+        return getTags("Playlist", playlistId, "FEATURES_INSTRUMENT", "Instrument");
+    }
+
+    public List<VocabularyTag> getSeriesStyles(UUID seriesId) {
+        return getTags("Series", seriesId, "BELONGS_TO", "Style");
+    }
+
+    public List<VocabularyTag> getSeriesMoods(UUID seriesId) {
+        return getTags("Series", seriesId, "EVOKES_MOOD", "Mood");
+    }
+
+    public List<VocabularyTag> getSeriesContexts(UUID seriesId) {
+        return getTags("Series", seriesId, "PERFECT_FOR", "Context");
+    }
+
+    public List<VocabularyTag> getSeriesFeaturedInstruments(UUID seriesId) {
+        return getTags("Series", seriesId, "FEATURES_INSTRUMENT", "Instrument");
+    }
+
     /**
-     * Batch versions of getPlaylistStyles/Moods/Contexts — one query for a
-     * whole catalogue page instead of one per playlist (see
+     * Batch versions of getPlaylistStyles/Moods/Contexts/FeaturedInstruments —
+     * one query for a whole catalogue page instead of one per playlist (see
      * PlaylistService.toCatalogueDto). Same shape as getTagsForAlbum,
      * grouped by playlistId instead of trackId; a playlist with none of this
      * tag type simply has no entry, callers treat that as an empty list.
@@ -959,6 +1006,27 @@ public class GraphService {
 
     public Map<UUID, List<VocabularyTag>> getPlaylistContextsBatch(List<UUID> playlistIds) {
         return getTagsForPlaylists(playlistIds, "PERFECT_FOR", "Context");
+    }
+
+    public Map<UUID, List<VocabularyTag>> getPlaylistFeaturedInstrumentsBatch(List<UUID> playlistIds) {
+        return getTagsForPlaylists(playlistIds, "FEATURES_INSTRUMENT", "Instrument");
+    }
+
+    /** Batch versions of getSeriesStyles/Moods/Contexts/FeaturedInstruments — one query for a whole catalogue page instead of one per series. */
+    public Map<UUID, List<VocabularyTag>> getSeriesStylesBatch(List<UUID> seriesIds) {
+        return getTagsForSeries(seriesIds, "BELONGS_TO", "Style");
+    }
+
+    public Map<UUID, List<VocabularyTag>> getSeriesMoodsBatch(List<UUID> seriesIds) {
+        return getTagsForSeries(seriesIds, "EVOKES_MOOD", "Mood");
+    }
+
+    public Map<UUID, List<VocabularyTag>> getSeriesContextsBatch(List<UUID> seriesIds) {
+        return getTagsForSeries(seriesIds, "PERFECT_FOR", "Context");
+    }
+
+    public Map<UUID, List<VocabularyTag>> getSeriesFeaturedInstrumentsBatch(List<UUID> seriesIds) {
+        return getTagsForSeries(seriesIds, "FEATURES_INSTRUMENT", "Instrument");
     }
 
     private Map<UUID, List<VocabularyTag>> getTagsForPlaylists(List<UUID> playlistIds, String relationshipType, String targetLabel) {
@@ -984,19 +1052,42 @@ public class GraphService {
                 )));
     }
 
-    private void replaceVocabEdges(UUID playlistId, String vocabLabel, String relationshipType, List<String> codes) {
+    private Map<UUID, List<VocabularyTag>> getTagsForSeries(List<UUID> seriesIds, String relationshipType, String targetLabel) {
+        if (seriesIds.isEmpty()) {
+            return Map.of();
+        }
+        List<String> ids = seriesIds.stream().map(UUID::toString).toList();
+        return read("read " + relationshipType + " for series=" + seriesIds.size(), () ->
+            neo4jClient.query(
+                    "MATCH (s:Series)-[:" + relationshipType + "]->(n:" + targetLabel + ") "
+                        + "WHERE s.id IN $seriesIds "
+                        + "RETURN s.id AS seriesId, n.code AS code, n.label AS label")
+                .bind(ids).to("seriesIds")
+                .fetch()
+                .all()
+                .stream()
+                .collect(Collectors.groupingBy(
+                    row -> UUID.fromString((String) row.get("seriesId")),
+                    Collectors.mapping(
+                        row -> new VocabularyTag((String) row.get("code"), (String) row.get("label")),
+                        Collectors.toList()
+                    )
+                )));
+    }
+
+    private void replaceVocabEdges(String sourceLabel, UUID sourceId, String vocabLabel, String relationshipType, List<String> codes) {
         neo4jClient.query(
-                "MATCH (:Playlist {id: $playlistId})-[r:" + relationshipType + "]->(:" + vocabLabel + ") DELETE r")
-            .bind(playlistId.toString()).to("playlistId")
+                "MATCH (:" + sourceLabel + " {id: $sourceId})-[r:" + relationshipType + "]->(:" + vocabLabel + ") DELETE r")
+            .bind(sourceId.toString()).to("sourceId")
             .run();
 
         if (!codes.isEmpty()) {
             neo4jClient.query(
-                    "MATCH (p:Playlist {id: $playlistId}) "
+                    "MATCH (src:" + sourceLabel + " {id: $sourceId}) "
                         + "UNWIND $codes AS code "
                         + "MATCH (v:" + vocabLabel + " {code: code}) "
-                        + "MERGE (p)-[:" + relationshipType + "]->(v)")
-                .bind(playlistId.toString()).to("playlistId")
+                        + "MERGE (src)-[:" + relationshipType + "]->(v)")
+                .bind(sourceId.toString()).to("sourceId")
                 .bind(codes).to("codes")
                 .run();
         }

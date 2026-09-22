@@ -2,9 +2,13 @@ package com.jazzlogs.backend.series;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -26,6 +30,8 @@ import com.jazzlogs.backend.album.Level;
 import com.jazzlogs.backend.album.VocalProfile;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
+import com.jazzlogs.backend.graph.GraphService;
+import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.series.dto.ChapterStatus;
 import com.jazzlogs.backend.series.dto.SeriesChapterDetailDto;
 import com.jazzlogs.backend.series.dto.SeriesChapterInput;
@@ -71,9 +77,12 @@ class SeriesServiceTest {
     @MockitoBean
     private AudioStorageService audioStorageService;
 
+    @MockitoBean
+    private GraphService graphService;
+
     @Test
     void create_rejectsDuplicateTitle() {
-        SeriesUpsertRequest request = new SeriesUpsertRequest("Behind The Bandstand", null, null, SeriesVoice.MARK);
+        SeriesUpsertRequest request = new SeriesUpsertRequest("Behind The Bandstand", null, null, SeriesVoice.MARK, null, null, null, null);
         seriesService.create(request);
 
         ResponseStatusException ex = catchThrowableOfType(ResponseStatusException.class, () -> seriesService.create(request));
@@ -82,13 +91,13 @@ class SeriesServiceTest {
 
     @Test
     void update_rejectsRenamingToAnotherSeriesTitle() {
-        seriesService.create(new SeriesUpsertRequest("Behind The Bandstand", null, null, SeriesVoice.MARK));
+        seriesService.create(new SeriesUpsertRequest("Behind The Bandstand", null, null, SeriesVoice.MARK, null, null, null, null));
         UUID otherId = seriesService.create(
-            new SeriesUpsertRequest("Standards Explained", null, null, SeriesVoice.LAURA)
+            new SeriesUpsertRequest("Standards Explained", null, null, SeriesVoice.LAURA, null, null, null, null)
         ).id();
 
         ResponseStatusException ex = catchThrowableOfType(ResponseStatusException.class,
-            () -> seriesService.update(otherId, new SeriesUpsertRequest("Behind The Bandstand", null, null, SeriesVoice.LAURA)));
+            () -> seriesService.update(otherId, new SeriesUpsertRequest("Behind The Bandstand", null, null, SeriesVoice.LAURA, null, null, null, null)));
         assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
     }
 
@@ -96,11 +105,11 @@ class SeriesServiceTest {
     @Test
     void update_allowsSavingUnderItsOwnUnchangedTitle() {
         UUID seriesId = seriesService.create(
-            new SeriesUpsertRequest("Behind The Bandstand", null, null, SeriesVoice.MARK)
+            new SeriesUpsertRequest("Behind The Bandstand", null, null, SeriesVoice.MARK, null, null, null, null)
         ).id();
 
         SeriesDetailDto updated = seriesService.update(
-            seriesId, new SeriesUpsertRequest("Behind The Bandstand", null, null, SeriesVoice.MARK)
+            seriesId, new SeriesUpsertRequest("Behind The Bandstand", null, null, SeriesVoice.MARK, null, null, null, null)
         );
 
         assertThat(updated.title()).isEqualTo("Behind The Bandstand");
@@ -164,6 +173,38 @@ class SeriesServiceTest {
 
         Page<SeriesSummaryDto> adminPage = seriesService.getCatalogue(null, true, PageRequest.of(0, 50, CATALOGUE_SORT));
         assertThat(adminPage.getContent()).extracting(SeriesSummaryDto::id).contains(publishedId, draftId);
+    }
+
+    /** styleTags/moodTags/contextTags come from batch queries for the whole page — see GraphService.getSeriesStylesBatch. */
+    @Test
+    void getCatalogue_attachesBatchedTags() {
+        UUID seriesId = persistSeries("Tagged Catalogue Series", SeriesVoice.MARK, true);
+        when(graphService.getSeriesStylesBatch(any())).thenReturn(Map.of(seriesId, List.of(new VocabularyTag("SWING", "Swing"))));
+
+        Page<SeriesSummaryDto> page = seriesService.getCatalogue(null, false, PageRequest.of(0, 50, CATALOGUE_SORT));
+
+        SeriesSummaryDto dto = page.getContent().stream().filter(s -> s.id().equals(seriesId)).findFirst().orElseThrow();
+        assertThat(dto.styleTags()).containsExactly(new VocabularyTag("SWING", "Swing"));
+    }
+
+    @Test
+    void create_syncsTheNeo4jNodeAndSetsTags() {
+        seriesService.create(new SeriesUpsertRequest(
+            "Tagged On Create", null, null, SeriesVoice.MARK, List.of("SWING"), List.of(), List.of(), List.of()
+        ));
+
+        verify(graphService).syncSeriesNode(any(), eq("Tagged On Create"));
+        verify(graphService).setSeriesTags(any(), eq(List.of("SWING")), eq(List.of()), eq(List.of()), eq(List.of()));
+    }
+
+    @Test
+    void getSeriesDetail_includesTags() {
+        UUID seriesId = persistSeries();
+        when(graphService.getSeriesMoods(seriesId)).thenReturn(List.of(new VocabularyTag("MELLOW", "Mellow")));
+
+        SeriesDetailDto detail = seriesService.getSeriesDetail(seriesId, null, true);
+
+        assertThat(detail.moodTags()).containsExactly(new VocabularyTag("MELLOW", "Mellow"));
     }
 
     @Test
@@ -306,7 +347,7 @@ class SeriesServiceTest {
 
     @Test
     void create_alwaysStartsAsADraft() {
-        SeriesUpsertRequest request = new SeriesUpsertRequest("Draft By Default", null, null, SeriesVoice.MARK);
+        SeriesUpsertRequest request = new SeriesUpsertRequest("Draft By Default", null, null, SeriesVoice.MARK, null, null, null, null);
 
         UUID seriesId = seriesService.create(request).id();
 
@@ -467,7 +508,7 @@ class SeriesServiceTest {
 
     @Test
     void publish_marksTheSeriesPublished() {
-        SeriesUpsertRequest request = new SeriesUpsertRequest("To Publish", null, null, SeriesVoice.MARK);
+        SeriesUpsertRequest request = new SeriesUpsertRequest("To Publish", null, null, SeriesVoice.MARK, null, null, null, null);
         UUID seriesId = seriesService.create(request).id();
 
         seriesService.publish(seriesId);
@@ -650,7 +691,7 @@ class SeriesServiceTest {
     }
 
     private UUID persistSeries(String title, SeriesVoice voice, boolean published) {
-        SeriesUpsertRequest request = new SeriesUpsertRequest(title, null, null, voice);
+        SeriesUpsertRequest request = new SeriesUpsertRequest(title, null, null, voice, null, null, null, null);
         UUID id = seriesService.create(request).id();
         if (published) {
             seriesService.publish(id);

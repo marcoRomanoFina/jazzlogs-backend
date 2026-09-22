@@ -12,6 +12,7 @@ import java.util.stream.Collectors;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -21,6 +22,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 import jakarta.persistence.EntityManager;
 
+import com.jazzlogs.backend.graph.GraphService;
+import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.like.LikeService;
 import com.jazzlogs.backend.like.LikeableEntityType;
 import com.jazzlogs.backend.listen.ListenRepository;
@@ -38,6 +41,11 @@ import com.jazzlogs.backend.storage.AudioStorageService;
 import com.jazzlogs.backend.storage.ImageStorageService;
 import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackRepository;
+import com.jazzlogs.backend.vocabulary.ContextVocabulary;
+import com.jazzlogs.backend.vocabulary.InstrumentVocabulary;
+import com.jazzlogs.backend.vocabulary.MoodVocabulary;
+import com.jazzlogs.backend.vocabulary.StyleVocabulary;
+import com.jazzlogs.backend.vocabulary.VocabularyCodes;
 
 import lombok.AllArgsConstructor;
 
@@ -53,6 +61,7 @@ public class SeriesService {
     private final ListenRepository listenRepository;
     private final ImageStorageService imageStorageService;
     private final AudioStorageService audioStorageService;
+    private final GraphService graphService;
     private final EntityManager entityManager;
 
     /**
@@ -67,6 +76,8 @@ public class SeriesService {
         Series series = new Series(request.title(), request.dek(), request.description(), request.voice());
         Series saved = seriesRepository.save(series);
         flushOrThrowOnTitleConflict(request.title());
+        graphService.syncSeriesNode(saved.getId(), saved.getTitle());
+        replaceTags(saved, request.styleCodes(), request.moodCodes(), request.contextCodes(), request.instrumentCodes());
         return getSeriesDetail(saved.getId(), null, true);
     }
 
@@ -83,7 +94,39 @@ public class SeriesService {
         assertTitleAvailable(request.title(), id);
         series.update(request.title(), request.dek(), request.description(), request.voice());
         flushOrThrowOnTitleConflict(request.title());
+        graphService.syncSeriesNode(series.getId(), series.getTitle());
+        replaceTags(series, request.styleCodes(), request.moodCodes(), request.contextCodes(), request.instrumentCodes());
         return getSeriesDetail(id, null, true);
+    }
+
+    /**
+     * Neo4j-only, same pattern as PlaylistService.replaceTags: validated
+     * against the vocabulary enum before the graph call (400 on the first
+     * invalid code), then a single synchronous write — if Neo4j is down this
+     * throws GraphWriteException (502).
+     */
+    private void replaceTags(
+        Series series, List<String> styleCodes, List<String> moodCodes, List<String> contextCodes, List<String> instrumentCodes
+    ) {
+        List<String> styles = styleCodes == null ? List.of() : styleCodes;
+        List<String> moods = moodCodes == null ? List.of() : moodCodes;
+        List<String> contexts = contextCodes == null ? List.of() : contextCodes;
+        List<String> instruments = instrumentCodes == null ? List.of() : instrumentCodes;
+
+        styles.forEach(code -> VocabularyCodes.validate(StyleVocabulary.class, code, "style"));
+        moods.forEach(code -> VocabularyCodes.validate(MoodVocabulary.class, code, "mood"));
+        contexts.forEach(code -> VocabularyCodes.validate(ContextVocabulary.class, code, "context"));
+        instruments.forEach(code -> VocabularyCodes.validate(InstrumentVocabulary.class, code, "instrument"));
+
+        // Skip the round trip entirely when there's nothing to set — same
+        // known gap as PlaylistService.replaceTags: an update sending
+        // all-empty tag lists on an already-tagged series won't clear the
+        // stale Neo4j edges.
+        if (styles.isEmpty() && moods.isEmpty() && contexts.isEmpty() && instruments.isEmpty()) {
+            return;
+        }
+
+        graphService.setSeriesTags(series.getId(), styles, moods, contexts, instruments);
     }
 
     /**
@@ -320,16 +363,21 @@ public class SeriesService {
     public Optional<SeriesSummaryDto> getOnboardingSeries(boolean isAdmin) {
         return seriesRepository.findByTitle(ONBOARDING_SERIES_TITLE)
             .filter(series -> series.isPublished() || isAdmin)
-            .map(this::toSummaryDto);
+            .map(series -> toSummaryDtos(List.of(series)).get(0));
     }
 
     private FeaturedSeriesDto toFeaturedDto(Series series) {
         List<FeaturedSeriesChapterDto> chapters = seriesChapterRepository.findBySeriesIdOrderByPosition(series.getId()).stream()
             .map(chapter -> new FeaturedSeriesChapterDto(chapter.getTitle(), chapter.getNote()))
             .toList();
+        List<VocabularyTag> styleTags = graphService.getSeriesStyles(series.getId());
+        List<VocabularyTag> moodTags = graphService.getSeriesMoods(series.getId());
+        List<VocabularyTag> contextTags = graphService.getSeriesContexts(series.getId());
+        List<VocabularyTag> featuredInstruments = graphService.getSeriesFeaturedInstruments(series.getId());
         return new FeaturedSeriesDto(
             series.getId(), series.getTitle(), series.getDek(), series.getCoverImageUrl(),
-            series.getStatus(), series.getVoice(), series.getLikeCount(), chapters, series.getCreatedAt()
+            series.getStatus(), series.getVoice(), series.getLikeCount(), chapters,
+            styleTags, moodTags, contextTags, featuredInstruments, series.getCreatedAt()
         );
     }
 
@@ -431,7 +479,7 @@ public class SeriesService {
         Page<Series> page = includeUnpublished
             ? seriesRepository.findAll(pageable)
             : seriesRepository.findByStatus(SeriesStatus.PUBLISHED, pageable);
-        return page.map(this::toSummaryDto);
+        return toSummaryPage(page);
     }
 
     /**
@@ -456,7 +504,7 @@ public class SeriesService {
                 ? seriesRepository.findByVoice(voice, pageable)
                 : seriesRepository.findByVoiceAndStatus(voice, SeriesStatus.PUBLISHED, pageable);
         }
-        return page.map(this::toSummaryDto);
+        return toSummaryPage(page);
     }
 
     /**
@@ -486,10 +534,15 @@ public class SeriesService {
 
         boolean liked = userId != null && likeService.hasUserLiked(userId, LikeableEntityType.SERIES, seriesId);
 
+        List<VocabularyTag> styleTags = graphService.getSeriesStyles(seriesId);
+        List<VocabularyTag> moodTags = graphService.getSeriesMoods(seriesId);
+        List<VocabularyTag> contextTags = graphService.getSeriesContexts(seriesId);
+        List<VocabularyTag> featuredInstruments = graphService.getSeriesFeaturedInstruments(seriesId);
+
         return new SeriesDetailDto(
             series.getId(), series.getTitle(), series.getDek(), series.getDescription(), series.getCoverImageUrl(),
             series.getStatus(), series.getVoice(), series.getLikeCount(), liked, totalListenings, chapterDtos,
-            series.getCreatedAt(), series.getUpdatedAt()
+            styleTags, moodTags, contextTags, featuredInstruments, series.getCreatedAt(), series.getUpdatedAt()
         );
     }
 
@@ -555,11 +608,29 @@ public class SeriesService {
         );
     }
 
-    private SeriesSummaryDto toSummaryDto(Series series) {
-        return new SeriesSummaryDto(
-            series.getId(), series.getTitle(), series.getDek(), series.getCoverImageUrl(),
-            series.getStatus(), series.getVoice(), series.getLikeCount(), series.getCreatedAt()
-        );
+    private Page<SeriesSummaryDto> toSummaryPage(Page<Series> page) {
+        return new PageImpl<>(toSummaryDtos(page.getContent()), page.getPageable(), page.getTotalElements());
+    }
+
+    /** Shared by list/getCatalogue — one batch query per tag type for the whole page, not one per series. */
+    private List<SeriesSummaryDto> toSummaryDtos(List<Series> seriesList) {
+        List<UUID> seriesIds = seriesList.stream().map(Series::getId).toList();
+        Map<UUID, List<VocabularyTag>> styleTagsBySeries = graphService.getSeriesStylesBatch(seriesIds);
+        Map<UUID, List<VocabularyTag>> moodTagsBySeries = graphService.getSeriesMoodsBatch(seriesIds);
+        Map<UUID, List<VocabularyTag>> contextTagsBySeries = graphService.getSeriesContextsBatch(seriesIds);
+        Map<UUID, List<VocabularyTag>> instrumentsBySeries = graphService.getSeriesFeaturedInstrumentsBatch(seriesIds);
+
+        return seriesList.stream()
+            .map(series -> new SeriesSummaryDto(
+                series.getId(), series.getTitle(), series.getDek(), series.getCoverImageUrl(),
+                series.getStatus(), series.getVoice(), series.getLikeCount(),
+                styleTagsBySeries.getOrDefault(series.getId(), List.of()),
+                moodTagsBySeries.getOrDefault(series.getId(), List.of()),
+                contextTagsBySeries.getOrDefault(series.getId(), List.of()),
+                instrumentsBySeries.getOrDefault(series.getId(), List.of()),
+                series.getCreatedAt()
+            ))
+            .toList();
     }
 
     private Series getSeriesOrThrow(UUID id) {

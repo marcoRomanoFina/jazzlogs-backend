@@ -27,6 +27,7 @@ public record PlaylistSummaryDto(
     List<VocabularyTag> styleTags,
     List<VocabularyTag> moodTags,
     List<VocabularyTag> contextTags,
+    List<VocabularyTag> featuredInstruments,
     Instant createdAt,
     Instant updatedAt
 ) {

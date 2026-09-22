@@ -47,6 +47,7 @@ import com.jazzlogs.backend.track.TrackRepository;
 import com.jazzlogs.backend.trackrating.TrackRating;
 import com.jazzlogs.backend.trackrating.TrackRatingRepository;
 import com.jazzlogs.backend.vocabulary.ContextVocabulary;
+import com.jazzlogs.backend.vocabulary.InstrumentVocabulary;
 import com.jazzlogs.backend.vocabulary.MoodVocabulary;
 import com.jazzlogs.backend.vocabulary.StyleVocabulary;
 import com.jazzlogs.backend.vocabulary.VocabularyCodes;
@@ -88,7 +89,7 @@ public class PlaylistService {
         Playlist saved = playlistRepository.save(playlist);
         flushOrThrowOnTitleConflict(request.title());
         graphService.syncPlaylistNode(saved.getId(), saved.getTitle());
-        replaceTags(saved, request.styleCodes(), request.moodCodes(), request.contextCodes());
+        replaceTags(saved, request.styleCodes(), request.moodCodes(), request.contextCodes(), request.instrumentCodes());
         return saved;
     }
 
@@ -109,7 +110,7 @@ public class PlaylistService {
         );
         flushOrThrowOnTitleConflict(request.title());
         graphService.syncPlaylistNode(playlist.getId(), playlist.getTitle());
-        replaceTags(playlist, request.styleCodes(), request.moodCodes(), request.contextCodes());
+        replaceTags(playlist, request.styleCodes(), request.moodCodes(), request.contextCodes(), request.instrumentCodes());
         return getPlaylistDetail(id, null, true);
     }
 
@@ -395,14 +396,18 @@ public class PlaylistService {
      * if Neo4j is down this throws GraphWriteException (502), same failure
      * policy as Album's tags, not the fire-and-forget one used for tracks.
      */
-    private void replaceTags(Playlist playlist, List<String> styleCodes, List<String> moodCodes, List<String> contextCodes) {
+    private void replaceTags(
+        Playlist playlist, List<String> styleCodes, List<String> moodCodes, List<String> contextCodes, List<String> instrumentCodes
+    ) {
         List<String> styles = styleCodes == null ? List.of() : styleCodes;
         List<String> moods = moodCodes == null ? List.of() : moodCodes;
         List<String> contexts = contextCodes == null ? List.of() : contextCodes;
+        List<String> instruments = instrumentCodes == null ? List.of() : instrumentCodes;
 
         styles.forEach(code -> VocabularyCodes.validate(StyleVocabulary.class, code, "style"));
         moods.forEach(code -> VocabularyCodes.validate(MoodVocabulary.class, code, "mood"));
         contexts.forEach(code -> VocabularyCodes.validate(ContextVocabulary.class, code, "context"));
+        instruments.forEach(code -> VocabularyCodes.validate(InstrumentVocabulary.class, code, "instrument"));
 
         // Skip the round trip entirely when there's nothing to set — this also
         // means an update sending all-empty tag lists on an already-tagged
@@ -410,11 +415,11 @@ public class PlaylistService {
         // "explicitly clear all tags" signal distinct from "tags weren't sent").
         // Acceptable for now since nothing in this task exercises that path;
         // revisit if playlists need a real "untag everything" flow.
-        if (styles.isEmpty() && moods.isEmpty() && contexts.isEmpty()) {
+        if (styles.isEmpty() && moods.isEmpty() && contexts.isEmpty() && instruments.isEmpty()) {
             return;
         }
 
-        graphService.setPlaylistTags(playlist.getId(), styles, moods, contexts);
+        graphService.setPlaylistTags(playlist.getId(), styles, moods, contexts, instruments);
     }
 
     @Transactional(readOnly = true)
@@ -468,12 +473,13 @@ public class PlaylistService {
         List<VocabularyTag> styleTags = graphService.getPlaylistStyles(id);
         List<VocabularyTag> moodTags = graphService.getPlaylistMoods(id);
         List<VocabularyTag> contextTags = graphService.getPlaylistContexts(id);
+        List<VocabularyTag> featuredInstruments = graphService.getPlaylistFeaturedInstruments(id);
 
         return new PlaylistDetailDto(
             playlist.getId(), playlist.getTitle(), playlist.getTagline(), playlist.getDescription(),
             playlist.getCoverImageUrl(), playlist.getSpotifyUrl(), playlist.getType(), playlist.isPublished(),
             playlist.getLikeCount(), liked, saved, playlist.getTrackCount(), playlist.getDurationMs(), trackDtos,
-            styleTags, moodTags, contextTags, playlist.getCreatedAt(), playlist.getUpdatedAt()
+            styleTags, moodTags, contextTags, featuredInstruments, playlist.getCreatedAt(), playlist.getUpdatedAt()
         );
     }
 
@@ -562,6 +568,7 @@ public class PlaylistService {
         Map<UUID, List<VocabularyTag>> styleTagsByPlaylist = graphService.getPlaylistStylesBatch(playlistIds);
         Map<UUID, List<VocabularyTag>> moodTagsByPlaylist = graphService.getPlaylistMoodsBatch(playlistIds);
         Map<UUID, List<VocabularyTag>> contextTagsByPlaylist = graphService.getPlaylistContextsBatch(playlistIds);
+        Map<UUID, List<VocabularyTag>> instrumentsByPlaylist = graphService.getPlaylistFeaturedInstrumentsBatch(playlistIds);
 
         return playlists.stream()
             .map(playlist -> new PlaylistSummaryDto(
@@ -571,6 +578,7 @@ public class PlaylistService {
                 styleTagsByPlaylist.getOrDefault(playlist.getId(), List.of()),
                 moodTagsByPlaylist.getOrDefault(playlist.getId(), List.of()),
                 contextTagsByPlaylist.getOrDefault(playlist.getId(), List.of()),
+                instrumentsByPlaylist.getOrDefault(playlist.getId(), List.of()),
                 playlist.getCreatedAt(), playlist.getUpdatedAt()
             ))
             .toList();
