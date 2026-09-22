@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -32,9 +33,12 @@ import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.VocabularyTag;
+import com.jazzlogs.backend.listen.ListenService;
+import com.jazzlogs.backend.note.NoteService;
 import com.jazzlogs.backend.series.dto.ChapterStatus;
 import com.jazzlogs.backend.series.dto.SeriesChapterDetailDto;
 import com.jazzlogs.backend.series.dto.SeriesChapterInput;
+import com.jazzlogs.backend.series.dto.SeriesChapterTrackDto;
 import com.jazzlogs.backend.series.dto.SeriesDetailDto;
 import com.jazzlogs.backend.series.dto.FeaturedSeriesDto;
 import com.jazzlogs.backend.series.dto.SeriesSummaryDto;
@@ -43,6 +47,8 @@ import com.jazzlogs.backend.storage.AudioStorageService;
 import com.jazzlogs.backend.storage.ImageStorageService;
 import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackRepository;
+import com.jazzlogs.backend.trackrating.TrackRating;
+import com.jazzlogs.backend.trackrating.TrackRatingRepository;
 import com.jazzlogs.backend.user.User;
 import com.jazzlogs.backend.user.UserRepository;
 
@@ -70,6 +76,15 @@ class SeriesServiceTest {
 
     @Autowired
     private TrackRepository trackRepository;
+
+    @Autowired
+    private TrackRatingRepository trackRatingRepository;
+
+    @Autowired
+    private ListenService listenService;
+
+    @Autowired
+    private NoteService noteService;
 
     @MockitoBean
     private ImageStorageService imageStorageService;
@@ -528,7 +543,7 @@ class SeriesServiceTest {
     }
 
     @Test
-    void getChapterAudioUrl_returnsAPresignedUrlForTheStoredKey() {
+    void getChapter_returnsAPresignedAudioUrlForTheStoredKey() {
         UUID seriesId = persistSeries();
         SeriesChapterDetailDto chapter = seriesService.addChapter(seriesId, null, introInput());
         MockMultipartFile file = new MockMultipartFile("file", "audio.mp3", "audio/mpeg", "fake-audio-bytes".getBytes());
@@ -539,29 +554,27 @@ class SeriesServiceTest {
         seriesService.setChapterAudio(seriesId, chapter.id(), file);
         when(audioStorageService.presignPlaybackUrl(key)).thenReturn(presignedUrl);
 
-        String url = seriesService.getChapterAudioUrl(seriesId, chapter.id(), null, false);
+        SeriesChapterDetailDto result = seriesService.getChapter(seriesId, chapter.id(), null, false);
 
-        assertThat(url).isEqualTo(presignedUrl);
+        assertThat(result.audioUrl()).isEqualTo(presignedUrl);
     }
 
     @Test
-    void getChapterAudioUrl_rejectsAChapterWithNoAudioUploadedYet() {
+    void getChapter_leavesAudioUrlNullWhenNoAudioUploadedYet() {
         UUID seriesId = persistSeries();
         SeriesChapterDetailDto chapter = seriesService.addChapter(seriesId, null, introInput());
 
-        ResponseStatusException ex = catchThrowableOfType(
-            ResponseStatusException.class, () -> seriesService.getChapterAudioUrl(seriesId, chapter.id(), null, false)
-        );
+        SeriesChapterDetailDto result = seriesService.getChapter(seriesId, chapter.id(), null, false);
 
-        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(result.audioUrl()).isNull();
     }
 
     @Test
-    void getChapterAudioUrl_rejectsUnknownChapter() {
+    void getChapter_rejectsUnknownChapter() {
         UUID seriesId = persistSeries();
 
         ResponseStatusException ex = catchThrowableOfType(
-            ResponseStatusException.class, () -> seriesService.getChapterAudioUrl(seriesId, UUID.randomUUID(), null, false)
+            ResponseStatusException.class, () -> seriesService.getChapter(seriesId, UUID.randomUUID(), null, false)
         );
 
         assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
@@ -577,6 +590,44 @@ class SeriesServiceTest {
         );
 
         assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void getChapter_includesTheFullTrackWithRatingListenedAndNotes() {
+        UUID seriesId = persistSeries();
+        Artist artist = persistArtist();
+        Album album = persistAlbum(artist);
+        Track track = persistTrack(album);
+        SeriesChapterDetailDto chapter = seriesService.addChapter(
+            seriesId, null, new SeriesChapterInput(ChapterType.TRACK, track.getId(), null, null, null)
+        );
+        User user = persistUser();
+        trackRatingRepository.save(new TrackRating(user, track, new BigDecimal("4.5")));
+        listenService.markTrackListened(user.getId(), track.getId());
+        noteService.createNote(user.getId(), track.getId(), "Great solo", "Loved the bridge", null);
+
+        SeriesChapterTrackDto trackDto = seriesService.getChapter(seriesId, chapter.id(), user.getId(), false).track();
+
+        assertThat(trackDto.id()).isEqualTo(track.getId());
+        assertThat(trackDto.name()).isEqualTo("Test Track");
+        assertThat(trackDto.albumId()).isEqualTo(album.getId());
+        assertThat(trackDto.artistId()).isEqualTo(artist.getId());
+        assertThat(trackDto.myRating()).isEqualByComparingTo("4.5");
+        assertThat(trackDto.hasListened()).isTrue();
+        assertThat(trackDto.myNotes()).hasSize(1);
+        assertThat(trackDto.myNotes().get(0).text()).isEqualTo("Loved the bridge");
+    }
+
+    @Test
+    void getChapter_leavesTrackNullForOutroChapters() {
+        UUID seriesId = persistSeries();
+        SeriesChapterDetailDto chapter = seriesService.addChapter(
+            seriesId, null, new SeriesChapterInput(ChapterType.OUTRO, null, "Wrap-up", "Thanks for listening", null)
+        );
+
+        SeriesChapterDetailDto result = seriesService.getChapter(seriesId, chapter.id(), null, false);
+
+        assertThat(result.track()).isNull();
     }
 
     @Test

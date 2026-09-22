@@ -25,7 +25,7 @@ import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignReques
  * ImageStorageService}'s bucket, this one is private — series may end up
  * gated behind a subscription, so playback goes through a short-lived
  * {@link #presignPlaybackUrl presigned URL} instead of a permanent public
- * one, giving the caller (see {@code SeriesService.getChapterAudioUrl}) a
+ * one, giving the caller (see {@code SeriesService.getChapter}) a
  * choke point to add that check later. A presigned S3 GET URL still
  * supports HTTP Range requests exactly like a public one would, so
  * seek/progressive playback isn't affected.

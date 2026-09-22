@@ -1,5 +1,6 @@
 package com.jazzlogs.backend.series;
 
+import java.math.BigDecimal;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -22,6 +23,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 import jakarta.persistence.EntityManager;
 
+import com.jazzlogs.backend.album.Album;
+import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.like.LikeService;
@@ -29,11 +32,14 @@ import com.jazzlogs.backend.like.LikeableEntityType;
 import com.jazzlogs.backend.listen.ListenRepository;
 import com.jazzlogs.backend.listen.ListenService;
 import com.jazzlogs.backend.listen.ListenableEntityType;
+import com.jazzlogs.backend.note.NoteService;
+import com.jazzlogs.backend.note.dto.NoteDto;
 import com.jazzlogs.backend.series.dto.ChapterStatus;
 import com.jazzlogs.backend.series.dto.FeaturedSeriesChapterDto;
 import com.jazzlogs.backend.series.dto.FeaturedSeriesDto;
 import com.jazzlogs.backend.series.dto.SeriesChapterDetailDto;
 import com.jazzlogs.backend.series.dto.SeriesChapterInput;
+import com.jazzlogs.backend.series.dto.SeriesChapterTrackDto;
 import com.jazzlogs.backend.series.dto.SeriesDetailDto;
 import com.jazzlogs.backend.series.dto.SeriesSummaryDto;
 import com.jazzlogs.backend.series.dto.SeriesUpsertRequest;
@@ -41,6 +47,8 @@ import com.jazzlogs.backend.storage.AudioStorageService;
 import com.jazzlogs.backend.storage.ImageStorageService;
 import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackRepository;
+import com.jazzlogs.backend.trackrating.TrackRating;
+import com.jazzlogs.backend.trackrating.TrackRatingRepository;
 import com.jazzlogs.backend.vocabulary.ContextVocabulary;
 import com.jazzlogs.backend.vocabulary.InstrumentVocabulary;
 import com.jazzlogs.backend.vocabulary.MoodVocabulary;
@@ -56,6 +64,8 @@ public class SeriesService {
     private final SeriesRepository seriesRepository;
     private final SeriesChapterRepository seriesChapterRepository;
     private final TrackRepository trackRepository;
+    private final TrackRatingRepository trackRatingRepository;
+    private final NoteService noteService;
     private final LikeService likeService;
     private final ListenService listenService;
     private final ListenRepository listenRepository;
@@ -285,37 +295,37 @@ public class SeriesService {
     }
 
     /**
-     * A short-lived URL to actually play this chapter's audio — the
-     * bucket is private, so {@code audioObjectKey} alone isn't fetchable by
-     * a client; this is the only way to turn it into something playable.
-     * Generated fresh on every call, not cached or stored — see {@link
-     * AudioStorageService#presignPlaybackUrl}. Same visibility rule as the
-     * rest of the series (draft series/chapters are admin-only); this is
-     * also the choke point a future subscription check would go through,
-     * since a signed URL is the last gate before the audio bytes themselves
-     * leave storage.
+     * A single chapter, including a short-lived {@code audioUrl} to actually
+     * play its audio — the bucket is private, so {@code audioObjectKey} alone
+     * isn't fetchable by a client; this is the only way to turn it into
+     * something playable. Generated fresh on every call, not cached or
+     * stored — see {@link AudioStorageService#presignPlaybackUrl}.
+     * {@code audioUrl} is {@code null} if no audio has been uploaded yet
+     * (not a 404 — the rest of the chapter is still valid). Same visibility
+     * rule as the rest of the series (draft series/chapters are admin-only);
+     * this is also the choke point a future subscription check would go
+     * through, since a signed URL is the last gate before the audio bytes
+     * themselves leave storage.
      *
-     * @param seriesId      the series
-     * @param chapterId     the chapter, must belong to this series
-     * @param currentUserId unused today, kept for a future entitlement check
-     * @param isAdmin       admins can play draft chapters too
-     * @return a presigned URL valid for a limited time
+     * @param seriesId  the series
+     * @param chapterId the chapter, must belong to this series
+     * @param userId    for {@code status} relative to this user, or null if not resolvable
+     * @param isAdmin   admins can view draft series/chapters too
      * @throws ResponseStatusException 404 if the series/chapter doesn't
-     *                                  exist (or isn't visible to this
-     *                                  caller), or if this chapter has no
-     *                                  audio uploaded yet
+     *                                  exist or isn't visible to this caller
      */
     @Transactional(readOnly = true)
-    public String getChapterAudioUrl(UUID seriesId, UUID chapterId, UUID currentUserId, boolean isAdmin) {
+    public SeriesChapterDetailDto getChapter(UUID seriesId, UUID chapterId, UUID userId, boolean isAdmin) {
         Series series = getSeriesOrThrow(seriesId);
         if (!series.isPublished() && !isAdmin) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Series not found: " + seriesId);
         }
         SeriesChapter chapter = getChapterOrThrow(seriesId, chapterId);
-        if (chapter.getAudioObjectKey() == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Chapter has no audio yet: " + chapterId);
-        }
-        return audioStorageService.presignPlaybackUrl(chapter.getAudioObjectKey());
+        List<SeriesChapter> chapters = seriesChapterRepository.findBySeriesIdOrderByPosition(seriesId);
+        Map<UUID, ChapterStatus> statuses = computeStatuses(chapters, listenedChapterIds(userId, chapters));
+        String audioUrl = chapter.getAudioObjectKey() == null ? null : audioStorageService.presignPlaybackUrl(chapter.getAudioObjectKey());
+        SeriesChapterTrackDto trackDto = buildTrackDto(chapter.getTrack(), userId);
+        return toChapterDetailDto(chapter, statuses.get(chapterId), audioUrl, trackDto);
     }
 
     /** Publishes this series, making it visible to non-admins. */
@@ -562,8 +572,12 @@ public class SeriesService {
         List<SeriesChapter> chapters = seriesChapterRepository.findBySeriesIdOrderByPosition(seriesId);
         Map<UUID, ChapterStatus> statuses = computeStatuses(chapters, listenedChapterIds(userId, chapters));
 
+        // track is intentionally left out here (null for every chapter) — the
+        // full track (rating/listened/notes) is a per-chapter fan-out, too
+        // expensive to run for every chapter on every series-detail page
+        // load. See getChapter for the one place it's actually populated.
         List<SeriesChapterDetailDto> chapterDtos = chapters.stream()
-            .map(chapter -> toChapterDetailDto(chapter, statuses.get(chapter.getId())))
+            .map(chapter -> toChapterDetailDto(chapter, statuses.get(chapter.getId()), null, null))
             .toList();
 
         long totalListenings = chapters.isEmpty()
@@ -593,7 +607,7 @@ public class SeriesService {
             .filter(c -> c.getId().equals(chapterId))
             .findFirst()
             .orElseThrow(() -> new IllegalStateException("Chapter vanished mid-request: " + chapterId));
-        return toChapterDetailDto(chapter, statuses.get(chapterId));
+        return toChapterDetailDto(chapter, statuses.get(chapterId), null, buildTrackDto(chapter.getTrack(), userId));
     }
 
     /**
@@ -637,14 +651,47 @@ public class SeriesService {
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Track not found: " + trackId));
     }
 
-    private SeriesChapterDetailDto toChapterDetailDto(SeriesChapter chapter, ChapterStatus status) {
-        Track track = chapter.getTrack();
+    private SeriesChapterDetailDto toChapterDetailDto(SeriesChapter chapter, ChapterStatus status, String audioUrl, SeriesChapterTrackDto trackDto) {
         return new SeriesChapterDetailDto(
-            chapter.getId(), chapter.getPosition(), chapter.getType(),
-            track == null ? null : track.getId(), track == null ? null : track.getName(),
+            chapter.getId(), chapter.getPosition(), chapter.getType(), trackDto,
             chapter.getTitle(), chapter.getNote(),
-            chapter.getAudioObjectKey(), chapter.getAudioDurationSeconds(), chapter.getAudioContentType(), chapter.getAudioFileSizeBytes(),
+            chapter.getAudioObjectKey(), audioUrl, chapter.getAudioDurationSeconds(), chapter.getAudioContentType(), chapter.getAudioFileSizeBytes(),
             chapter.getImageUrl(), chapter.getLandscapeImageUrl(), status
+        );
+    }
+
+    /** Single-track path — used where only one chapter's track is needed (unlike getSeriesDetail's page-wide batching). */
+    private SeriesChapterTrackDto buildTrackDto(Track track, UUID userId) {
+        if (track == null) {
+            return null;
+        }
+        UUID trackId = track.getId();
+        TrackRatingRepository.TrackRatingStats stats = trackRatingRepository.getRatingStatsForTracks(List.of(trackId))
+            .stream().findFirst().orElse(null);
+        BigDecimal myRating = userId == null
+            ? null
+            : trackRatingRepository.findByUserIdAndTrackId(userId, trackId).map(TrackRating::getRating).orElse(null);
+        boolean listened = userId != null && listenService.getListenedTrackIds(userId, List.of(trackId)).contains(trackId);
+        List<NoteDto> myNotes = userId == null
+            ? List.of()
+            : noteService.getMyNotesForTracks(List.of(trackId), userId).getOrDefault(trackId, List.of());
+        return toTrackDto(track, stats, myRating, listened, myNotes);
+    }
+
+    /**
+     * No vocabulary tags/performers/editorial here on purpose — see {@code
+     * SeriesChapterTrackDto}, a trimmed shape, not the full {@code TrackDto}.
+     */
+    private SeriesChapterTrackDto toTrackDto(
+        Track track, TrackRatingRepository.TrackRatingStats stats, BigDecimal myRating, boolean listened, List<NoteDto> myNotes
+    ) {
+        Album album = track.getAlbum();
+        Artist artist = album.getArtist();
+        return new SeriesChapterTrackDto(
+            track.getId(), track.getName(), track.getDurationMs(), track.getSpotifyUrl(), track.getImageUrl(),
+            album.getId(), album.getName(), artist.getId(), artist.getName(),
+            stats == null ? null : stats.getAvgRating(), stats == null ? 0 : stats.getCount(),
+            myRating, listened, myNotes
         );
     }
 
