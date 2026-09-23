@@ -16,7 +16,9 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-// Official/editorial playlists curated by JazzLogs — not user playlists 
+import com.jazzlogs.backend.series.SeriesVoice;
+
+// Official/editorial playlists curated by JazzLogs — not user playlists
 @Entity
 @Table(name = "playlists")
 @Getter
@@ -41,12 +43,30 @@ public class Playlist {
     @Column(name = "cover_image_url")
     private String coverImageUrl;
 
+    // Three more, distinct from coverImageUrl (the catalogue/card thumbnail)
+    // — used to lay out the playlist detail page. Same upload-only contract
+    // as coverImageUrl: never set via update(...), only via their own endpoints.
+    @Column(name = "principal_image_url")
+    private String principalImageUrl;
+
+    @Column(name = "banner_image_url")
+    private String bannerImageUrl;
+
+    @Column(name = "footer_image_url")
+    private String footerImageUrl;
+
     @Column(name = "spotify_url")
     private String spotifyUrl;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private PlaylistType type;
+
+    // Which narrator voice is credited on this playlist — same SeriesVoice
+    // enum as Series.voice, pure classification (no behavior difference).
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private SeriesVoice byline;
 
     @Column(name = "like_count", nullable = false)
     private int likeCount;
@@ -77,7 +97,8 @@ public class Playlist {
         String description,
         String coverImageUrl,
         String spotifyUrl,
-        PlaylistType type
+        PlaylistType type,
+        SeriesVoice byline
     ) {
         this.title = title;
         this.tagline = tagline;
@@ -85,6 +106,7 @@ public class Playlist {
         this.coverImageUrl = coverImageUrl;
         this.spotifyUrl = spotifyUrl;
         this.type = type;
+        this.byline = byline;
     }
 
     public void update(
@@ -93,7 +115,8 @@ public class Playlist {
         String description,
         String coverImageUrl,
         String spotifyUrl,
-        PlaylistType type
+        PlaylistType type,
+        SeriesVoice byline
     ) {
         this.title = title;
         this.tagline = tagline;
@@ -101,6 +124,7 @@ public class Playlist {
         this.coverImageUrl = coverImageUrl;
         this.spotifyUrl = spotifyUrl;
         this.type = type;
+        this.byline = byline;
     }
 
     public void updateTrackStats(int trackCount, long durationMs) {
@@ -112,6 +136,18 @@ public class Playlist {
     // (PlaylistService.setCoverImage), not the metadata upsert.
     public void updateCoverImageUrl(String coverImageUrl) {
         this.coverImageUrl = coverImageUrl;
+    }
+
+    public void updatePrincipalImageUrl(String principalImageUrl) {
+        this.principalImageUrl = principalImageUrl;
+    }
+
+    public void updateBannerImageUrl(String bannerImageUrl) {
+        this.bannerImageUrl = bannerImageUrl;
+    }
+
+    public void updateFooterImageUrl(String footerImageUrl) {
+        this.footerImageUrl = footerImageUrl;
     }
 
     /** See {@code PlaylistService.publish}. */

@@ -49,6 +49,7 @@ import com.jazzlogs.backend.playlist.dto.PlaylistTrackDetailDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistUpsertRequest;
 import com.jazzlogs.backend.saveditem.SaveableEntityType;
 import com.jazzlogs.backend.saveditem.SavedItemService;
+import com.jazzlogs.backend.series.SeriesVoice;
 import com.jazzlogs.backend.storage.ImageStorageService;
 import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackRepository;
@@ -275,12 +276,23 @@ class PlaylistServiceTest {
     @Test
     void create_persistsType() {
         PlaylistUpsertRequest request = new PlaylistUpsertRequest(
-            "The Long Road", null, null, null, null, PlaylistType.JOURNEY, List.of(), List.of(), List.of(), List.of()
+            "The Long Road", null, null, null, null, PlaylistType.JOURNEY, SeriesVoice.MARK, List.of(), List.of(), List.of(), List.of()
         );
 
         Playlist created = playlistService.create(request);
 
         assertThat(playlistRepository.findById(created.getId()).orElseThrow().getType()).isEqualTo(PlaylistType.JOURNEY);
+    }
+
+    @Test
+    void create_persistsByline() {
+        PlaylistUpsertRequest request = new PlaylistUpsertRequest(
+            "Byline Test", null, null, null, null, PlaylistType.STANDARD, SeriesVoice.LAURA, List.of(), List.of(), List.of(), List.of()
+        );
+
+        Playlist created = playlistService.create(request);
+
+        assertThat(playlistRepository.findById(created.getId()).orElseThrow().getByline()).isEqualTo(SeriesVoice.LAURA);
     }
 
     // No "returns empty when nothing is published" test here — this table
@@ -387,7 +399,7 @@ class PlaylistServiceTest {
     @Test
     void replaceTags_setsFeaturedInstrumentsToo() {
         Playlist created = playlistService.create(new PlaylistUpsertRequest(
-            "instrument-tags", null, null, null, null, PlaylistType.STANDARD,
+            "instrument-tags", null, null, null, null, PlaylistType.STANDARD, SeriesVoice.MARK,
             List.of(), List.of(), List.of(), List.of("PIANO", "DRUMS")
         ));
 
@@ -510,6 +522,78 @@ class PlaylistServiceTest {
 
         ResponseStatusException ex = catchThrowableOfType(
             ResponseStatusException.class, () -> playlistService.setCoverImage(UUID.randomUUID(), file)
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void setPrincipalImage_uploadsUnderThePlaylistsOwnKeyAndPersistsTheReturnedUrl() {
+        UUID playlistId = persistPlaylist("principal-set");
+        MockMultipartFile file = new MockMultipartFile("file", "principal.jpg", "image/jpeg", "fake-bytes".getBytes());
+        when(imageStorageService.upload("playlists/" + playlistId + "/principal", file))
+            .thenReturn("http://localhost:9000/jazzlogs-images/playlists/" + playlistId + "/principal.jpg");
+
+        playlistService.setPrincipalImage(playlistId, file);
+
+        PlaylistDetailDto dto = playlistService.getPlaylistDetail(playlistId, null, true);
+        assertThat(dto.principalImageUrl()).isEqualTo("http://localhost:9000/jazzlogs-images/playlists/" + playlistId + "/principal.jpg");
+    }
+
+    @Test
+    void setPrincipalImage_rejectsUnknownPlaylist() {
+        MockMultipartFile file = new MockMultipartFile("file", "principal.jpg", "image/jpeg", "fake-bytes".getBytes());
+
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> playlistService.setPrincipalImage(UUID.randomUUID(), file)
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void setBannerImage_uploadsUnderThePlaylistsOwnKeyAndPersistsTheReturnedUrl() {
+        UUID playlistId = persistPlaylist("banner-set");
+        MockMultipartFile file = new MockMultipartFile("file", "banner.jpg", "image/jpeg", "fake-bytes".getBytes());
+        when(imageStorageService.upload("playlists/" + playlistId + "/banner", file))
+            .thenReturn("http://localhost:9000/jazzlogs-images/playlists/" + playlistId + "/banner.jpg");
+
+        playlistService.setBannerImage(playlistId, file);
+
+        PlaylistDetailDto dto = playlistService.getPlaylistDetail(playlistId, null, true);
+        assertThat(dto.bannerImageUrl()).isEqualTo("http://localhost:9000/jazzlogs-images/playlists/" + playlistId + "/banner.jpg");
+    }
+
+    @Test
+    void setBannerImage_rejectsUnknownPlaylist() {
+        MockMultipartFile file = new MockMultipartFile("file", "banner.jpg", "image/jpeg", "fake-bytes".getBytes());
+
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> playlistService.setBannerImage(UUID.randomUUID(), file)
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void setFooterImage_uploadsUnderThePlaylistsOwnKeyAndPersistsTheReturnedUrl() {
+        UUID playlistId = persistPlaylist("footer-set");
+        MockMultipartFile file = new MockMultipartFile("file", "footer.jpg", "image/jpeg", "fake-bytes".getBytes());
+        when(imageStorageService.upload("playlists/" + playlistId + "/footer", file))
+            .thenReturn("http://localhost:9000/jazzlogs-images/playlists/" + playlistId + "/footer.jpg");
+
+        playlistService.setFooterImage(playlistId, file);
+
+        PlaylistDetailDto dto = playlistService.getPlaylistDetail(playlistId, null, true);
+        assertThat(dto.footerImageUrl()).isEqualTo("http://localhost:9000/jazzlogs-images/playlists/" + playlistId + "/footer.jpg");
+    }
+
+    @Test
+    void setFooterImage_rejectsUnknownPlaylist() {
+        MockMultipartFile file = new MockMultipartFile("file", "footer.jpg", "image/jpeg", "fake-bytes".getBytes());
+
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> playlistService.setFooterImage(UUID.randomUUID(), file)
         );
 
         assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
@@ -639,7 +723,7 @@ class PlaylistServiceTest {
 
     private UUID persistPlaylist(String title, PlaylistType type, boolean published) {
         PlaylistUpsertRequest request = new PlaylistUpsertRequest(
-            title, null, null, null, null, type, List.of(), List.of(), List.of(), List.of()
+            title, null, null, null, null, type, SeriesVoice.MARK, List.of(), List.of(), List.of(), List.of()
         );
         UUID id = playlistService.create(request).getId();
         if (published) {
@@ -649,7 +733,9 @@ class PlaylistServiceTest {
     }
 
     private PlaylistUpsertRequest upsertRequestWithTags(String title, List<String> styleCodes) {
-        return new PlaylistUpsertRequest(title, null, null, null, null, PlaylistType.STANDARD, styleCodes, List.of(), List.of(), List.of());
+        return new PlaylistUpsertRequest(
+            title, null, null, null, null, PlaylistType.STANDARD, SeriesVoice.MARK, styleCodes, List.of(), List.of(), List.of()
+        );
     }
 
     private Artist persistArtist() {

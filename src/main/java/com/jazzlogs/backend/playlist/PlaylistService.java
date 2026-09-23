@@ -86,7 +86,7 @@ public class PlaylistService {
         assertTitleAvailable(request.title(), null);
         Playlist playlist = new Playlist(
             request.title(), request.tagline(), request.description(),
-            request.coverImageUrl(), request.spotifyUrl(), request.type()
+            request.coverImageUrl(), request.spotifyUrl(), request.type(), request.byline()
         );
         Playlist saved = playlistRepository.save(playlist);
         flushOrThrowOnTitleConflict(request.title());
@@ -108,7 +108,7 @@ public class PlaylistService {
         assertTitleAvailable(request.title(), id);
         playlist.update(
             request.title(), request.tagline(), request.description(),
-            request.coverImageUrl(), request.spotifyUrl(), request.type()
+            request.coverImageUrl(), request.spotifyUrl(), request.type(), request.byline()
         );
         flushOrThrowOnTitleConflict(request.title());
         graphService.syncPlaylistNode(playlist.getId(), playlist.getTitle());
@@ -218,6 +218,50 @@ public class PlaylistService {
         Playlist playlist = getPlaylistOrThrow(id);
         String url = imageStorageService.upload("playlists/" + id + "/cover", file);
         playlist.updateCoverImageUrl(url);
+    }
+
+    /**
+     * Uploads the principal/hero image for this playlist's detail page — a
+     * fourth, distinct image from cover/banner/footer. One object per
+     * playlist ({@code playlists/{id}/principal.<ext>}), so re-uploading
+     * overwrites the old one instead of leaving it orphaned in storage.
+     *
+     * @param id   the playlist
+     * @param file the image file (jpeg/png/webp only)
+     */
+    @Transactional
+    public void setPrincipalImage(UUID id, MultipartFile file) {
+        Playlist playlist = getPlaylistOrThrow(id);
+        String url = imageStorageService.upload("playlists/" + id + "/principal", file);
+        playlist.updatePrincipalImageUrl(url);
+    }
+
+    /**
+     * Uploads the banner image for this playlist's detail page — see {@link
+     * #setPrincipalImage}. One object per playlist ({@code playlists/{id}/banner.<ext>}).
+     *
+     * @param id   the playlist
+     * @param file the image file (jpeg/png/webp only)
+     */
+    @Transactional
+    public void setBannerImage(UUID id, MultipartFile file) {
+        Playlist playlist = getPlaylistOrThrow(id);
+        String url = imageStorageService.upload("playlists/" + id + "/banner", file);
+        playlist.updateBannerImageUrl(url);
+    }
+
+    /**
+     * Uploads the footer image for this playlist's detail page — see {@link
+     * #setPrincipalImage}. One object per playlist ({@code playlists/{id}/footer.<ext>}).
+     *
+     * @param id   the playlist
+     * @param file the image file (jpeg/png/webp only)
+     */
+    @Transactional
+    public void setFooterImage(UUID id, MultipartFile file) {
+        Playlist playlist = getPlaylistOrThrow(id);
+        String url = imageStorageService.upload("playlists/" + id + "/footer", file);
+        playlist.updateFooterImageUrl(url);
     }
 
     /**
@@ -479,7 +523,8 @@ public class PlaylistService {
 
         return new PlaylistDetailDto(
             playlist.getId(), playlist.getTitle(), playlist.getTagline(), playlist.getDescription(),
-            playlist.getCoverImageUrl(), playlist.getSpotifyUrl(), playlist.getType(), playlist.isPublished(),
+            playlist.getCoverImageUrl(), playlist.getPrincipalImageUrl(), playlist.getBannerImageUrl(), playlist.getFooterImageUrl(),
+            playlist.getSpotifyUrl(), playlist.getType(), playlist.getByline(), playlist.isPublished(),
             playlist.getLikeCount(), liked, saved, playlist.getTrackCount(), playlist.getDurationMs(), trackDtos,
             styleTags, moodTags, contextTags, featuredInstruments, playlist.getCreatedAt(), playlist.getUpdatedAt()
         );
@@ -536,7 +581,7 @@ public class PlaylistService {
 
         return new FeaturedPlaylistDto(
             playlist.getId(), playlist.getTitle(), playlist.getTagline(), playlist.getDescription(),
-            playlist.getCoverImageUrl(), playlist.getSpotifyUrl(), playlist.getType(), playlist.isPublished(),
+            playlist.getCoverImageUrl(), playlist.getSpotifyUrl(), playlist.getType(), playlist.getByline(), playlist.isPublished(),
             playlist.getLikeCount(), liked, saved, playlist.getTrackCount(), playlist.getDurationMs(), trackDtos,
             styleTags, moodTags, contextTags, featuredInstruments, playlist.getCreatedAt(), playlist.getUpdatedAt()
         );
@@ -632,7 +677,7 @@ public class PlaylistService {
         return playlists.stream()
             .map(playlist -> new PlaylistSummaryDto(
                 playlist.getId(), playlist.getTitle(), playlist.getTagline(), playlist.getDescription(),
-                playlist.getCoverImageUrl(), playlist.getSpotifyUrl(), playlist.getType(), playlist.isPublished(),
+                playlist.getCoverImageUrl(), playlist.getSpotifyUrl(), playlist.getType(), playlist.getByline(), playlist.isPublished(),
                 playlist.getLikeCount(), likedIds.contains(playlist.getId()), playlist.getTrackCount(), playlist.getDurationMs(),
                 styleTagsByPlaylist.getOrDefault(playlist.getId(), List.of()),
                 moodTagsByPlaylist.getOrDefault(playlist.getId(), List.of()),
