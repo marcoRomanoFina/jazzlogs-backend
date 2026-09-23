@@ -34,7 +34,6 @@ import com.jazzlogs.backend.artist.ArtistRepository;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.listen.ListenService;
-import com.jazzlogs.backend.note.NoteService;
 import com.jazzlogs.backend.series.dto.ChapterStatus;
 import com.jazzlogs.backend.series.dto.SeriesChapterDetailDto;
 import com.jazzlogs.backend.series.dto.SeriesChapterInput;
@@ -82,9 +81,6 @@ class SeriesServiceTest {
 
     @Autowired
     private ListenService listenService;
-
-    @Autowired
-    private NoteService noteService;
 
     @MockitoBean
     private ImageStorageService imageStorageService;
@@ -593,7 +589,7 @@ class SeriesServiceTest {
     }
 
     @Test
-    void getChapter_includesTheFullTrackWithRatingListenedAndNotes() {
+    void getChapter_includesTheFullTrackWithRatingListenedAndTags() {
         UUID seriesId = persistSeries();
         Artist artist = persistArtist();
         Album album = persistAlbum(artist);
@@ -604,7 +600,7 @@ class SeriesServiceTest {
         User user = persistUser();
         trackRatingRepository.save(new TrackRating(user, track, new BigDecimal("4.5")));
         listenService.markTrackListened(user.getId(), track.getId());
-        noteService.createNote(user.getId(), track.getId(), "Great solo", "Loved the bridge", null);
+        when(graphService.getTrackMoods(track.getId())).thenReturn(List.of(new VocabularyTag("MELLOW", "Mellow")));
 
         SeriesChapterTrackDto trackDto = seriesService.getChapter(seriesId, chapter.id(), user.getId(), false).track();
 
@@ -614,8 +610,7 @@ class SeriesServiceTest {
         assertThat(trackDto.artistId()).isEqualTo(artist.getId());
         assertThat(trackDto.myRating()).isEqualByComparingTo("4.5");
         assertThat(trackDto.hasListened()).isTrue();
-        assertThat(trackDto.myNotes()).hasSize(1);
-        assertThat(trackDto.myNotes().get(0).text()).isEqualTo("Loved the bridge");
+        assertThat(trackDto.moods()).containsExactly(new VocabularyTag("MELLOW", "Mellow"));
     }
 
     @Test

@@ -32,8 +32,6 @@ import com.jazzlogs.backend.like.LikeableEntityType;
 import com.jazzlogs.backend.listen.ListenRepository;
 import com.jazzlogs.backend.listen.ListenService;
 import com.jazzlogs.backend.listen.ListenableEntityType;
-import com.jazzlogs.backend.note.NoteService;
-import com.jazzlogs.backend.note.dto.NoteDto;
 import com.jazzlogs.backend.series.dto.ChapterStatus;
 import com.jazzlogs.backend.series.dto.FeaturedSeriesChapterDto;
 import com.jazzlogs.backend.series.dto.FeaturedSeriesDto;
@@ -65,7 +63,6 @@ public class SeriesService {
     private final SeriesChapterRepository seriesChapterRepository;
     private final TrackRepository trackRepository;
     private final TrackRatingRepository trackRatingRepository;
-    private final NoteService noteService;
     private final LikeService likeService;
     private final ListenService listenService;
     private final ListenRepository listenRepository;
@@ -672,10 +669,7 @@ public class SeriesService {
             ? null
             : trackRatingRepository.findByUserIdAndTrackId(userId, trackId).map(TrackRating::getRating).orElse(null);
         boolean listened = userId != null && listenService.getListenedTrackIds(userId, List.of(trackId)).contains(trackId);
-        List<NoteDto> myNotes = userId == null
-            ? List.of()
-            : noteService.getMyNotesForTracks(List.of(trackId), userId).getOrDefault(trackId, List.of());
-        return toTrackDto(track, stats, myRating, listened, myNotes);
+        return toTrackDto(track, stats, myRating, listened);
     }
 
     /**
@@ -683,15 +677,18 @@ public class SeriesService {
      * SeriesChapterTrackDto}, a trimmed shape, not the full {@code TrackDto}.
      */
     private SeriesChapterTrackDto toTrackDto(
-        Track track, TrackRatingRepository.TrackRatingStats stats, BigDecimal myRating, boolean listened, List<NoteDto> myNotes
+        Track track, TrackRatingRepository.TrackRatingStats stats, BigDecimal myRating, boolean listened
     ) {
         Album album = track.getAlbum();
         Artist artist = album.getArtist();
+        UUID trackId = track.getId();
         return new SeriesChapterTrackDto(
-            track.getId(), track.getName(), track.getDurationMs(), track.getSpotifyUrl(), track.getImageUrl(),
+            trackId, track.getName(), track.getDurationMs(), track.getSpotifyUrl(), track.getImageUrl(),
             album.getId(), album.getName(), artist.getId(), artist.getName(),
             stats == null ? null : stats.getAvgRating(), stats == null ? 0 : stats.getCount(),
-            myRating, listened, myNotes
+            myRating, listened,
+            graphService.getTrackMoods(trackId), graphService.getTrackContexts(trackId),
+            graphService.getTrackRhythms(trackId), graphService.getTrackFeaturedInstruments(trackId)
         );
     }
 
