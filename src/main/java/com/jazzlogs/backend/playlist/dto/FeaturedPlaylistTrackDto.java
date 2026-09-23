@@ -1,13 +1,10 @@
 package com.jazzlogs.backend.playlist.dto;
 
 import java.math.BigDecimal;
-import java.util.List;
 import java.util.UUID;
 
-import com.jazzlogs.backend.note.dto.NoteDto;
-
-// Same as PlaylistTrackDetailDto, minus albumImageUrl — the featured
-// playlist's track list doesn't need per-track artwork.
+// Same as PlaylistTrackDetailDto, minus albumImageUrl and myNotes — the
+// featured playlist's track list doesn't need per-track artwork or notes.
 public record FeaturedPlaylistTrackDto(
     UUID trackId,
     String trackName,
@@ -23,7 +20,6 @@ public record FeaturedPlaylistTrackDto(
     BigDecimal avgRating,
     long ratingCount,
     BigDecimal myRating,
-    boolean listenedByCurrentUser,
-    List<NoteDto> myNotes
+    boolean listenedByCurrentUser
 ) {
 }

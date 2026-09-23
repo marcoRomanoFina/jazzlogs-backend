@@ -514,7 +514,6 @@ public class PlaylistService {
                 .collect(Collectors.toMap(TrackRatingRepository.TrackRatingStats::getTrackId, stats -> stats));
 
         Set<UUID> listenedTrackIds = currentUserId == null ? Set.of() : listenService.getListenedTrackIds(currentUserId, trackIds);
-        Map<UUID, List<NoteDto>> myNotesByTrack = currentUserId == null ? Map.of() : noteService.getMyNotesForTracks(trackIds, currentUserId);
         Map<UUID, BigDecimal> myRatingByTrack = currentUserId == null || trackIds.isEmpty()
             ? Map.of()
             : trackRatingRepository.findByUserIdAndTrackIdIn(currentUserId, trackIds).stream()
@@ -523,7 +522,7 @@ public class PlaylistService {
         List<FeaturedPlaylistTrackDto> trackDtos = playlistTracks.stream()
             .map(pt -> toFeaturedTrackDto(
                 pt, statsByTrack.get(pt.getTrack().getId()), myRatingByTrack.get(pt.getTrack().getId()),
-                listenedTrackIds.contains(pt.getTrack().getId()), myNotesByTrack.getOrDefault(pt.getTrack().getId(), List.of())
+                listenedTrackIds.contains(pt.getTrack().getId())
             ))
             .toList();
 
@@ -544,7 +543,7 @@ public class PlaylistService {
     }
 
     private FeaturedPlaylistTrackDto toFeaturedTrackDto(
-        PlaylistTrack playlistTrack, TrackRatingRepository.TrackRatingStats stats, BigDecimal myRating, boolean listened, List<NoteDto> myNotes
+        PlaylistTrack playlistTrack, TrackRatingRepository.TrackRatingStats stats, BigDecimal myRating, boolean listened
     ) {
         Track track = playlistTrack.getTrack();
         Album album = track.getAlbum();
@@ -556,7 +555,7 @@ public class PlaylistService {
             playlistTrack.getPosition(), playlistTrack.getTitle(), playlistTrack.getCuratorNote(),
             stats == null ? null : stats.getAvgRating(),
             stats == null ? 0 : stats.getCount(),
-            myRating, listened, myNotes
+            myRating, listened
         );
     }
 
