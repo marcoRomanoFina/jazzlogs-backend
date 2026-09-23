@@ -41,6 +41,8 @@ import com.jazzlogs.backend.note.Note;
 import com.jazzlogs.backend.note.NoteRepository;
 import com.jazzlogs.backend.note.NoteService;
 import com.jazzlogs.backend.note.dto.NoteDto;
+import com.jazzlogs.backend.playlist.dto.FeaturedPlaylistDto;
+import com.jazzlogs.backend.playlist.dto.FeaturedPlaylistTrackDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistDetailDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistSummaryDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistTrackDetailDto;
@@ -608,6 +610,23 @@ class PlaylistServiceTest {
         ResponseStatusException ex = catchThrowableOfType(
             ResponseStatusException.class, () -> playlistService.unsetFeatured(UUID.randomUUID()));
         assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void getFeatured_includesTheFullTrackListWithoutAlbumImageUrl() {
+        UUID playlistId = persistPlaylist("featured-with-tracks");
+        Track track = persistTrack(persistAlbum(persistArtist()), "Track A");
+        playlistService.addTrack(playlistId, track.getId(), "Track Entry", "curator note");
+        playlistService.setFeatured(playlistId);
+
+        FeaturedPlaylistDto featured = playlistService.getFeatured(null, true).orElseThrow();
+
+        assertThat(featured.id()).isEqualTo(playlistId);
+        assertThat(featured.tracks()).hasSize(1);
+        FeaturedPlaylistTrackDto trackDto = featured.tracks().get(0);
+        assertThat(trackDto.trackId()).isEqualTo(track.getId());
+        assertThat(trackDto.trackName()).isEqualTo("Track A");
+        assertThat(trackDto.curatorNote()).isEqualTo("curator note");
     }
 
     private UUID persistPlaylist(String title) {
