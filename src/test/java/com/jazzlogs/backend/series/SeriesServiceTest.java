@@ -757,7 +757,7 @@ class SeriesServiceTest {
 
     @Test
     void getOnboardingSeries_returnsTheSeriesWithTheFixedTitle() {
-        UUID id = seriesRepository.findByTitle(SeriesService.ONBOARDING_SERIES_TITLE).orElseThrow().getId();
+        UUID id = onboardingSeriesId();
         seriesService.publish(id);
 
         SeriesSummaryDto onboarding = seriesService.getOnboardingSeries(false).orElseThrow();
@@ -767,7 +767,7 @@ class SeriesServiceTest {
 
     @Test
     void getOnboardingSeries_hidesAnUnpublishedOneFromNonAdmins() {
-        UUID id = seriesRepository.findByTitle(SeriesService.ONBOARDING_SERIES_TITLE).orElseThrow().getId();
+        UUID id = onboardingSeriesId();
         seriesService.unpublish(id);
 
         assertThat(seriesService.getOnboardingSeries(false)).isEmpty();
@@ -816,6 +816,17 @@ class SeriesServiceTest {
             seriesService.publish(id);
         }
         return id;
+    }
+
+    /**
+     * Find-or-create: the local dev DB has a real, hand-curated "Let Me Show
+     * You Around" series (uq_series_title blocks a second one), but CI's
+     * fresh DB has none — creating it here makes these tests pass in both.
+     */
+    private UUID onboardingSeriesId() {
+        return seriesRepository.findByTitle(SeriesService.ONBOARDING_SERIES_TITLE)
+            .map(Series::getId)
+            .orElseGet(() -> persistSeries(SeriesService.ONBOARDING_SERIES_TITLE, SeriesVoice.MARK, false));
     }
 
     private User persistUser() {
