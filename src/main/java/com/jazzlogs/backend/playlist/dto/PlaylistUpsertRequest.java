@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 import com.jazzlogs.backend.playlist.PlaylistType;
+import com.jazzlogs.backend.series.SeriesVoice;
 
 // Metadata only — no tracklist here. Tracks are managed one at a time via
 // POST/DELETE/PATCH /playlists/{id}/tracks and PUT /playlists/{id}/tracks/reorder,
@@ -25,6 +26,7 @@ public record PlaylistUpsertRequest(
     String coverImageUrl,
     String spotifyUrl,
     @NotNull PlaylistType type,
+    @NotNull SeriesVoice byline,
     List<String> styleCodes,
     List<String> moodCodes,
     List<String> contextCodes,

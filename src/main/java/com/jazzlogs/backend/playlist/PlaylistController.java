@@ -29,6 +29,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.listen.ListenService;
+import com.jazzlogs.backend.playlist.dto.FeaturedPlaylistDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistDetailDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistIdDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistSummaryDto;
@@ -69,7 +70,7 @@ public class PlaylistController {
 
     /** The featured playlist — see {@link PlaylistService#getFeatured}. */
     @GetMapping("/featured")
-    public PlaylistSummaryDto getFeatured(@AuthenticationPrincipal Jwt jwt) {
+    public FeaturedPlaylistDto getFeatured(@AuthenticationPrincipal Jwt jwt) {
         User user = userService.resolveFromJwt(jwt);
         return playlistService.getFeatured(user.getId(), user.getRole() == UserRole.ADMIN)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No playlist is featured"));
@@ -160,6 +161,45 @@ public class PlaylistController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> setCoverImage(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
         playlistService.setCoverImage(id, file);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Uploads the principal/hero image for this playlist's detail page — see {@link PlaylistService#setPrincipalImage}.
+     *
+     * @param id   the playlist
+     * @param file the image file (jpeg/png/webp only, see {@code ImageStorageService})
+     */
+    @PutMapping(value = "/{id}/principal-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> setPrincipalImage(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
+        playlistService.setPrincipalImage(id, file);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Uploads the banner image for this playlist's detail page — see {@link PlaylistService#setBannerImage}.
+     *
+     * @param id   the playlist
+     * @param file the image file (jpeg/png/webp only, see {@code ImageStorageService})
+     */
+    @PutMapping(value = "/{id}/banner-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> setBannerImage(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
+        playlistService.setBannerImage(id, file);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Uploads the footer image for this playlist's detail page — see {@link PlaylistService#setFooterImage}.
+     *
+     * @param id   the playlist
+     * @param file the image file (jpeg/png/webp only, see {@code ImageStorageService})
+     */
+    @PutMapping(value = "/{id}/footer-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> setFooterImage(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
+        playlistService.setFooterImage(id, file);
         return ResponseEntity.noContent().build();
     }
 

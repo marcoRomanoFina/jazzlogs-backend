@@ -33,6 +33,8 @@ import com.jazzlogs.backend.listen.ListenService;
 import com.jazzlogs.backend.listen.ListenableEntityType;
 import com.jazzlogs.backend.note.NoteService;
 import com.jazzlogs.backend.note.dto.NoteDto;
+import com.jazzlogs.backend.playlist.dto.FeaturedPlaylistDto;
+import com.jazzlogs.backend.playlist.dto.FeaturedPlaylistTrackDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistDetailDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistSummaryDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistTrackDetailDto;
@@ -84,7 +86,7 @@ public class PlaylistService {
         assertTitleAvailable(request.title(), null);
         Playlist playlist = new Playlist(
             request.title(), request.tagline(), request.description(),
-            request.coverImageUrl(), request.spotifyUrl(), request.type()
+            request.coverImageUrl(), request.spotifyUrl(), request.type(), request.byline()
         );
         Playlist saved = playlistRepository.save(playlist);
         flushOrThrowOnTitleConflict(request.title());
@@ -106,7 +108,7 @@ public class PlaylistService {
         assertTitleAvailable(request.title(), id);
         playlist.update(
             request.title(), request.tagline(), request.description(),
-            request.coverImageUrl(), request.spotifyUrl(), request.type()
+            request.coverImageUrl(), request.spotifyUrl(), request.type(), request.byline()
         );
         flushOrThrowOnTitleConflict(request.title());
         graphService.syncPlaylistNode(playlist.getId(), playlist.getTitle());
@@ -216,6 +218,50 @@ public class PlaylistService {
         Playlist playlist = getPlaylistOrThrow(id);
         String url = imageStorageService.upload("playlists/" + id + "/cover", file);
         playlist.updateCoverImageUrl(url);
+    }
+
+    /**
+     * Uploads the principal/hero image for this playlist's detail page — a
+     * fourth, distinct image from cover/banner/footer. One object per
+     * playlist ({@code playlists/{id}/principal.<ext>}), so re-uploading
+     * overwrites the old one instead of leaving it orphaned in storage.
+     *
+     * @param id   the playlist
+     * @param file the image file (jpeg/png/webp only)
+     */
+    @Transactional
+    public void setPrincipalImage(UUID id, MultipartFile file) {
+        Playlist playlist = getPlaylistOrThrow(id);
+        String url = imageStorageService.upload("playlists/" + id + "/principal", file);
+        playlist.updatePrincipalImageUrl(url);
+    }
+
+    /**
+     * Uploads the banner image for this playlist's detail page — see {@link
+     * #setPrincipalImage}. One object per playlist ({@code playlists/{id}/banner.<ext>}).
+     *
+     * @param id   the playlist
+     * @param file the image file (jpeg/png/webp only)
+     */
+    @Transactional
+    public void setBannerImage(UUID id, MultipartFile file) {
+        Playlist playlist = getPlaylistOrThrow(id);
+        String url = imageStorageService.upload("playlists/" + id + "/banner", file);
+        playlist.updateBannerImageUrl(url);
+    }
+
+    /**
+     * Uploads the footer image for this playlist's detail page — see {@link
+     * #setPrincipalImage}. One object per playlist ({@code playlists/{id}/footer.<ext>}).
+     *
+     * @param id   the playlist
+     * @param file the image file (jpeg/png/webp only)
+     */
+    @Transactional
+    public void setFooterImage(UUID id, MultipartFile file) {
+        Playlist playlist = getPlaylistOrThrow(id);
+        String url = imageStorageService.upload("playlists/" + id + "/footer", file);
+        playlist.updateFooterImageUrl(url);
     }
 
     /**
@@ -477,7 +523,8 @@ public class PlaylistService {
 
         return new PlaylistDetailDto(
             playlist.getId(), playlist.getTitle(), playlist.getTagline(), playlist.getDescription(),
-            playlist.getCoverImageUrl(), playlist.getSpotifyUrl(), playlist.getType(), playlist.isPublished(),
+            playlist.getCoverImageUrl(), playlist.getPrincipalImageUrl(), playlist.getBannerImageUrl(), playlist.getFooterImageUrl(),
+            playlist.getSpotifyUrl(), playlist.getType(), playlist.getByline(), playlist.isPublished(),
             playlist.getLikeCount(), liked, saved, playlist.getTrackCount(), playlist.getDurationMs(), trackDtos,
             styleTags, moodTags, contextTags, featuredInstruments, playlist.getCreatedAt(), playlist.getUpdatedAt()
         );
@@ -486,18 +533,75 @@ public class PlaylistService {
     /**
      * The singleton featured playlist — see {@code Playlist#featured}/{@code
      * idx_playlists_only_one_featured} (V26), same "at most one" pattern as
-     * {@code Album#featured}. Same lean summary shape as every other playlist
-     * listing (no tracklist) — see {@link PlaylistDetailDto}/{@code GET
-     * /playlists/{id}} for the full track/album/artist fan-out.
+     * {@code Album#featured}. Unlike every other playlist listing, this one
+     * includes the full track list (rating/listened/notes), same fan-out as
+     * {@link #getPlaylistDetail} — just one playlist, so the per-row cost is
+     * fine here. Each track is missing {@code albumImageUrl} though, see
+     * {@link FeaturedPlaylistTrackDto}.
      *
      * @return the featured playlist, empty if none is featured, or if the
      *         featured one isn't published and the caller isn't an admin
      */
     @Transactional(readOnly = true)
-    public Optional<PlaylistSummaryDto> getFeatured(UUID currentUserId, boolean isAdmin) {
+    public Optional<FeaturedPlaylistDto> getFeatured(UUID currentUserId, boolean isAdmin) {
         return playlistRepository.findByFeaturedTrue()
             .filter(playlist -> playlist.isPublished() || isAdmin)
-            .map(playlist -> toSummaryDtos(List.of(playlist), currentUserId).get(0));
+            .map(playlist -> toFeaturedDto(playlist, currentUserId));
+    }
+
+    private FeaturedPlaylistDto toFeaturedDto(Playlist playlist, UUID currentUserId) {
+        UUID id = playlist.getId();
+        List<PlaylistTrack> playlistTracks = playlistTrackRepository.findByPlaylistIdWithTrackDetails(id);
+        List<UUID> trackIds = playlistTracks.stream().map(pt -> pt.getTrack().getId()).toList();
+        Map<UUID, TrackRatingRepository.TrackRatingStats> statsByTrack = trackIds.isEmpty()
+            ? Map.of()
+            : trackRatingRepository.getRatingStatsForTracks(trackIds).stream()
+                .collect(Collectors.toMap(TrackRatingRepository.TrackRatingStats::getTrackId, stats -> stats));
+
+        Set<UUID> listenedTrackIds = currentUserId == null ? Set.of() : listenService.getListenedTrackIds(currentUserId, trackIds);
+        Map<UUID, BigDecimal> myRatingByTrack = currentUserId == null || trackIds.isEmpty()
+            ? Map.of()
+            : trackRatingRepository.findByUserIdAndTrackIdIn(currentUserId, trackIds).stream()
+                .collect(Collectors.toMap(tr -> tr.getTrack().getId(), TrackRating::getRating));
+
+        List<FeaturedPlaylistTrackDto> trackDtos = playlistTracks.stream()
+            .map(pt -> toFeaturedTrackDto(
+                pt, statsByTrack.get(pt.getTrack().getId()), myRatingByTrack.get(pt.getTrack().getId()),
+                listenedTrackIds.contains(pt.getTrack().getId())
+            ))
+            .toList();
+
+        boolean liked = currentUserId != null && likeService.hasUserLiked(currentUserId, LikeableEntityType.PLAYLIST, id);
+        boolean saved = currentUserId != null && savedItemService.isSaved(currentUserId, SaveableEntityType.PLAYLIST, id);
+
+        List<VocabularyTag> styleTags = graphService.getPlaylistStyles(id);
+        List<VocabularyTag> moodTags = graphService.getPlaylistMoods(id);
+        List<VocabularyTag> contextTags = graphService.getPlaylistContexts(id);
+        List<VocabularyTag> featuredInstruments = graphService.getPlaylistFeaturedInstruments(id);
+
+        return new FeaturedPlaylistDto(
+            playlist.getId(), playlist.getTitle(), playlist.getTagline(), playlist.getDescription(),
+            playlist.getCoverImageUrl(), playlist.getSpotifyUrl(), playlist.getType(), playlist.getByline(), playlist.isPublished(),
+            playlist.getLikeCount(), liked, saved, playlist.getTrackCount(), playlist.getDurationMs(), trackDtos,
+            styleTags, moodTags, contextTags, featuredInstruments, playlist.getCreatedAt(), playlist.getUpdatedAt()
+        );
+    }
+
+    private FeaturedPlaylistTrackDto toFeaturedTrackDto(
+        PlaylistTrack playlistTrack, TrackRatingRepository.TrackRatingStats stats, BigDecimal myRating, boolean listened
+    ) {
+        Track track = playlistTrack.getTrack();
+        Album album = track.getAlbum();
+        Artist artist = album.getArtist();
+        return new FeaturedPlaylistTrackDto(
+            track.getId(), track.getName(), track.getDurationMs(), track.getSpotifyUrl(),
+            album.getId(), album.getName(),
+            artist.getId(), artist.getName(),
+            playlistTrack.getPosition(), playlistTrack.getTitle(), playlistTrack.getCuratorNote(),
+            stats == null ? null : stats.getAvgRating(),
+            stats == null ? 0 : stats.getCount(),
+            myRating, listened
+        );
     }
 
     /**
@@ -573,7 +677,7 @@ public class PlaylistService {
         return playlists.stream()
             .map(playlist -> new PlaylistSummaryDto(
                 playlist.getId(), playlist.getTitle(), playlist.getTagline(), playlist.getDescription(),
-                playlist.getCoverImageUrl(), playlist.getSpotifyUrl(), playlist.getType(), playlist.isPublished(),
+                playlist.getCoverImageUrl(), playlist.getSpotifyUrl(), playlist.getType(), playlist.getByline(), playlist.isPublished(),
                 playlist.getLikeCount(), likedIds.contains(playlist.getId()), playlist.getTrackCount(), playlist.getDurationMs(),
                 styleTagsByPlaylist.getOrDefault(playlist.getId(), List.of()),
                 moodTagsByPlaylist.getOrDefault(playlist.getId(), List.of()),

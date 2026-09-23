@@ -8,11 +8,11 @@ import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.playlist.PlaylistType;
 import com.jazzlogs.backend.series.SeriesVoice;
 
-// One shape for every playlist listing that isn't a single-item detail page:
-// GET /playlists, /playlists/journey, /playlists/journeys, /playlists/standard,
-// /playlists/catalogue. No tracklist (see PlaylistDetailDto for that) — every
-// one of those reads is a card/list row, not a full playlist page.
-public record PlaylistSummaryDto(
+// Same fields as PlaylistDetailDto, full track list included (unlike the
+// lean PlaylistSummaryDto every other playlist listing uses) — see
+// FeaturedPlaylistTrackDto for how each track differs from the ordinary
+// detail's PlaylistTrackDetailDto (no albumImageUrl).
+public record FeaturedPlaylistDto(
     UUID id,
     String title,
     String tagline,
@@ -24,8 +24,10 @@ public record PlaylistSummaryDto(
     boolean published,
     int likeCount,
     boolean likedByCurrentUser,
+    boolean savedByCurrentUser,
     int trackCount,
     long durationMs,
+    List<FeaturedPlaylistTrackDto> tracks,
     List<VocabularyTag> styleTags,
     List<VocabularyTag> moodTags,
     List<VocabularyTag> contextTags,
