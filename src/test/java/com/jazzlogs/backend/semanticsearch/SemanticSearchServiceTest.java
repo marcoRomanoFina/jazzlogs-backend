@@ -53,7 +53,7 @@ class SemanticSearchServiceTest {
     @Test
     void emptyCandidateIds_shortCircuitsWithoutTouchingEmbeddingOrRepository() {
         SemanticSearchRequest request = new SemanticSearchRequest(
-            CatalogItemType.TRACK, List.of(), BlockContentCategory.ANECDOTE, null, null, null, null, null, "a mellow late-night session"
+            CatalogItemType.TRACK, List.of(), BlockContentCategory.QUOTE, null, null, null, null, null, "a mellow late-night session"
         );
 
         SemanticSearchResult result = semanticSearchService.search(request);
@@ -65,7 +65,7 @@ class SemanticSearchServiceTest {
     @Test
     void nullCandidateIds_shortCircuitsTheSameWayAsEmpty() {
         SemanticSearchRequest request = new SemanticSearchRequest(
-            CatalogItemType.TRACK, null, BlockContentCategory.ANECDOTE, null, null, null, null, null, "a mellow late-night session"
+            CatalogItemType.TRACK, null, BlockContentCategory.QUOTE, null, null, null, null, null, "a mellow late-night session"
         );
 
         SemanticSearchResult result = semanticSearchService.search(request);
@@ -77,7 +77,7 @@ class SemanticSearchServiceTest {
     @Test
     void nonTrackEntityType_rejectsWithoutTouchingEmbeddingOrRepository() {
         SemanticSearchRequest request = new SemanticSearchRequest(
-            CatalogItemType.ALBUM, List.of(UUID.randomUUID()), BlockContentCategory.ANECDOTE, null, null, null, null, null, "q"
+            CatalogItemType.ALBUM, List.of(UUID.randomUUID()), BlockContentCategory.QUOTE, null, null, null, null, null, "q"
         );
 
         ResponseStatusException ex = org.assertj.core.api.Assertions.catchThrowableOfType(
@@ -120,13 +120,13 @@ class SemanticSearchServiceTest {
         SemanticMatchRow row = matchRow(UUID.randomUUID(), "So What", "a story about the session", 0.9);
         when(editorialBlockRepository.semanticSearchTracks(any(), any(), any(), any(), any(), any(), any(), any(), anyInt())).thenReturn(List.of(row));
         SemanticSearchRequest request = new SemanticSearchRequest(
-            CatalogItemType.TRACK, List.of(UUID.randomUUID()), BlockContentCategory.ANECDOTE, null, null, null, null, null, "q"
+            CatalogItemType.TRACK, List.of(UUID.randomUUID()), BlockContentCategory.QUOTE, null, null, null, null, null, "q"
         );
 
         SemanticSearchResult result = semanticSearchService.search(request);
 
         assertThat(result.matches()).hasSize(1);
-        assertThat(result.matches().get(0).category()).isEqualTo(BlockContentCategory.ANECDOTE);
+        assertThat(result.matches().get(0).category()).isEqualTo(BlockContentCategory.QUOTE);
         assertThat(result.matches().get(0).entityType()).isEqualTo(CatalogItemType.TRACK);
         assertThat(result.matches().get(0).entityName()).isEqualTo("So What");
         assertThat(result.matches().get(0).blockText()).isEqualTo("a story about the session");
@@ -151,7 +151,7 @@ class SemanticSearchServiceTest {
         when(embeddingService.embed(any())).thenReturn(new float[] {0.1f});
         when(editorialBlockRepository.semanticSearchTracks(any(), any(), any(), any(), any(), any(), any(), any(), anyInt())).thenReturn(List.of());
         SemanticSearchRequest request = new SemanticSearchRequest(
-            CatalogItemType.TRACK, List.of(UUID.randomUUID()), BlockContentCategory.PERSONAL_TAKE, null, null, null, null, null, "q"
+            CatalogItemType.TRACK, List.of(UUID.randomUUID()), BlockContentCategory.RECOMMENDATION, null, null, null, null, null, "q"
         );
 
         semanticSearchService.search(request);

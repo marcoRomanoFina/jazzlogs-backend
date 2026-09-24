@@ -41,7 +41,7 @@ public class VocabularyProvider {
     }
 
     // BlockContentCategory has no EditorialVocabularyValue label — humanize the
-    // enum constant itself (HISTORICAL_CONTEXT -> "Historical Context").
+    // enum constant itself (MOOD_AND_ATMOSPHERE -> "Mood And Atmosphere").
     public String editorialCategories() {
         return Arrays.stream(BlockContentCategory.values())
             .map(VocabularyProvider::humanize)

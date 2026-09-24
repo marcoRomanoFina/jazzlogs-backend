@@ -130,7 +130,7 @@ class EditorialServiceTest {
         ));
         when(embeddingService.embedBatch(List.of("Some editorial prose."))).thenReturn(List.of(new float[] {0.1f}));
 
-        BlockRequest block = new BlockRequest(EditorialBlockType.PARA, null, "Some editorial prose.", BlockContentCategory.HISTORICAL_CONTEXT);
+        BlockRequest block = new BlockRequest(EditorialBlockType.PARA, null, "Some editorial prose.", BlockContentCategory.CONTEXT);
         TrackEditorial saved = editorialService.upsertTrackEditorial(
             track.getId(), new TrackEditorialRequest("Metadata Test Editorial", "dek", EditorialByline.JAZZLOGS, List.of(block))
         );
