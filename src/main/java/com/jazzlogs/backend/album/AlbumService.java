@@ -1,7 +1,6 @@
 package com.jazzlogs.backend.album;
 
 import java.math.BigDecimal;
-import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -9,7 +8,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,29 +15,18 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.album.dto.AlbumHeaderDto;
 import com.jazzlogs.backend.album.dto.ContextTagRequest;
-import com.jazzlogs.backend.album.dto.CoverColorRequest;
-import com.jazzlogs.backend.album.dto.CreateAlbumRequest;
-import com.jazzlogs.backend.album.dto.LetterColorRequest;
 import com.jazzlogs.backend.album.dto.MoodTagRequest;
-import com.jazzlogs.backend.album.dto.PersonnelRequest;
 import com.jazzlogs.backend.album.dto.StyleTagRequest;
-import com.jazzlogs.backend.artist.Artist;
-import com.jazzlogs.backend.artist.ArtistRepository;
 import com.jazzlogs.backend.editorial.EditorialService;
-import com.jazzlogs.backend.editorial.dto.AlbumEditorialDto;
+import com.jazzlogs.backend.editorial.TrackEditorialRepository;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialDto;
-import com.jazzlogs.backend.graph.AlbumHeaderGraphData;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.TrackPerformerEntry;
 import com.jazzlogs.backend.graph.TrackPlacement;
 import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.listen.ListenService;
-import com.jazzlogs.backend.review.ReviewService;
-import com.jazzlogs.backend.review.dto.AlbumRatingStats;
 import com.jazzlogs.backend.saveditem.SavedItemService;
 import com.jazzlogs.backend.saveditem.SaveableEntityType;
-import com.jazzlogs.backend.spotify.SpotifyAlbumData;
-import com.jazzlogs.backend.spotify.SpotifyCatalogService;
 import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackBatchContext;
 import com.jazzlogs.backend.track.TrackService;
@@ -47,7 +34,6 @@ import com.jazzlogs.backend.track.dto.TrackDto;
 import com.jazzlogs.backend.trackrating.TrackRating;
 import com.jazzlogs.backend.trackrating.TrackRatingRepository;
 import com.jazzlogs.backend.vocabulary.ContextVocabulary;
-import com.jazzlogs.backend.vocabulary.InstrumentVocabulary;
 import com.jazzlogs.backend.vocabulary.MoodVocabulary;
 import com.jazzlogs.backend.vocabulary.StyleVocabulary;
 import com.jazzlogs.backend.vocabulary.VocabularyCodes;
@@ -59,149 +45,13 @@ import lombok.AllArgsConstructor;
 public class AlbumService {
 
     private final AlbumRepository albumRepository;
-    private final ArtistRepository artistRepository;
     private final GraphService graphService;
-    private final SpotifyCatalogService spotifyCatalogService;
     private final TrackService trackService;
     private final EditorialService editorialService;
-    private final ReviewService reviewService;
+    private final TrackEditorialRepository trackEditorialRepository;
     private final ListenService listenService;
     private final SavedItemService savedItemService;
     private final TrackRatingRepository trackRatingRepository;
-
-    // Upsert on spotifyAlbumId: re-posting an album that's already in the
-    // catalog updates it in place (fresh Spotify data + the editable fields
-    // below) instead of creating a duplicate. postedAt is only stamped on the
-    // create path — an update never resets when the album was first posted.
-    // totalTracks isn't Spotify's own count — it's ours, driven by how many
-    // tracks actually get catalogued (see TrackService#createOrUpdateTrack) —
-    // so a brand-new album starts at 0, not data.totalTracks().
-    @Transactional
-    public Album createOrUpdateAlbum(CreateAlbumRequest request) {
-        Artist artist = getArtistOrThrow(request.artistId());
-        SpotifyAlbumData data = spotifyCatalogService.fetchAlbum(request.spotifyAlbumId());
-
-        Album album = albumRepository.findBySpotifyAlbumId(request.spotifyAlbumId())
-            .map(existing -> applyToExisting(existing, data, request))
-            .orElseGet(() -> new Album(
-                artist,
-                data.name(),
-                request.spotifyAlbumId(),
-                data.spotifyUrl(),
-                data.imageUrl(),
-                data.releaseYear(),
-                0,
-                request.logNumber(),
-                request.label(),
-                request.vocalProfile(),
-                request.energy(),
-                request.moodIntensity(),
-                request.accessibility(),
-                Instant.now(),
-                request.instagramPermalink()
-            ));
-
-        Album saved = albumRepository.save(album);
-        graphService.syncAlbumNode(saved.getId(), saved.getName());
-
-        // Tracks are created independently via POST /albums/{id}/tracks, not here —
-        // each one looks itself up on Spotify (see TrackService.addTrack) instead of
-        // being derived from this album fetch.
-        return saved;
-    }
-
-    private Album applyToExisting(Album album, SpotifyAlbumData data, CreateAlbumRequest request) {
-        album.setName(data.name());
-        album.setSpotifyUrl(data.spotifyUrl());
-        album.setImageUrl(data.imageUrl());
-        album.setReleaseYear(data.releaseYear());
-        // totalTracks is never refreshed from Spotify here — it's ours, bumped
-        // as tracks actually get catalogued, not Spotify's own track count.
-        album.setLogNumber(request.logNumber());
-        album.setLabel(request.label());
-        album.setVocalProfile(request.vocalProfile());
-        album.setEnergy(request.energy());
-        album.setMoodIntensity(request.moodIntensity());
-        album.setAccessibility(request.accessibility());
-        album.setInstagramPermalink(request.instagramPermalink());
-        return album;
-    }
-
-    /**
-     * Adds this artist to the album's personnel as either the leader
-     * ({@code LEADER_OF}) or a sideman ({@code SIDEMAN_ON}) — an
-     * admin-curated Neo4j edge, unrelated to {@code Album.artist} (the
-     * single leading artist enforced in Postgres; not cross-checked here).
-     * {@code MERGE}d on the graph side, so re-posting the same
-     * artist/album/role pair updates {@code instruments} instead of
-     * duplicating the edge.
-     *
-     * @param albumId the album
-     * @param request the artist, role (LEADER/SIDEMAN), and instruments played
-     */
-    public void addPersonnel(UUID albumId, PersonnelRequest request) {
-        getAlbumOrThrow(albumId);
-        getArtistOrThrow(request.artistId());
-
-        List<String> instruments = request.instruments() == null ? List.of() : request.instruments();
-        instruments.forEach(code -> VocabularyCodes.validate(InstrumentVocabulary.class, code, "instrument"));
-
-        if (request.role() == PersonnelRole.LEADER) {
-            graphService.setAlbumLeader(request.artistId(), albumId, instruments);
-        } else {
-            graphService.addSideman(request.artistId(), albumId, instruments);
-        }
-    }
-
-    /**
-     * Removes this artist from the album's personnel — {@code role} says
-     * which edge to remove, since an artist could in theory have both a
-     * {@code LEADER_OF} and a {@code SIDEMAN_ON} edge to the same album.
-     *
-     * @param albumId  the album
-     * @param artistId the artist
-     * @param role     which edge to remove (LEADER/SIDEMAN)
-     */
-    public void removePersonnel(UUID albumId, UUID artistId, PersonnelRole role) {
-        getAlbumOrThrow(albumId);
-        getArtistOrThrow(artistId);
-
-        if (role == PersonnelRole.LEADER) {
-            graphService.removeAlbumLeader(artistId, albumId);
-        } else {
-            graphService.removeSideman(artistId, albumId);
-        }
-    }
-
-    /**
-     * Marks this album as a good entry point into an artist — see {@code
-     * ArtistService#getEssentialListening}.
-     *
-     * @param albumId  the album
-     * @param artistId the artist this album is a good entry point into — must be this album's own artist
-     * @throws ResponseStatusException 400 if this artist isn't this album's own artist
-     */
-    public void markEntryPoint(UUID albumId, UUID artistId) {
-        Album album = getAlbumOrThrow(albumId);
-        getArtistOrThrow(artistId);
-        if (!album.getArtist().getId().equals(artistId)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Album " + albumId + " isn't by artist " + artistId);
-        }
-        graphService.markAsEntryPoint(albumId, artistId);
-    }
-
-    /**
-     * Unmarks this album as a good entry point into an artist — idempotent,
-     * does nothing if it wasn't marked.
-     *
-     * @param albumId  the album
-     * @param artistId the artist
-     */
-    public void unmarkEntryPoint(UUID albumId, UUID artistId) {
-        getAlbumOrThrow(albumId);
-        getArtistOrThrow(artistId);
-        graphService.unmarkAsEntryPoint(albumId, artistId);
-    }
 
     public void replaceStyles(UUID albumId, StyleTagRequest request) {
         getAlbumOrThrow(albumId);
@@ -222,117 +72,15 @@ public class AlbumService {
     }
 
     /**
-     * Sets an album's curated cover color.
+     * The album's minimal support metadata — no editorial, no own page.
      *
-     * @param albumId the album
-     * @param request the color to set
-     */
-    @Transactional
-    public void setCoverColor(UUID albumId, CoverColorRequest request) {
-        getAlbumOrThrow(albumId).setCoverColor(request.coverColor());
-    }
-
-    /**
-     * Clears an album's curated cover color, back to {@code null} — the
-     * frontend falls back to its own automatic sampling.
-     *
-     * @param albumId the album
-     */
-    @Transactional
-    public void clearCoverColor(UUID albumId) {
-        getAlbumOrThrow(albumId).setCoverColor(null);
-    }
-
-    /**
-     * Sets an album's curated letter (text) color.
-     *
-     * @param albumId the album
-     * @param request the color to set
-     */
-    @Transactional
-    public void setLetterColor(UUID albumId, LetterColorRequest request) {
-        getAlbumOrThrow(albumId).setLetterColor(request.letterColor());
-    }
-
-    /**
-     * Clears an album's curated letter color, back to {@code null} — the
-     * frontend falls back to its own default.
-     *
-     * @param albumId the album
-     */
-    @Transactional
-    public void clearLetterColor(UUID albumId) {
-        getAlbumOrThrow(albumId).setLetterColor(null);
-    }
-
-    /**
-     * Marks this album as THE featured album — the archive hero's source
-     * (see {@code EditorialService#getFeatured}), unfeaturing whichever one
-     * (if any) held that spot before. {@code idx_albums_only_one_featured}
-     * (see V24) is what actually guarantees at most one stays featured
-     * under concurrent calls — clearFeatured()+markFeatured() alone can't:
-     * two overlapping calls can each see nothing featured, clear nothing,
-     * then both mark a different row true. The unique index turns that
-     * into a thrown exception here instead of silently leaving two albums
-     * featured.
-     *
-     * @param albumId the album
-     * @throws ResponseStatusException 404 if the album doesn't exist, 409 if
-     *                                  it has no {@code AlbumEditorial} yet
-     *                                  (a featured album with no editorial
-     *                                  wouldn't show up in the hero at all)
-     *                                  or if a concurrent call already
-     *                                  featured a different album
-     */
-    @Transactional
-    public void setFeatured(UUID albumId) {
-        getAlbumOrThrow(albumId);
-        if (!editorialService.hasAlbumEditorial(albumId)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Album has no editorial yet, can't be featured");
-        }
-        albumRepository.clearFeatured();
-        try {
-            albumRepository.markFeatured(albumId);
-        } catch (DataIntegrityViolationException e) {
-            throw new ResponseStatusException(
-                HttpStatus.CONFLICT, "Another album was just featured concurrently — try again", e
-            );
-        }
-    }
-
-    /** Removes this album from being THE featured one — a no-op if it wasn't. */
-    @Transactional
-    public void unsetFeatured(UUID albumId) {
-        getAlbumOrThrow(albumId);
-        albumRepository.unmarkFeatured(albumId);
-    }
-
-    /**
-     * The album page's fast, above-the-fold load — everything about the
-     * album except its track list (see {@link #getAlbumTracks}, fetched
-     * separately since it's the expensive part).
-     *
-     * @param albumId       the album to load
-     * @param currentUserId whose listen/save state to include
+     * @param albumId the album to load
      * @return the album header
      * @throws ResponseStatusException 404 if the album doesn't exist
      */
     @Transactional(readOnly = true)
-    public AlbumHeaderDto getAlbumHeader(UUID albumId, UUID currentUserId) {
+    public AlbumHeaderDto getAlbumHeader(UUID albumId) {
         Album album = getAlbumOrThrow(albumId);
-
-        AlbumEditorialDto editorialDto = editorialService.getAlbumEditorialDto(albumId, currentUserId);
-        AlbumRatingStats ratingStats = reviewService.getAlbumRatingStats(albumId);
-
-        // One round trip for styles+moods+contexts+personnel together,
-        // instead of four separate ones.
-        AlbumHeaderGraphData graphData = graphService.getAlbumHeaderGraphData(albumId);
-
-        // hasListened/listenedTrackCount are derived from per-track listen
-        // state, so this still needs trackIds + one batched listen query —
-        // cheap compared to what getAlbumTracks does with the same ids.
-        List<UUID> trackIds = album.getTracks().stream().map(Track::getId).toList();
-        Set<UUID> listenedTrackIds = listenService.getListenedTrackIds(currentUserId, trackIds);
 
         return new AlbumHeaderDto(
             album.getId(),
@@ -344,29 +92,7 @@ public class AlbumService {
             album.getImageUrl(),
             album.getReleaseYear(),
             album.getTotalTracks(),
-            album.getLogNumber(),
-            album.getLabel(),
-            album.getVocalProfile(),
-            album.getEnergy(),
-            album.getMoodIntensity(),
-            album.getAccessibility(),
-            album.getPostedAt(),
-            album.getInstagramPermalink(),
-            album.getCoverColor(),
-            album.getLetterColor(),
-            editorialDto,
-            graphData.styles(),
-            graphData.moods(),
-            graphData.contexts(),
-            graphData.personnel(),
-            ratingStats.avgRating(),
-            ratingStats.count(),
-            // Derived live from the same listenedTrackIds computed above, not
-            // a separately-set flag.
-            !trackIds.isEmpty() && listenedTrackIds.size() == trackIds.size(),
-            listenedTrackIds.size(),
-            listenService.countAlbumListens(albumId),
-            savedItemService.isSaved(currentUserId, SaveableEntityType.ALBUM, albumId)
+            trackEditorialRepository.countByTrackAlbumId(albumId)
         );
     }
 
@@ -392,11 +118,12 @@ public class AlbumService {
         // One query for every track's own editorial, instead of one per track.
         Map<UUID, TrackEditorialDto> editorialsByTrack = editorialService.getTrackEditorialDtosByAlbumId(albumId);
 
-        // Same idea again, this time for the five Neo4j lookups toDto used to
-        // run once per track (performers, moods, contexts, rhythms, featured
-        // instruments) — this was the real N+1: 5 graph round-trips per
-        // track, not just the one editorial query above.
+        // Same idea again, this time for the six Neo4j lookups toDto used to
+        // run once per track (performers, styles, moods, contexts, rhythms,
+        // featured instruments) — this was the real N+1: 6 graph round-trips
+        // per track, not just the one editorial query above.
         Map<UUID, List<TrackPerformerEntry>> performersByTrack = graphService.getTrackPerformersForAlbum(albumId);
+        Map<UUID, List<VocabularyTag>> stylesByTrack = graphService.getTrackStylesForAlbum(albumId);
         Map<UUID, List<VocabularyTag>> moodsByTrack = graphService.getTrackMoodsForAlbum(albumId);
         Map<UUID, List<VocabularyTag>> contextsByTrack = graphService.getTrackContextsForAlbum(albumId);
         Map<UUID, List<VocabularyTag>> rhythmsByTrack = graphService.getTrackRhythmsForAlbum(albumId);
@@ -427,6 +154,7 @@ public class AlbumService {
                     placements.get(trackId),
                     editorialsByTrack.get(trackId),
                     performersByTrack.getOrDefault(trackId, List.of()),
+                    stylesByTrack.getOrDefault(trackId, List.of()),
                     moodsByTrack.getOrDefault(trackId, List.of()),
                     contextsByTrack.getOrDefault(trackId, List.of()),
                     rhythmsByTrack.getOrDefault(trackId, List.of()),
@@ -445,10 +173,5 @@ public class AlbumService {
     private Album getAlbumOrThrow(UUID albumId) {
         return albumRepository.findById(albumId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Album not found: " + albumId));
-    }
-
-    private Artist getArtistOrThrow(UUID artistId) {
-        return artistRepository.findById(artistId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Artist not found: " + artistId));
     }
 }

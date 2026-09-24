@@ -13,8 +13,6 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.album.AlbumRepository;
-import com.jazzlogs.backend.album.Level;
-import com.jazzlogs.backend.album.VocalProfile;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
 import com.jazzlogs.backend.listen.ListenService;
@@ -148,8 +146,7 @@ class SavedItemServiceTest {
 
     private Album persistAlbum(Artist artist) {
         return albumRepository.save(new Album(
-            artist, "Test Album", null, null, null, 2024, 1, "LOG-1", "LABEL-1",
-            VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
+            artist, "Test Album", null, null, null, 2024, 1
         ));
     }
 

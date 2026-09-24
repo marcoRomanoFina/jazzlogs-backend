@@ -16,9 +16,10 @@ import lombok.NoArgsConstructor;
 
 import org.springframework.data.domain.Persistable;
 
-// entity_id is deliberately not a foreign key — Editorial, Review, Playlist, Note
-// and Series are unrelated domain entities with no common superclass. Existence
-// of entityId is validated in LikeService before insert, not by the database.
+// entity_id is deliberately not a foreign key — Editorial (track editorials
+// only), Playlist, Note and Series are unrelated domain entities with no
+// common superclass. Existence of entityId is validated in LikeService
+// before insert, not by the database.
 //
 // Persistable<LikeId>: id is a manually assigned @EmbeddedId, always non-null
 // once constructed — without this, Spring Data's default "is it new?" check

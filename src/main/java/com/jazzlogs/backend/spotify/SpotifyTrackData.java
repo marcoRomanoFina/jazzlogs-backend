@@ -6,6 +6,8 @@ public record SpotifyTrackData(
     Integer durationMs,
     String spotifyUrl,
     Integer trackNumber,
-    String imageUrl
+    String imageUrl,
+    SpotifyTrackAlbumData album,
+    SpotifyTrackArtistData artist
 ) {
 }

@@ -107,152 +107,9 @@ public class GraphService {
     }
 
     /**
-     * Creates/updates the {@code LEADER_OF} edge from an artist to an
-     * album, recording which instruments they played on it — {@code
-     * MERGE}d, so calling this again for the same pair just replaces
-     * {@code instruments} instead of duplicating the edge.
-     *
-     * @param artistId    the leading artist
-     * @param albumId     the album
-     * @param instruments instruments this artist played on the album
-     */
-    public void setAlbumLeader(UUID artistId, UUID albumId, List<String> instruments) {
-        write("set LEADER_OF artist=" + artistId + " album=" + albumId, () ->
-            neo4jClient.query("""
-                    MATCH (ar:Artist {id: $artistId}), (al:Album {id: $albumId})
-                    MERGE (ar)-[l:LEADER_OF]->(al)
-                    SET l.instruments = $instruments
-                    """)
-                .bind(artistId.toString()).to("artistId")
-                .bind(albumId.toString()).to("albumId")
-                .bind(instruments).to("instruments")
-                .run());
-    }
-
-    /**
-     * Creates/updates the {@code SIDEMAN_ON} edge from an artist to an
-     * album, recording which instruments they played on it — see {@link
-     * #getSidemanAlbumIds}, which reads it back. {@code MERGE}d, same as
-     * {@link #setAlbumLeader}.
-     *
-     * @param artistId    the sideman
-     * @param albumId     the album
-     * @param instruments instruments this artist played on the album
-     */
-    public void addSideman(UUID artistId, UUID albumId, List<String> instruments) {
-        write("add SIDEMAN_ON artist=" + artistId + " album=" + albumId, () ->
-            neo4jClient.query("""
-                    MATCH (ar:Artist {id: $artistId}), (al:Album {id: $albumId})
-                    MERGE (ar)-[s:SIDEMAN_ON]->(al)
-                    SET s.instruments = $instruments
-                    """)
-                .bind(artistId.toString()).to("artistId")
-                .bind(albumId.toString()).to("albumId")
-                .bind(instruments).to("instruments")
-                .run());
-    }
-
-    /**
-     * Removes the {@code LEADER_OF} edge from an artist to an album, if it
-     * exists — a no-op otherwise.
-     *
-     * @param artistId the leading artist
-     * @param albumId  the album
-     */
-    public void removeAlbumLeader(UUID artistId, UUID albumId) {
-        write("remove LEADER_OF artist=" + artistId + " album=" + albumId, () ->
-            neo4jClient.query("""
-                    MATCH (ar:Artist {id: $artistId})-[l:LEADER_OF]->(al:Album {id: $albumId})
-                    DELETE l
-                    """)
-                .bind(artistId.toString()).to("artistId")
-                .bind(albumId.toString()).to("albumId")
-                .run());
-    }
-
-    /**
-     * Removes the {@code SIDEMAN_ON} edge from an artist to an album, if it
-     * exists — a no-op otherwise.
-     *
-     * @param artistId the sideman
-     * @param albumId  the album
-     */
-    public void removeSideman(UUID artistId, UUID albumId) {
-        write("remove SIDEMAN_ON artist=" + artistId + " album=" + albumId, () ->
-            neo4jClient.query("""
-                    MATCH (ar:Artist {id: $artistId})-[s:SIDEMAN_ON]->(al:Album {id: $albumId})
-                    DELETE s
-                    """)
-                .bind(artistId.toString()).to("artistId")
-                .bind(albumId.toString()).to("albumId")
-                .run());
-    }
-
-    /**
-     * Creates the {@code ENTRY_POINT_TO} edge from an album to an artist —
-     * see {@link #getEntryPointAlbumIds}, which reads it back.
-     *
-     * @param albumId  the album
-     * @param artistId the artist this album is a good entry point into
-     */
-    public void markAsEntryPoint(UUID albumId, UUID artistId) {
-        write("add ENTRY_POINT_TO album=" + albumId + " artist=" + artistId, () ->
-            neo4jClient.query("""
-                    MATCH (al:Album {id: $albumId}), (ar:Artist {id: $artistId})
-                    MERGE (al)-[:ENTRY_POINT_TO]->(ar)
-                    """)
-                .bind(albumId.toString()).to("albumId")
-                .bind(artistId.toString()).to("artistId")
-                .run());
-    }
-
-    /**
-     * Removes the {@code ENTRY_POINT_TO} edge from an album to an artist, if
-     * it exists — a no-op otherwise.
-     *
-     * @param albumId  the album
-     * @param artistId the artist
-     */
-    public void unmarkAsEntryPoint(UUID albumId, UUID artistId) {
-        write("remove ENTRY_POINT_TO album=" + albumId + " artist=" + artistId, () ->
-            neo4jClient.query("""
-                    MATCH (al:Album {id: $albumId})-[r:ENTRY_POINT_TO]->(ar:Artist {id: $artistId})
-                    DELETE r
-                    """)
-                .bind(albumId.toString()).to("albumId")
-                .bind(artistId.toString()).to("artistId")
-                .run());
-    }
-
-    /**
-     * Every album curated as a good entry point into an artist — unpaged,
-     * on purpose: this is a small, curated set (an admin picks each one via
-     * {@link #markAsEntryPoint}), not something that grows unbounded like a
-     * track/note feed. The caller (ArtistService.getEssentialListening)
-     * paginates over these ids in Postgres instead of paging this query.
-     *
-     * @param artistId the artist
-     * @return every entry-point album's id, unordered
-     */
-    public List<UUID> getEntryPointAlbumIds(UUID artistId) {
-        return read("read ENTRY_POINT_TO album ids for artist=" + artistId, () ->
-            neo4jClient.query("""
-                    MATCH (al:Album)-[:ENTRY_POINT_TO]->(ar:Artist {id: $artistId})
-                    RETURN al.id AS albumId
-                    """)
-                .bind(artistId.toString()).to("artistId")
-                .fetch()
-                .all()
-                .stream()
-                .map(row -> UUID.fromString((String) row.get("albumId")))
-                .toList());
-    }
-
-    /**
      * Every album where this artist appears as a sideman ({@code SIDEMAN_ON}),
-     * not as the leading artist — unpaged, same reasoning as {@link
-     * #getEntryPointAlbumIds}: a single id-only read, cheap even for a
-     * prolific session musician. The caller (ArtistService.getSidemanAlbums)
+     * not as the leading artist — unpaged: a small, cheap-to-read set even
+     * for a prolific session musician. The caller (ArtistService.getSidemanAlbums)
      * paginates over these ids in Postgres instead of paging this query.
      *
      * @param artistId the artist
@@ -298,38 +155,9 @@ public class GraphService {
     }
 
     /**
-     * Delete-then-recreate, not MERGE+SET — a rating can change, so any stale
-     * RATED edge from a previous review must go before the new one lands.
-     * Same MATCH-then-MERGE / non-swallowed-here contract as markAlbumListened;
-     * ReviewService catches the GraphWriteException this throws on failure.
-     */
-    public void rateAlbum(UUID userId, UUID albumId, BigDecimal rating, Instant ratedAt) {
-        write("set RATED user=" + userId + " album=" + albumId, () ->
-            neo4jClient.query("""
-                    MATCH (u:User {id: $userId})
-                    MATCH (al:Album {id: $albumId})
-                    OPTIONAL MATCH (u)-[old:RATED]->(al)
-                    DELETE old
-                    MERGE (u)-[r:RATED]->(al)
-                    SET r.rating = $rating, r.ratedAt = $ratedAt
-                    """)
-                .bind(userId.toString()).to("userId")
-                .bind(albumId.toString()).to("albumId")
-                // Neither BigDecimal nor Instant is a type the driver's
-                // automatic Java -> Cypher conversion understands (see
-                // Values.value(Object)) — Cypher only has a 64-bit float, and
-                // temporal values need an offset/zone attached.
-                .bind(rating.doubleValue()).to("rating")
-                .bind(ratedAt.atOffset(ZoneOffset.UTC)).to("ratedAt")
-                .run());
-    }
-
-    /**
-     * Delete-then-recreate, same contract as rateAlbum — a rating can change,
+     * Delete-then-recreate, same contract as markAlbumListened — a rating can change,
      * so any stale RATED_TRACK edge must go before the new one lands.
-     * RATED_TRACK, not RATED, to avoid ambiguity with the Album-level
-     * relationship rateAlbum creates. TrackRatingService catches the
-     * GraphWriteException this throws on failure.
+     * TrackRatingService catches the GraphWriteException this throws on failure.
      */
     public void rateTrack(UUID userId, UUID trackId, BigDecimal rating, Instant ratedAt) {
         write("set RATED_TRACK user=" + userId + " track=" + trackId, () ->
@@ -361,63 +189,6 @@ public class GraphService {
         replaceTags("Album", albumId, "PERFECT_FOR", "Context", contextCodes);
     }
 
-    /**
-     * Styles/moods/contexts/personnel for the album header, in a single
-     * round trip — these used to be four separate {@code getStyles}/{@code
-     * getMoods}/{@code getContexts}/{@code getPersonnel} calls (four
-     * queries) before {@code AlbumService#getAlbumHeader} became its own
-     * fast endpoint, at which point four round trips for one header
-     * response was worth collapsing into one.
-     *
-     * @param albumId the album to read
-     * @return empty lists (not null) for anything the album has none of, including
-     *         when the album node itself isn't in Neo4j at all
-     */
-    @SuppressWarnings("unchecked")
-    public AlbumHeaderGraphData getAlbumHeaderGraphData(UUID albumId) {
-        return read("read header graph data for album=" + albumId, () ->
-            neo4jClient.query("""
-                    MATCH (al:Album {id: $albumId})
-                    OPTIONAL MATCH (al)-[:BELONGS_TO]->(style:Style)
-                    WITH al, collect(DISTINCT style.label) AS styleLabels
-                    OPTIONAL MATCH (al)-[:EVOKES_MOOD]->(mood:Mood)
-                    WITH al, styleLabels, collect(DISTINCT mood.label) AS moodLabels
-                    OPTIONAL MATCH (al)-[:PERFECT_FOR]->(context:Context)
-                    WITH al, styleLabels, moodLabels, collect(DISTINCT context.label) AS contextLabels
-                    OPTIONAL MATCH (ar:Artist)-[r:LEADER_OF|SIDEMAN_ON]->(al)
-                    WITH styleLabels, moodLabels, contextLabels,
-                         collect(DISTINCT CASE WHEN ar IS NULL THEN NULL
-                             ELSE {artistId: ar.id, artistName: ar.name, relType: type(r), instruments: r.instruments} END) AS personnelRaw
-                    RETURN
-                        [x IN styleLabels WHERE x IS NOT NULL] AS styles,
-                        [x IN moodLabels WHERE x IS NOT NULL] AS moods,
-                        [x IN contextLabels WHERE x IS NOT NULL] AS contexts,
-                        [p IN personnelRaw WHERE p IS NOT NULL] AS personnel
-                    """)
-                .bind(albumId.toString()).to("albumId")
-                .fetch()
-                .one()
-                .map(row -> new AlbumHeaderGraphData(
-                    (List<String>) row.get("styles"),
-                    (List<String>) row.get("moods"),
-                    (List<String>) row.get("contexts"),
-                    toPersonnelEntries((List<Map<String, Object>>) row.get("personnel"))
-                ))
-                .orElse(new AlbumHeaderGraphData(List.of(), List.of(), List.of(), List.of())));
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<AlbumPersonnelEntry> toPersonnelEntries(List<Map<String, Object>> maps) {
-        return maps.stream()
-            .map(m -> new AlbumPersonnelEntry(
-                UUID.fromString((String) m.get("artistId")),
-                (String) m.get("artistName"),
-                "LEADER_OF".equals(m.get("relType")) ? "LEADER" : "SIDEMAN",
-                m.get("instruments") == null ? List.of() : (List<String>) m.get("instruments")
-            ))
-            .toList();
-    }
-
     // --- Track relationships ---
 
     public void addPerformance(UUID artistId, UUID trackId, String role, String instrumentCode, boolean primaryCredit) {
@@ -438,6 +209,10 @@ public class GraphService {
                 .run());
     }
 
+    public void replaceTrackStyles(UUID trackId, List<String> styleCodes) {
+        replaceTags("Track", trackId, "BELONGS_TO", "Style", styleCodes);
+    }
+
     public void replaceTrackMoods(UUID trackId, List<String> moodCodes) {
         replaceTags("Track", trackId, "EVOKES_MOOD", "Mood", moodCodes);
     }
@@ -452,41 +227,6 @@ public class GraphService {
 
     public void replaceFeaturedInstruments(UUID trackId, List<String> instrumentCodes) {
         replaceTags("Track", trackId, "FEATURES_INSTRUMENT", "Instrument", instrumentCodes);
-    }
-
-    /**
-     * Creates the {@code ENTRY_POINT_TO} edge from a track to an artist.
-     *
-     * @param trackId  the track
-     * @param artistId the artist this track is a good entry point into
-     */
-    public void markTrackAsEntryPoint(UUID trackId, UUID artistId) {
-        write("add ENTRY_POINT_TO track=" + trackId + " artist=" + artistId, () ->
-            neo4jClient.query("""
-                    MATCH (tr:Track {id: $trackId}), (ar:Artist {id: $artistId})
-                    MERGE (tr)-[:ENTRY_POINT_TO]->(ar)
-                    """)
-                .bind(trackId.toString()).to("trackId")
-                .bind(artistId.toString()).to("artistId")
-                .run());
-    }
-
-    /**
-     * Removes the {@code ENTRY_POINT_TO} edge from a track to an artist, if
-     * it exists — a no-op otherwise.
-     *
-     * @param trackId  the track
-     * @param artistId the artist
-     */
-    public void unmarkTrackAsEntryPoint(UUID trackId, UUID artistId) {
-        write("remove ENTRY_POINT_TO track=" + trackId + " artist=" + artistId, () ->
-            neo4jClient.query("""
-                    MATCH (tr:Track {id: $trackId})-[r:ENTRY_POINT_TO]->(ar:Artist {id: $artistId})
-                    DELETE r
-                    """)
-                .bind(trackId.toString()).to("trackId")
-                .bind(artistId.toString()).to("artistId")
-                .run());
     }
 
     /** Same MATCH-then-MERGE / non-swallowed-here contract as markAlbumListened. */
@@ -505,35 +245,8 @@ public class GraphService {
                 .run());
     }
 
-    /**
-     * Clear + recreate — replaces every HIGHLIGHTED this user has on tracks of
-     * this specific album with exactly trackIds (empty list just clears). Two
-     * statements in one write(): delete is scoped to tracks of albumId via
-     * CONTAINS, so it never touches HIGHLIGHTED edges on other albums' tracks.
-     */
-    public void setHighlightedTracks(UUID userId, UUID albumId, List<UUID> trackIds) {
-        write("set HIGHLIGHTED user=" + userId + " album=" + albumId, () -> {
-            neo4jClient.query("""
-                    MATCH (u:User {id: $userId})-[r:HIGHLIGHTED]->(:Track)<-[:CONTAINS]-(al:Album {id: $albumId})
-                    DELETE r
-                    """)
-                .bind(userId.toString()).to("userId")
-                .bind(albumId.toString()).to("albumId")
-                .run();
-
-            if (!trackIds.isEmpty()) {
-                List<String> trackIdStrings = trackIds.stream().map(UUID::toString).toList();
-                neo4jClient.query("""
-                        MATCH (u:User {id: $userId})
-                        UNWIND $trackIds AS trackId
-                        MATCH (tr:Track {id: trackId})
-                        MERGE (u)-[:HIGHLIGHTED]->(tr)
-                        """)
-                    .bind(userId.toString()).to("userId")
-                    .bind(trackIdStrings).to("trackIds")
-                    .run();
-            }
-        });
+    public List<VocabularyTag> getTrackStyles(UUID trackId) {
+        return getTags("Track", trackId, "BELONGS_TO", "Style");
     }
 
     public List<VocabularyTag> getTrackMoods(UUID trackId) {
@@ -580,6 +293,10 @@ public class GraphService {
      * call getTrackMoods/getTrackContexts/getTrackRhythms/
      * getTrackFeaturedInstruments/getTrackPerformers once per track).
      */
+    public Map<UUID, List<VocabularyTag>> getTrackStylesForAlbum(UUID albumId) {
+        return getTagsForAlbum(albumId, "BELONGS_TO", "Style");
+    }
+
     public Map<UUID, List<VocabularyTag>> getTrackMoodsForAlbum(UUID albumId) {
         return getTagsForAlbum(albumId, "EVOKES_MOOD", "Mood");
     }
@@ -1137,111 +854,74 @@ public class GraphService {
     // --- graphFilter (agent tool) ---
 
     /**
-     * One of {@link #findAlbumCandidates}/{@link #findTrackCandidates}/
-     * {@link #findArtistCandidates} — one method per entity type, not one
-     * query with label branching: Album/Track/Artist each connect to a
-     * different subset of vocabulary dimensions, so a single combined query
-     * would need per-label conditionals throughout. {@code
-     * GraphFilterFilters.entityType} is singular and required, so a given
-     * graphFilter call only ever invokes exactly one of these — {@code
-     * GraphFilterService} picks which one via a {@code Map<CatalogItemType,
-     * ...>} lookup, not an if/switch chain.
+     * Ranks Track candidates by graph-topology overlap with the given
+     * vocabulary filters, optionally narrowed to one album's/artist's own
+     * tracks via {@code albumId}/{@code artistId} (either or both may be
+     * {@code null} — a pure vocabulary search with no scope). TRACK is the
+     * only entity type this searches: Album/Artist are no longer
+     * independently recommendable, only resolvable as scope (see {@code
+     * ResolveJazzlogsEntityTool}) — this method IS the "search this
+     * album's/artist's tracks" capability that scope feeds into.
      *
      * <p>Matching is permissive by design (OR, not AND): a candidate doesn't
      * need to match every requested dimension, matching at least one is
-     * enough — that's what {@code WHERE matchCount > 0} enforces, nothing
-     * stronger. Ranking (by matchCount, i.e. {@code matchedDimensions.size()})
-     * is a separate concern from eligibility, done right here via {@code
-     * ORDER BY matchCount DESC LIMIT $limit} — {@code GraphFilterService}
-     * never re-sorts or re-clamps what comes back.
+     * enough — that's what {@code matchCount > 0} enforces below, nothing
+     * stronger. When no vocabulary was requested at all (every code list
+     * empty) but a scope was, {@code requireVocabMatch} relaxes that so a
+     * pure "tracks from this album" query still returns candidates. Ranking
+     * (by matchCount, i.e. {@code matchedDimensions.size()}) is a separate
+     * concern from eligibility, done right here via {@code ORDER BY
+     * matchCount DESC LIMIT $limit} — {@code GraphFilterService} never
+     * re-sorts or re-clamps what comes back.
      *
      * <p>Each dimension is a pattern comprehension — e.g. {@code
-     * [(al)-[:BELONGS_TO]->(s:Style) WHERE s.code IN $styleCodes | s.code]}
+     * [(tr)-[:BELONGS_TO]->(s:Style) WHERE s.code IN $styleCodes | s.code]}
      * — collecting the actual codes that matched, not just a 0/1 flag: the
      * LLM gets to see e.g. "matched Mood=RELAXED" instead of a bare count.
      * An empty codes list for a dimension naturally yields an empty match
      * list ({@code s.code IN []} is never true), so "not requested" and
      * "requested but nothing matched" both fall out without a separate
-     * guard.
-     */
-    public List<GraphCandidate> findAlbumCandidates(
-        List<String> styleCodes, List<String> moodCodes, List<String> contextCodes,
-        UUID userId, boolean excludeListened, boolean excludeAlreadyRated, int limit
-    ) {
-        return read("find Album candidates for graphFilter", () ->
-            neo4jClient.query("""
-                    MATCH (al:Album)
-                    WHERE ($excludeListened = false OR NOT EXISTS { (u:User {id: $userId})-[:LISTENED]->(al) })
-                      AND ($excludeRated = false OR NOT EXISTS { (u:User {id: $userId})-[:RATED]->(al) })
-                    WITH al,
-                        [(al)-[:BELONGS_TO]->(s:Style) WHERE s.code IN $styleCodes | s.code] AS styleMatches,
-                        [(al)-[:EVOKES_MOOD]->(m:Mood) WHERE m.code IN $moodCodes | m.code] AS moodMatches,
-                        [(al)-[:PERFECT_FOR]->(c:Context) WHERE c.code IN $contextCodes | c.code] AS contextMatches
-                    WITH al, styleMatches, moodMatches, contextMatches,
-                        (size(styleMatches) + size(moodMatches) + size(contextMatches)) AS matchCount
-                    WHERE matchCount > 0
-                    RETURN al.id AS entityId, al.name AS entityName, styleMatches, moodMatches, contextMatches
-                    ORDER BY matchCount DESC
-                    LIMIT $limit
-                    """)
-                .bind(userId.toString()).to("userId")
-                .bind(excludeListened).to("excludeListened")
-                .bind(excludeAlreadyRated).to("excludeRated")
-                .bind(styleCodes).to("styleCodes")
-                .bind(moodCodes).to("moodCodes")
-                .bind(contextCodes).to("contextCodes")
-                .bind(limit).to("limit")
-                .fetch()
-                .all()
-                .stream()
-                .map(row -> new GraphCandidate(
-                    CatalogItemType.ALBUM,
-                    UUID.fromString((String) row.get("entityId")),
-                    (String) row.get("entityName"),
-                    concatMatches(List.of(
-                        dimensionMatches(VocabularyDimension.STYLE, row.get("styleMatches")),
-                        dimensionMatches(VocabularyDimension.MOOD, row.get("moodMatches")),
-                        dimensionMatches(VocabularyDimension.CONTEXT, row.get("contextMatches"))
-                    ))
-                ))
-                .toList());
-    }
-
-    /**
-     * Same shape as {@link #findAlbumCandidates} — see its Javadoc. {@code
-     * excludeAlreadyRated} checks RATED_TRACK, not RATED — that's the
-     * Track-level rating relationship (see {@link #rateTrack}), kept under
-     * its own name to avoid ambiguity with {@link #rateAlbum}'s Album-level
-     * RATED.
+     * guard. {@code excludeAlreadyRated} checks RATED_TRACK, not RATED —
+     * that's the Track-level rating relationship (see {@link #rateTrack}).
      */
     public List<GraphCandidate> findTrackCandidates(
-        List<String> moodCodes, List<String> contextCodes, List<String> rhythmCodes, List<String> instrumentCodes,
-        UUID userId, boolean excludeListened, boolean excludeAlreadyRated, int limit
+        List<String> styleCodes, List<String> moodCodes, List<String> contextCodes, List<String> rhythmCodes, List<String> instrumentCodes,
+        UUID albumId, UUID artistId, UUID userId, boolean excludeListened, boolean excludeAlreadyRated, int limit
     ) {
+        boolean requireVocabMatch = !styleCodes.isEmpty() || !moodCodes.isEmpty() || !contextCodes.isEmpty()
+            || !rhythmCodes.isEmpty() || !instrumentCodes.isEmpty();
+
         return read("find Track candidates for graphFilter", () ->
             neo4jClient.query("""
                     MATCH (tr:Track)
                     WHERE ($excludeListened = false OR NOT EXISTS { (u:User {id: $userId})-[:LISTENED]->(tr) })
                       AND ($excludeRated = false OR NOT EXISTS { (u:User {id: $userId})-[:RATED_TRACK]->(tr) })
+                      AND ($albumId IS NULL OR EXISTS { (:Album {id: $albumId})-[:CONTAINS]->(tr) })
+                      AND ($artistId IS NULL OR EXISTS { (:Artist {id: $artistId})-[:PERFORMED_ON]->(tr) })
                     WITH tr,
+                        [(tr)-[:BELONGS_TO]->(s:Style) WHERE s.code IN $styleCodes | s.code] AS styleMatches,
                         [(tr)-[:EVOKES_MOOD]->(m:Mood) WHERE m.code IN $moodCodes | m.code] AS moodMatches,
                         [(tr)-[:PERFECT_FOR]->(c:Context) WHERE c.code IN $contextCodes | c.code] AS contextMatches,
                         [(tr)-[:HAS_RHYTHM]->(r:Rhythm) WHERE r.code IN $rhythmCodes | r.code] AS rhythmMatches,
                         [(tr)-[:FEATURES_INSTRUMENT]->(i:Instrument) WHERE i.code IN $instrumentCodes | i.code] AS instrumentMatches
-                    WITH tr, moodMatches, contextMatches, rhythmMatches, instrumentMatches,
-                        (size(moodMatches) + size(contextMatches) + size(rhythmMatches) + size(instrumentMatches)) AS matchCount
-                    WHERE matchCount > 0
-                    RETURN tr.id AS entityId, tr.name AS entityName, moodMatches, contextMatches, rhythmMatches, instrumentMatches
+                    WITH tr, styleMatches, moodMatches, contextMatches, rhythmMatches, instrumentMatches,
+                        (size(styleMatches) + size(moodMatches) + size(contextMatches) + size(rhythmMatches) + size(instrumentMatches)) AS matchCount
+                    WHERE $requireVocabMatch = false OR matchCount > 0
+                    RETURN tr.id AS entityId, tr.name AS entityName, styleMatches, moodMatches, contextMatches, rhythmMatches, instrumentMatches
                     ORDER BY matchCount DESC
                     LIMIT $limit
                     """)
                 .bind(userId.toString()).to("userId")
                 .bind(excludeListened).to("excludeListened")
                 .bind(excludeAlreadyRated).to("excludeRated")
+                .bind(albumId == null ? null : albumId.toString()).to("albumId")
+                .bind(artistId == null ? null : artistId.toString()).to("artistId")
+                .bind(styleCodes).to("styleCodes")
                 .bind(moodCodes).to("moodCodes")
                 .bind(contextCodes).to("contextCodes")
                 .bind(rhythmCodes).to("rhythmCodes")
                 .bind(instrumentCodes).to("instrumentCodes")
+                .bind(requireVocabMatch).to("requireVocabMatch")
                 .bind(limit).to("limit")
                 .fetch()
                 .all()
@@ -1251,51 +931,10 @@ public class GraphService {
                     UUID.fromString((String) row.get("entityId")),
                     (String) row.get("entityName"),
                     concatMatches(List.of(
+                        dimensionMatches(VocabularyDimension.STYLE, row.get("styleMatches")),
                         dimensionMatches(VocabularyDimension.MOOD, row.get("moodMatches")),
                         dimensionMatches(VocabularyDimension.CONTEXT, row.get("contextMatches")),
                         dimensionMatches(VocabularyDimension.RHYTHM, row.get("rhythmMatches")),
-                        dimensionMatches(VocabularyDimension.INSTRUMENT, row.get("instrumentMatches"))
-                    ))
-                ))
-                .toList());
-    }
-
-    /**
-     * Same shape as {@link #findAlbumCandidates} — see its Javadoc. No
-     * userId/excludeListened/excludeAlreadyRated: Artist has neither a
-     * LISTENED nor a RATED relationship in the graph today.
-     */
-    public List<GraphCandidate> findArtistCandidates(
-        List<String> styleCodes, List<String> contextCodes, List<String> instrumentCodes, int limit
-    ) {
-        return read("find Artist candidates for graphFilter", () ->
-            neo4jClient.query("""
-                    MATCH (ar:Artist)
-                    WITH ar,
-                        [(ar)-[:HAS_STYLE]->(s:Style) WHERE s.code IN $styleCodes | s.code] AS styleMatches,
-                        [(ar)-[:PERFECT_FOR]->(c:Context) WHERE c.code IN $contextCodes | c.code] AS contextMatches,
-                        [(ar)-[:PLAYS_INSTRUMENT]->(i:Instrument) WHERE i.code IN $instrumentCodes | i.code] AS instrumentMatches
-                    WITH ar, styleMatches, contextMatches, instrumentMatches,
-                        (size(styleMatches) + size(contextMatches) + size(instrumentMatches)) AS matchCount
-                    WHERE matchCount > 0
-                    RETURN ar.id AS entityId, ar.name AS entityName, styleMatches, contextMatches, instrumentMatches
-                    ORDER BY matchCount DESC
-                    LIMIT $limit
-                    """)
-                .bind(styleCodes).to("styleCodes")
-                .bind(contextCodes).to("contextCodes")
-                .bind(instrumentCodes).to("instrumentCodes")
-                .bind(limit).to("limit")
-                .fetch()
-                .all()
-                .stream()
-                .map(row -> new GraphCandidate(
-                    CatalogItemType.ARTIST,
-                    UUID.fromString((String) row.get("entityId")),
-                    (String) row.get("entityName"),
-                    concatMatches(List.of(
-                        dimensionMatches(VocabularyDimension.STYLE, row.get("styleMatches")),
-                        dimensionMatches(VocabularyDimension.CONTEXT, row.get("contextMatches")),
                         dimensionMatches(VocabularyDimension.INSTRUMENT, row.get("instrumentMatches"))
                     ))
                 ))

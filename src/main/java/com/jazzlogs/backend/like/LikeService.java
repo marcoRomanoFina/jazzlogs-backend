@@ -15,10 +15,9 @@ import org.springframework.web.server.ResponseStatusException;
 
 import jakarta.persistence.EntityManager;
 
-import com.jazzlogs.backend.editorial.EditorialRepository;
+import com.jazzlogs.backend.editorial.TrackEditorialRepository;
 import com.jazzlogs.backend.note.NoteRepository;
 import com.jazzlogs.backend.playlist.PlaylistRepository;
-import com.jazzlogs.backend.review.ReviewRepository;
 import com.jazzlogs.backend.series.SeriesRepository;
 
 @Service
@@ -35,18 +34,16 @@ public class LikeService {
      */
     public LikeService(
         LikeRepository likeRepository,
-        EditorialRepository editorialRepository,
+        TrackEditorialRepository trackEditorialRepository,
         NoteRepository noteRepository,
-        ReviewRepository reviewRepository,
         PlaylistRepository playlistRepository,
         SeriesRepository seriesRepository,
         EntityManager entityManager
     ) {
         this.likeRepository = likeRepository;
         this.repositories = Map.of(
-            LikeableEntityType.EDITORIAL, editorialRepository,
+            LikeableEntityType.EDITORIAL, trackEditorialRepository,
             LikeableEntityType.NOTE, noteRepository,
-            LikeableEntityType.REVIEW, reviewRepository,
             LikeableEntityType.PLAYLIST, playlistRepository,
             LikeableEntityType.SERIES, seriesRepository
         );

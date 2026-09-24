@@ -1,25 +1,18 @@
 package com.jazzlogs.backend.editorial;
 
-import java.util.List;
-
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
-import com.jazzlogs.backend.editorial.dto.CatalogueEditorialDto;
 import com.jazzlogs.backend.editorial.dto.EditorialCountResponse;
-import com.jazzlogs.backend.editorial.dto.EditorialSummaryDto;
-import com.jazzlogs.backend.editorial.dto.LastLogDto;
-import com.jazzlogs.backend.editorial.dto.RecentAlbumEditorialDto;
+import com.jazzlogs.backend.editorial.dto.TrackEditorialCatalogueDto;
 import com.jazzlogs.backend.user.UserService;
 
 import lombok.AllArgsConstructor;
@@ -32,22 +25,6 @@ public class EditorialController {
     private final EditorialService editorialService;
     private final UserService userService;
 
-    /**
-     * Curated single "hero" slot for the archive page — see {@link
-     * EditorialService#getFeatured}. Derived from THE featured album ({@code
-     * AlbumService#setFeatured}), not an independently-settable flag on the
-     * editorial itself anymore.
-     *
-     * @param jwt the caller, resolved to a user id only to compute {@code likedByCurrentUser}
-     * @return the featured album's editorial
-     * @throws ResponseStatusException 404 if no album is featured, or the featured album has no editorial yet
-     */
-    @GetMapping("/featured")
-    public EditorialSummaryDto featured(@AuthenticationPrincipal Jwt jwt) {
-        return editorialService.getFeatured(userService.resolveFromJwt(jwt).getId())
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No featured editorial set"));
-    }
-
     /** Count-only — see {@link EditorialService#countEditorials}. No auth-dependent data, doesn't need the JWT principal. */
     @GetMapping("/count")
     public EditorialCountResponse count() {
@@ -55,47 +32,19 @@ public class EditorialController {
     }
 
     /**
-     * "Recently filed" — see {@link EditorialService#getRecentAlbumEditorials}.
+     * The archive's free-form search/browse listing — see {@link EditorialService#listEditorials}.
      *
-     * @param jwt the caller, resolved to a user id only to compute {@code likedByCurrentUser}
-     * @return the most recently created album editorials, newest first
-     */
-    @GetMapping("/recent")
-    public List<RecentAlbumEditorialDto> recent(@AuthenticationPrincipal Jwt jwt) {
-        return editorialService.getRecentAlbumEditorials(userService.resolveFromJwt(jwt).getId());
-    }
-
-    /**
-     * "The Last Log" — see {@link EditorialService#getLastLog}.
-     *
-     * @param jwt the caller, resolved to a user id only to compute {@code likedByCurrentUser}
-     * @return the most recently published album editorial, with its track editorials
-     * @throws ResponseStatusException 404 if no album editorial exists yet
-     */
-    @GetMapping("/last-log")
-    public LastLogDto lastLog(@AuthenticationPrincipal Jwt jwt) {
-        return editorialService.getLastLog(userService.resolveFromJwt(jwt).getId())
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No album editorial exists yet"));
-    }
-
-    /**
-     * The archive's free-form search/filter/paginate listing, across every
-     * owner type — the one place {@code type}/{@code q}/sort genuinely vary
-     * per call. 
-     *
-     * @param type     restricts to one owner type; omitted (or blank) means every type
-     * @param q        case-insensitive substring match against title/owner name; omitted means no filter
+     * @param q        case-insensitive substring match against the editorial's title or its track's name; omitted means no filter
      * @param pageable defaults to {@code size=6}, sorted by {@code createdAt} DESC
-     * @param jwt      the caller, resolved to a user id only to compute {@code likedByCurrentUser}
+     * @param jwt      the caller, resolved to a user id only to compute each result's {@code likedByCurrentUser}
      * @return the matching page
      */
     @GetMapping
-    public Page<CatalogueEditorialDto> list(
-        @RequestParam(required = false) EditorialOwnerType type,
+    public Page<TrackEditorialCatalogueDto> list(
         @RequestParam(required = false) String q,
         @PageableDefault(size = 6, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
         @AuthenticationPrincipal Jwt jwt
     ) {
-        return editorialService.listEditorials(type, q, pageable, userService.resolveFromJwt(jwt).getId());
+        return editorialService.listEditorials(q, pageable, userService.resolveFromJwt(jwt).getId());
     }
 }

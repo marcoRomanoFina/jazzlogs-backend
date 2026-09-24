@@ -1,6 +1,5 @@
 package com.jazzlogs.backend.artist;
 
-import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -24,11 +23,8 @@ import com.jazzlogs.backend.artist.dto.CreateArtistRequest;
 import com.jazzlogs.backend.artist.dto.AlbumSummaryDto;
 import com.jazzlogs.backend.artist.dto.SimilarArtistDto;
 import com.jazzlogs.backend.artist.dto.SimilarArtistRequest;
-import com.jazzlogs.backend.editorial.AlbumEditorialRepository;
-import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.SimilarArtistEntry;
-import com.jazzlogs.backend.review.ReviewRepository;
 import com.jazzlogs.backend.spotify.SpotifyArtistData;
 import com.jazzlogs.backend.spotify.SpotifyCatalogService;
 import com.jazzlogs.backend.track.dto.InstrumentTagRequest;
@@ -45,11 +41,8 @@ public class ArtistService {
 
     private final ArtistRepository artistRepository;
     private final GraphService graphService;
-    private final EditorialService editorialService;
     private final SpotifyCatalogService spotifyCatalogService;
     private final AlbumRepository albumRepository;
-    private final ReviewRepository reviewRepository;
-    private final AlbumEditorialRepository albumEditorialRepository;
 
     // Upsert on spotifyArtistId when given: re-posting an artist that's
     // already in the catalog updates it in place (fresh Spotify data)
@@ -153,17 +146,16 @@ public class ArtistService {
     }
 
     /**
-     * The artist editorial page's header — the artist's own fields plus its
-     * editorial. Nothing from Neo4j (instruments/styles/contexts/similar
-     * artists/appearances) — those live on a separate, more expensive endpoint.
+     * The artist page's header — the artist's own fields only. Nothing from
+     * Neo4j (instruments/styles/contexts/similar artists/appearances) —
+     * those live on a separate, more expensive endpoint.
      *
-     * @param artistId      the artist to load
-     * @param currentUserId whose like state to include for the artist's own editorial
+     * @param artistId the artist to load
      * @return the artist header
      * @throws ResponseStatusException 404 if the artist doesn't exist
      */
     @Transactional(readOnly = true)
-    public ArtistHeaderDto getArtistHeader(UUID artistId, UUID currentUserId) {
+    public ArtistHeaderDto getArtistHeader(UUID artistId) {
         Artist artist = getArtistOrThrow(artistId);
 
         return new ArtistHeaderDto(
@@ -171,34 +163,16 @@ public class ArtistService {
             artist.getName(),
             artist.getSpotifyArtistId(),
             artist.getSpotifyUrl(),
-            artist.getImageUrl(),
-            editorialService.getArtistEditorialDto(artistId, currentUserId)
+            artist.getImageUrl()
         );
     }
 
     /**
-     * The artist page's "Essential Listening" section — albums curated as a
-     * good entry point into this artist, paginated. The candidate album ids
-     * come from one unpaged Neo4j read ({@link GraphService#getEntryPointAlbumIds}) —
-     * the real pagination (and {@code Page}'s total count) happens here in
-     * Postgres, not in Cypher, since that candidate set is small and curated.
-     *
-     * @param artistId the artist
-     * @param pageable page request
-     * @return the matching page, empty if this artist has no entry-point albums
-     * @throws ResponseStatusException 404 if the artist doesn't exist
-     */
-    @Transactional(readOnly = true)
-    public Page<AlbumSummaryDto> getEssentialListening(UUID artistId, Pageable pageable) {
-        getArtistOrThrow(artistId);
-        return resolveAlbumPage(graphService.getEntryPointAlbumIds(artistId), pageable);
-    }
-
-    /**
      * Albums where this artist appears as a sideman ({@code SIDEMAN_ON}), not
-     * as the leading artist — paginated. Same architecture and same
-     * per-row data as {@link #getEssentialListening}, just a different
-     * Neo4j source edge for the candidate album ids.
+     * as the leading artist — paginated. The candidate album ids come from
+     * one unpaged Neo4j read ({@link GraphService#getSidemanAlbumIds}) — the
+     * real pagination (and {@code Page}'s total count) happens here in
+     * Postgres, not in Cypher, since that candidate set is small and curated.
      *
      * @param artistId the artist
      * @param pageable page request
@@ -211,33 +185,19 @@ public class ArtistService {
         return resolveAlbumPage(graphService.getSidemanAlbumIds(artistId), pageable);
     }
 
-    // Shared by getEssentialListening/getSidemanAlbums: both paginate the
-    // same way over a Neo4j-sourced, unpaged album id candidate set — real
-    // pagination (and Page's total count) happens here in Postgres, plus the
-    // avgRating/dek batch enrichment, identically either way.
     private Page<AlbumSummaryDto> resolveAlbumPage(List<UUID> albumIds, Pageable pageable) {
         if (albumIds.isEmpty()) {
             return Page.empty(pageable);
         }
 
         Page<Album> page = albumRepository.findByIdInOrderByReleaseYearAsc(albumIds, pageable);
-        List<UUID> pageAlbumIds = page.getContent().stream().map(Album::getId).toList();
-
-        Map<UUID, BigDecimal> avgRatingsByAlbumId = reviewRepository.findAvgRatingsByAlbumIds(pageAlbumIds).stream()
-            .collect(Collectors.toMap(ReviewRepository.AlbumRatingRow::getAlbumId, ReviewRepository.AlbumRatingRow::getAvgRating));
-        Map<UUID, String> deksByAlbumId = albumEditorialRepository.findDeksByAlbumIds(pageAlbumIds).stream()
-            .collect(Collectors.toMap(AlbumEditorialRepository.AlbumEditorialDekRow::getAlbumId, AlbumEditorialRepository.AlbumEditorialDekRow::getDek));
 
         return page.map(album -> new AlbumSummaryDto(
             album.getId(),
             album.getName(),
             album.getImageUrl(),
             album.getReleaseYear(),
-            album.getLabel(),
             album.getTotalTracks(),
-            album.getLogNumber(),
-            avgRatingsByAlbumId.get(album.getId()),
-            deksByAlbumId.get(album.getId()),
             album.getArtist().getId(),
             album.getArtist().getName()
         ));
@@ -247,7 +207,7 @@ public class ArtistService {
      * The artist's "similar artists" list ({@code SIMILAR_TO} in Neo4j),
      * paginated. Same "Neo4j gives the small curated candidate set (plus its
      * per-artist {@code reason}), Postgres does the real {@code Page}" split
-     * as {@link #getEssentialListening} — {@code reason} is merged onto the
+     * as {@link #getSidemanAlbums} — {@code reason} is merged onto the
      * page from a map built off that same unpaged Neo4j read, not a second
      * Neo4j round trip.
      *

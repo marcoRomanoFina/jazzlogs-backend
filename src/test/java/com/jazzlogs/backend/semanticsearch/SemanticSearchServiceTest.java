@@ -6,7 +6,6 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -20,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.album.Level;
 import com.jazzlogs.backend.chat.CatalogItemType;
@@ -33,8 +33,7 @@ import com.jazzlogs.backend.embedding.EmbeddingService;
 // already applies to GraphService: only the consumer service is unit
 // tested, with the repository mocked to return canned rows). These tests
 // cover SemanticSearchService's own job: the empty-candidateIds fast path
-// and the entityType-keyed dispatch (no ifs — a
-// Map<CatalogItemType, ...> lookup, see the service itself).
+// and the TRACK-only dispatch.
 @ExtendWith(MockitoExtension.class)
 class SemanticSearchServiceTest {
 
@@ -54,7 +53,7 @@ class SemanticSearchServiceTest {
     @Test
     void emptyCandidateIds_shortCircuitsWithoutTouchingEmbeddingOrRepository() {
         SemanticSearchRequest request = new SemanticSearchRequest(
-            CatalogItemType.ALBUM, List.of(), BlockContentCategory.ANECDOTE, null, null, null, "a mellow late-night session"
+            CatalogItemType.TRACK, List.of(), BlockContentCategory.ANECDOTE, null, null, null, null, null, "a mellow late-night session"
         );
 
         SemanticSearchResult result = semanticSearchService.search(request);
@@ -66,7 +65,7 @@ class SemanticSearchServiceTest {
     @Test
     void nullCandidateIds_shortCircuitsTheSameWayAsEmpty() {
         SemanticSearchRequest request = new SemanticSearchRequest(
-            CatalogItemType.ALBUM, null, BlockContentCategory.ANECDOTE, null, null, null, "a mellow late-night session"
+            CatalogItemType.TRACK, null, BlockContentCategory.ANECDOTE, null, null, null, null, null, "a mellow late-night session"
         );
 
         SemanticSearchResult result = semanticSearchService.search(request);
@@ -76,61 +75,38 @@ class SemanticSearchServiceTest {
     }
 
     @Test
-    void albumEntityType_callsOnlySemanticSearchAlbums() {
-        UUID albumId = UUID.randomUUID();
-        when(embeddingService.embed("groovy")).thenReturn(new float[] {0.1f, 0.2f});
-        when(editorialBlockRepository.semanticSearchAlbums(any(), any(), any(), any(), any(), any(), anyInt())).thenReturn(List.of());
+    void nonTrackEntityType_rejectsWithoutTouchingEmbeddingOrRepository() {
         SemanticSearchRequest request = new SemanticSearchRequest(
-            CatalogItemType.ALBUM, List.of(albumId), BlockContentCategory.ANECDOTE, null, null, null, "groovy"
+            CatalogItemType.ALBUM, List.of(UUID.randomUUID()), BlockContentCategory.ANECDOTE, null, null, null, null, null, "q"
         );
 
-        semanticSearchService.search(request);
+        ResponseStatusException ex = org.assertj.core.api.Assertions.catchThrowableOfType(
+            ResponseStatusException.class, () -> semanticSearchService.search(request)
+        );
 
-        verify(editorialBlockRepository).semanticSearchAlbums(any(), eq(List.of(albumId)), any(), any(), any(), any(), anyInt());
-        verify(editorialBlockRepository, never()).semanticSearchTracks(any(), any(), any(), any(), any(), any(), anyInt());
-        verify(editorialBlockRepository, never()).semanticSearchArtists(any(), any(), any(), anyInt());
+        assertThat(ex.getStatusCode().value()).isEqualTo(400);
+        verifyNoInteractions(editorialBlockRepository, embeddingService);
     }
 
     @Test
-    void trackEntityType_callsOnlySemanticSearchTracks() {
+    void trackEntityType_callsSemanticSearchTracks() {
         when(embeddingService.embed(any())).thenReturn(new float[] {0.1f});
-        when(editorialBlockRepository.semanticSearchTracks(any(), any(), any(), any(), any(), any(), anyInt())).thenReturn(List.of());
+        when(editorialBlockRepository.semanticSearchTracks(any(), any(), any(), any(), any(), any(), any(), any(), anyInt())).thenReturn(List.of());
         SemanticSearchRequest request = new SemanticSearchRequest(
-            CatalogItemType.TRACK, List.of(UUID.randomUUID()), BlockContentCategory.MUSICAL_ANALYSIS, null, null, null, "q"
+            CatalogItemType.TRACK, List.of(UUID.randomUUID()), BlockContentCategory.MUSICAL_ANALYSIS, null, null, null, null, null, "q"
         );
 
         semanticSearchService.search(request);
 
-        verify(editorialBlockRepository).semanticSearchTracks(any(), any(), any(), any(), any(), any(), anyInt());
-        verify(editorialBlockRepository, never()).semanticSearchAlbums(any(), any(), any(), any(), any(), any(), anyInt());
-        verify(editorialBlockRepository, never()).semanticSearchArtists(any(), any(), any(), anyInt());
-    }
-
-    @Test
-    void artistEntityType_callsOnlySemanticSearchArtists_scalarFiltersNeverReachIt() {
-        when(embeddingService.embed(any())).thenReturn(new float[] {0.1f});
-        when(editorialBlockRepository.semanticSearchArtists(any(), any(), any(), anyInt())).thenReturn(List.of());
-        SemanticSearchRequest request = new SemanticSearchRequest(
-            CatalogItemType.ARTIST, List.of(UUID.randomUUID()), BlockContentCategory.MOOD_AND_ATMOSPHERE,
-            Level.HIGH, Level.LOW, Level.MEDIUM, "q"
-        );
-
-        semanticSearchService.search(request);
-
-        // semanticSearchArtists has no energy/accessibility/moodIntensity
-        // parameters at all — there's no code path for those values to
-        // reach an Artist candidate, which is the whole point.
-        verify(editorialBlockRepository).semanticSearchArtists(any(), any(), any(), anyInt());
-        verify(editorialBlockRepository, never()).semanticSearchAlbums(any(), any(), any(), any(), any(), any(), anyInt());
-        verify(editorialBlockRepository, never()).semanticSearchTracks(any(), any(), any(), any(), any(), any(), anyInt());
+        verify(editorialBlockRepository).semanticSearchTracks(any(), any(), any(), any(), any(), any(), any(), any(), anyInt());
     }
 
     @Test
     void embeddingIsGeneratedFromQueryText() {
         when(embeddingService.embed("groovy")).thenReturn(new float[] {0.1f, 0.2f});
-        when(editorialBlockRepository.semanticSearchAlbums(any(), any(), any(), any(), any(), any(), anyInt())).thenReturn(List.of());
+        when(editorialBlockRepository.semanticSearchTracks(any(), any(), any(), any(), any(), any(), any(), any(), anyInt())).thenReturn(List.of());
         SemanticSearchRequest request = new SemanticSearchRequest(
-            CatalogItemType.ALBUM, List.of(UUID.randomUUID()), BlockContentCategory.MUSICAL_ANALYSIS, null, null, null, "groovy"
+            CatalogItemType.TRACK, List.of(UUID.randomUUID()), BlockContentCategory.MUSICAL_ANALYSIS, null, null, null, null, null, "groovy"
         );
 
         semanticSearchService.search(request);
@@ -141,57 +117,72 @@ class SemanticSearchServiceTest {
     @Test
     void categoryIsStampedOntoEveryScoredBlock() {
         when(embeddingService.embed(any())).thenReturn(new float[] {0.1f});
-        SemanticMatchRow row = matchRow(UUID.randomUUID(), "Kind of Blue", "a story about the session", 0.9);
-        when(editorialBlockRepository.semanticSearchAlbums(any(), any(), any(), any(), any(), any(), anyInt())).thenReturn(List.of(row));
+        SemanticMatchRow row = matchRow(UUID.randomUUID(), "So What", "a story about the session", 0.9);
+        when(editorialBlockRepository.semanticSearchTracks(any(), any(), any(), any(), any(), any(), any(), any(), anyInt())).thenReturn(List.of(row));
         SemanticSearchRequest request = new SemanticSearchRequest(
-            CatalogItemType.ALBUM, List.of(UUID.randomUUID()), BlockContentCategory.ANECDOTE, null, null, null, "q"
+            CatalogItemType.TRACK, List.of(UUID.randomUUID()), BlockContentCategory.ANECDOTE, null, null, null, null, null, "q"
         );
 
         SemanticSearchResult result = semanticSearchService.search(request);
 
         assertThat(result.matches()).hasSize(1);
         assertThat(result.matches().get(0).category()).isEqualTo(BlockContentCategory.ANECDOTE);
-        assertThat(result.matches().get(0).entityType()).isEqualTo(CatalogItemType.ALBUM);
-        assertThat(result.matches().get(0).entityName()).isEqualTo("Kind of Blue");
+        assertThat(result.matches().get(0).entityType()).isEqualTo(CatalogItemType.TRACK);
+        assertThat(result.matches().get(0).entityName()).isEqualTo("So What");
         assertThat(result.matches().get(0).blockText()).isEqualTo("a story about the session");
     }
 
     @Test
     void scalarFilters_arePassedThroughAsTheirNames() {
         when(embeddingService.embed(any())).thenReturn(new float[] {0.1f});
-        when(editorialBlockRepository.semanticSearchAlbums(any(), any(), any(), any(), any(), any(), anyInt())).thenReturn(List.of());
+        when(editorialBlockRepository.semanticSearchTracks(any(), any(), any(), any(), any(), any(), any(), any(), anyInt())).thenReturn(List.of());
         SemanticSearchRequest request = new SemanticSearchRequest(
-            CatalogItemType.ALBUM, List.of(UUID.randomUUID()), BlockContentCategory.MOOD_AND_ATMOSPHERE,
-            Level.HIGH, Level.LOW, Level.MEDIUM, "q"
+            CatalogItemType.TRACK, List.of(UUID.randomUUID()), BlockContentCategory.MOOD_AND_ATMOSPHERE,
+            Level.HIGH, Level.LOW, Level.MEDIUM, null, null, "q"
         );
 
         semanticSearchService.search(request);
 
-        verify(editorialBlockRepository).semanticSearchAlbums(any(), any(), any(), eq("HIGH"), eq("LOW"), eq("MEDIUM"), anyInt());
+        verify(editorialBlockRepository).semanticSearchTracks(any(), any(), any(), eq("HIGH"), eq("LOW"), eq("MEDIUM"), any(), any(), anyInt());
     }
 
     @Test
     void nullScalarFilters_arePassedAsNull() {
         when(embeddingService.embed(any())).thenReturn(new float[] {0.1f});
-        when(editorialBlockRepository.semanticSearchAlbums(any(), any(), any(), any(), any(), any(), anyInt())).thenReturn(List.of());
+        when(editorialBlockRepository.semanticSearchTracks(any(), any(), any(), any(), any(), any(), any(), any(), anyInt())).thenReturn(List.of());
         SemanticSearchRequest request = new SemanticSearchRequest(
-            CatalogItemType.ALBUM, List.of(UUID.randomUUID()), BlockContentCategory.PERSONAL_TAKE, null, null, null, "q"
+            CatalogItemType.TRACK, List.of(UUID.randomUUID()), BlockContentCategory.PERSONAL_TAKE, null, null, null, null, null, "q"
         );
 
         semanticSearchService.search(request);
 
-        verify(editorialBlockRepository).semanticSearchAlbums(any(), any(), any(), isNull(), isNull(), isNull(), anyInt());
+        verify(editorialBlockRepository).semanticSearchTracks(any(), any(), any(), isNull(), isNull(), isNull(), any(), any(), anyInt());
+    }
+
+    @Test
+    void albumAndArtistScope_arePassedThroughUntouched() {
+        when(embeddingService.embed(any())).thenReturn(new float[] {0.1f});
+        when(editorialBlockRepository.semanticSearchTracks(any(), any(), any(), any(), any(), any(), any(), any(), anyInt())).thenReturn(List.of());
+        UUID albumId = UUID.randomUUID();
+        UUID artistId = UUID.randomUUID();
+        SemanticSearchRequest request = new SemanticSearchRequest(
+            CatalogItemType.TRACK, List.of(UUID.randomUUID()), BlockContentCategory.MUSICAL_ANALYSIS, null, null, null, albumId, artistId, "q"
+        );
+
+        semanticSearchService.search(request);
+
+        verify(editorialBlockRepository).semanticSearchTracks(any(), any(), any(), any(), any(), any(), eq(albumId), eq(artistId), anyInt());
     }
 
     @Test
     void resultIsWhateverRepositoryReturns_noJavaSideResorting() {
         when(embeddingService.embed(any())).thenReturn(new float[] {0.1f});
-        SemanticMatchRow first = matchRow(UUID.randomUUID(), "Album A", "text", 0.2);
-        SemanticMatchRow second = matchRow(UUID.randomUUID(), "Album B", "text", 0.9);
-        when(editorialBlockRepository.semanticSearchAlbums(any(), any(), any(), any(), any(), any(), anyInt()))
+        SemanticMatchRow first = matchRow(UUID.randomUUID(), "Track A", "text", 0.2);
+        SemanticMatchRow second = matchRow(UUID.randomUUID(), "Track B", "text", 0.9);
+        when(editorialBlockRepository.semanticSearchTracks(any(), any(), any(), any(), any(), any(), any(), any(), anyInt()))
             .thenReturn(List.of(first, second));
         SemanticSearchRequest request = new SemanticSearchRequest(
-            CatalogItemType.ALBUM, List.of(UUID.randomUUID()), BlockContentCategory.RECOMMENDATION, null, null, null, "q"
+            CatalogItemType.TRACK, List.of(UUID.randomUUID()), BlockContentCategory.RECOMMENDATION, null, null, null, null, null, "q"
         );
 
         SemanticSearchResult result = semanticSearchService.search(request);
@@ -199,7 +190,7 @@ class SemanticSearchServiceTest {
         // The repository's own ORDER BY <=> already ranks these — this
         // just proves the service passes that order through unchanged.
         assertThat(result.matches()).extracting(match -> match.entityName())
-            .containsExactly("Album A", "Album B");
+            .containsExactly("Track A", "Track B");
     }
 
     private static SemanticMatchRow matchRow(UUID entityId, String entityName, String blockText, double similarityScore) {

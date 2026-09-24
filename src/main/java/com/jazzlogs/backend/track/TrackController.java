@@ -26,6 +26,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.jazzlogs.backend.album.dto.ContextTagRequest;
 import com.jazzlogs.backend.album.dto.MoodTagRequest;
+import com.jazzlogs.backend.album.dto.StyleTagRequest;
 import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.editorial.TrackEditorial;
 import com.jazzlogs.backend.editorial.dto.FeaturedTrackDto;
@@ -35,9 +36,11 @@ import com.jazzlogs.backend.listen.ListenService;
 import com.jazzlogs.backend.note.NoteService;
 import com.jazzlogs.backend.note.dto.CreateNoteRequest;
 import com.jazzlogs.backend.note.dto.NoteDto;
+import com.jazzlogs.backend.track.dto.CreateTrackRequest;
 import com.jazzlogs.backend.track.dto.FeaturedInstrumentsRequest;
 import com.jazzlogs.backend.track.dto.PerformerRequest;
 import com.jazzlogs.backend.track.dto.RhythmTagRequest;
+import com.jazzlogs.backend.track.dto.TrackDto;
 import com.jazzlogs.backend.track.dto.TrackTagsDto;
 import com.jazzlogs.backend.trackrating.TrackRatingService;
 import com.jazzlogs.backend.trackrating.dto.CreateTrackRatingRequest;
@@ -60,6 +63,17 @@ public class TrackController {
     private final NoteService noteService;
     private final TrackRatingService trackRatingService;
     private final UserService userService;
+
+    // Upserts by spotifyTrackId — posting the same track again updates it in
+    // place instead of creating a duplicate. Track-first: Album/Artist are
+    // resolved or created automatically from the track's own Spotify data
+    // (see TrackService.createOrUpdateTrack), no separate album/artist step.
+    @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<TrackDto> createOrUpdateTrack(@Valid @RequestBody CreateTrackRequest request) {
+        Track track = trackService.createOrUpdateTrack(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(trackService.toTrackDto(track));
+    }
 
     @PostMapping("/{id}/editorial")
     @PreAuthorize("hasRole('ADMIN')")
@@ -89,6 +103,13 @@ public class TrackController {
     }
 
     // Full replace, not add-one — see StyleTagRequest's comment.
+    @PutMapping("/{id}/tags/style")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> replaceStyles(@PathVariable UUID id, @RequestBody StyleTagRequest request) {
+        trackService.replaceStyles(id, request);
+        return ResponseEntity.noContent().build();
+    }
+
     @PutMapping("/{id}/tags/mood")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> replaceMoods(@PathVariable UUID id, @RequestBody MoodTagRequest request) {
@@ -122,32 +143,6 @@ public class TrackController {
     @GetMapping("/{id}/tags")
     public TrackTagsDto getTags(@PathVariable UUID id) {
         return trackService.getTrackTags(id);
-    }
-
-    /**
-     * Marks this track as a good entry point into an artist — see {@link TrackService#markEntryPoint}.
-     *
-     * @param id       the track
-     * @param artistId the artist this track is a good entry point into
-     */
-    @PostMapping("/{id}/entry-point/{artistId}")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> markEntryPoint(@PathVariable UUID id, @PathVariable UUID artistId) {
-        trackService.markEntryPoint(id, artistId);
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * Unmarks this track as a good entry point into an artist — see {@link TrackService#unmarkEntryPoint}.
-     *
-     * @param id       the track
-     * @param artistId the artist
-     */
-    @DeleteMapping("/{id}/entry-point/{artistId}")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> unmarkEntryPoint(@PathVariable UUID id, @PathVariable UUID artistId) {
-        trackService.unmarkEntryPoint(id, artistId);
-        return ResponseEntity.noContent().build();
     }
 
     /** Adds this track to the archive's "Featured Tracks" — see {@link TrackService#setFeatured}. */

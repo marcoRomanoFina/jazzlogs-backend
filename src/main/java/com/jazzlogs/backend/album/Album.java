@@ -8,15 +8,12 @@ import java.util.UUID;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
-import jakarta.persistence.OneToOne;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
@@ -27,9 +24,11 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import com.jazzlogs.backend.artist.Artist;
-import com.jazzlogs.backend.editorial.AlbumEditorial;
 import com.jazzlogs.backend.track.Track;
 
+// Minimal support metadata only — no editorial, no own page, no admin
+// curation. Resolved/created automatically from a track's own Spotify data
+// (see TrackService.resolveOrCreateAlbum), never uploaded by hand.
 @Entity
 @Table(name = "albums")
 @Getter
@@ -67,69 +66,11 @@ public class Album {
     @Setter
     private Integer totalTracks;
 
-    @Setter
-    @Column(nullable = false)
-    private String logNumber;
-
-    @Setter
-    @Column(nullable = false)
-    private String label;
-
-    @Setter
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private VocalProfile vocalProfile;
-
-    @Setter
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private Level energy;
-
-    @Setter
-    @Enumerated(EnumType.STRING)
-    @Column(name = "mood_intensity", nullable = false)
-    private Level moodIntensity;
-
-    @Setter
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private Level accessibility;
-
-    @Setter
-    private Instant postedAt;
-
-    @Setter
-    private String instagramPermalink;
-
-    // Admin-curated, hex ("#a86b32"), null until explicitly set — see the
-    // migration's comment. Set/cleared via their own endpoints
-    // (PUT/DELETE /albums/{id}/cover-color), not the main upsert.
-    @Setter
-    @Column(name = "cover_color", length = 7)
-    private String coverColor;
-
-    // Same reasoning as coverColor, just for the page's text — its own
-    // endpoints (PUT/DELETE /albums/{id}/letter-color), not the main upsert.
-    @Setter
-    @Column(name = "letter_color", length = 7)
-    private String letterColor;
-
-    // THE archive hero's source album (see EditorialService.getFeatured) —
-    // at most one true at a time, enforced by idx_albums_only_one_featured
-    // (see V24), not a raw setter: only ever mutated via AlbumRepository's
-    // atomic clearFeatured/markFeatured/unmarkFeatured, same pattern as
-    // Track#featured.
-    @Column(nullable = false)
-    private boolean featured;
-
     // Ordered by createdAt only as a stable fallback — the real, editorial track
     // order (trackNumber) lives on the CONTAINS relationship in Neo4j, not here.
     @OneToMany(mappedBy = "album", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("createdAt ASC")
     private List<Track> tracks = new ArrayList<>();
-
-    @OneToOne(mappedBy = "album", fetch = FetchType.LAZY)
-    private AlbumEditorial editorial;
 
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
@@ -144,15 +85,7 @@ public class Album {
         String spotifyUrl,
         String imageUrl,
         Integer releaseYear,
-        Integer totalTracks,
-        String logNumber,
-        String label,
-        VocalProfile vocalProfile,
-        Level energy,
-        Level moodIntensity,
-        Level accessibility,
-        Instant postedAt,
-        String instagramPermalink
+        Integer totalTracks
     ) {
         this.artist = artist;
         this.name = name;
@@ -162,14 +95,6 @@ public class Album {
         this.imageUrl = imageUrl;
         this.releaseYear = releaseYear;
         this.totalTracks = totalTracks;
-        this.logNumber = logNumber;
-        this.label = label;
-        this.vocalProfile = vocalProfile;
-        this.energy = energy;
-        this.moodIntensity = moodIntensity;
-        this.accessibility = accessibility;
-        this.postedAt = postedAt;
-        this.instagramPermalink = instagramPermalink;
     }
 
     public static String normalize(String name) {

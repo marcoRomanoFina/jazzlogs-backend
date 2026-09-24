@@ -57,10 +57,16 @@ services:
     # S3-compatible object storage — where user-uploaded images (e.g. a
     # playlist cover) actually live, since those have no Spotify-sourced
     # imageUrl to fall back on like albums/artists/tracks do.
-    # quay.io, not Docker Hub — MinIO stopped publishing there.
-    image: quay.io/minio/minio:latest
+    # quay.io/minio/minio and Docker Hub's minio/minio both refuse anonymous
+    # pulls now — MinIO discontinued free community container images
+    # entirely (every tag, not just :latest). bitnamilegacy/minio is a
+    # frozen-but-still-public mirror from before that cutoff — pinned, not
+    # :latest, since bitnamilegacy gets no further pushes at all. Its own
+    # entrypoint starts the server on 9000/9001 without needing `command:`
+    # (unlike the old quay.io image, which printed help and exited without
+    # one).
+    image: bitnamilegacy/minio:2025.7.23-debian-12-r5
     container_name: jazzlogs-minio
-    command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-jazzlogs-dev-password}
@@ -86,7 +92,9 @@ services:
   # URL (AudioStorageService.presignPlaybackUrl) instead of a permanent
   # public one, giving the backend a choke point to add that check later.
   createbuckets:
-    image: quay.io/minio/mc:latest
+    # mc was withdrawn from quay.io/Docker Hub the same way the server
+    # image was — same bitnamilegacy stopgap as the minio service above.
+    image: bitnamilegacy/minio-client:2025.7.21-debian-12-r3
     depends_on:
       minio:
         condition: service_healthy

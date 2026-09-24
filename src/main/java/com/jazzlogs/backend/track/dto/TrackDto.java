@@ -34,6 +34,7 @@ import com.jazzlogs.backend.track.TempoFeel;
  * @param compositionType     tag: original/cover/standard, etc.
  * @param editorial           this track's own editorial, {@code null} if none written yet
  * @param performers          sidemen/personnel credited on this track, from Neo4j
+ * @param styles              style tags, from Neo4j
  * @param moods               mood tags, from Neo4j
  * @param contexts            context tags, from Neo4j
  * @param rhythms             rhythm tags, from Neo4j
@@ -61,6 +62,7 @@ public record TrackDto(
     CompositionType compositionType,
     TrackEditorialDto editorial,
     List<TrackPerformerEntry> performers,
+    List<VocabularyTag> styles,
     List<VocabularyTag> moods,
     List<VocabularyTag> contexts,
     List<VocabularyTag> rhythms,

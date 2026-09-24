@@ -36,7 +36,7 @@ public class EditorialBlock {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "editorial_id", nullable = false)
-    private Editorial editorial;
+    private TrackEditorial trackEditorial;
 
     @Column(nullable = false)
     private int position;
@@ -71,7 +71,7 @@ public class EditorialBlock {
     private Instant updatedAt;
 
     public EditorialBlock(
-        Editorial editorial,
+        TrackEditorial trackEditorial,
         int position,
         EditorialBlockType type,
         String subhead,
@@ -80,7 +80,7 @@ public class EditorialBlock {
         float[] embedding,
         Map<String, Object> embeddingMetadata
     ) {
-        this.editorial = editorial;
+        this.trackEditorial = trackEditorial;
         this.position = position;
         this.type = type;
         this.subhead = subhead;

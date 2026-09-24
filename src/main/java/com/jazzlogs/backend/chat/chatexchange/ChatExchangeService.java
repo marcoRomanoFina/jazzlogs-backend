@@ -13,16 +13,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.jazzlogs.backend.album.Album;
-import com.jazzlogs.backend.album.AlbumRepository;
-import com.jazzlogs.backend.artist.Artist;
-import com.jazzlogs.backend.artist.ArtistRepository;
 import com.jazzlogs.backend.chat.CatalogItemType;
 import com.jazzlogs.backend.chat.chat.Chat;
 import com.jazzlogs.backend.chat.chat.ChatRepository;
 import com.jazzlogs.backend.chat.chat.ChatService;
-import com.jazzlogs.backend.chat.chatexchange.dto.AlbumWinnerCard;
-import com.jazzlogs.backend.chat.chatexchange.dto.ArtistWinnerCard;
 import com.jazzlogs.backend.chat.chatexchange.dto.ChatExchangeDto;
 import com.jazzlogs.backend.chat.chatexchange.dto.TrackWinnerCard;
 import com.jazzlogs.backend.chat.chatexchange.dto.WinnerCard;
@@ -46,9 +40,7 @@ public class ChatExchangeService {
     private final ChatRepository chatRepository;
     private final ChatExchangeRepository chatExchangeRepository;
     private final ChatRecommendationMemoryService chatRecommendationMemoryService;
-    private final AlbumRepository albumRepository;
     private final TrackRepository trackRepository;
-    private final ArtistRepository artistRepository;
 
     /**
      * Persists one exchange: resolves the model's raw catalog references
@@ -131,14 +123,13 @@ public class ChatExchangeService {
             return Optional.of(List.of());
         }
 
-        // Up to 3 queries — one batched call per entity type, never one per ref.
+        // TRACK is the only recommendable type — the model's JSON schema
+        // only ever produces that type, but a stray ref of another type
+        // (e.g. echoed back from stale conversation state) simply won't
+        // resolve, same as any other hallucinated id.
         Map<UUID, ResolvedWinner> resolved = new HashMap<>();
-        albumRepository.findAllByIdWithArtist(idsOfType(refs, CatalogItemType.ALBUM))
-            .forEach(album -> resolved.put(album.getId(), new ResolvedWinner(toWinnerReference(album), toWinnerCard(album))));
         trackRepository.findAllByIdWithAlbumAndArtist(idsOfType(refs, CatalogItemType.TRACK))
             .forEach(track -> resolved.put(track.getId(), new ResolvedWinner(toWinnerReference(track), toWinnerCard(track))));
-        artistRepository.findAllById(idsOfType(refs, CatalogItemType.ARTIST))
-            .forEach(artist -> resolved.put(artist.getId(), new ResolvedWinner(toWinnerReference(artist), toWinnerCard(artist))));
 
         // First filter invalid ids, then filter invalid references.
         List<ResolvedWinner> result = refs.stream()
@@ -207,16 +198,6 @@ public class ChatExchangeService {
     }
 
     /**
-     * Builds the persisted shape for a resolved album.
-     *
-     * @param album the resolved catalog row
-     * @return the WinnerReference to save onto the ChatExchange
-     */
-    private static WinnerReference toWinnerReference(Album album) {
-        return new WinnerReference(CatalogItemType.ALBUM, album.getId(), album.getName(), album.getArtist().getName());
-    }
-
-    /**
      * Builds the persisted shape for a resolved track.
      *
      * @param track the resolved catalog row
@@ -224,16 +205,6 @@ public class ChatExchangeService {
      */
     private static WinnerReference toWinnerReference(Track track) {
         return new WinnerReference(CatalogItemType.TRACK, track.getId(), track.getName(), track.getAlbum().getArtist().getName());
-    }
-
-    /**
-     * Builds the persisted shape for a resolved artist.
-     *
-     * @param artist the resolved catalog row
-     * @return the WinnerReference to save onto the ChatExchange
-     */
-    private static WinnerReference toWinnerReference(Artist artist) {
-        return new WinnerReference(CatalogItemType.ARTIST, artist.getId(), artist.getName(), null);
     }
 
     /**
@@ -268,7 +239,10 @@ public class ChatExchangeService {
      * @param exchanges the page's exchanges whose winners need cards
      * @return display-ready cards keyed by entity id; a ref whose entity was
      *         deleted since simply has no entry here and gets dropped by
-     *         toCards below
+     *         toCards below — same for a historical ALBUM/ARTIST winner from
+     *         before TRACK became the only recommendable type: it has no
+     *         card builder anymore, so it silently drops out of the response
+     *         instead of erroring
      */
     private Map<UUID, WinnerCard> resolveWinnerCards(List<ChatExchange> exchanges) {
         List<WinnerReference> allWinners = exchanges.stream()
@@ -279,12 +253,8 @@ public class ChatExchangeService {
         }
 
         Map<UUID, WinnerCard> cards = new HashMap<>();
-        albumRepository.findAllByIdWithArtist(winnerIdsOfType(allWinners, CatalogItemType.ALBUM))
-            .forEach(album -> cards.put(album.getId(), toWinnerCard(album)));
         trackRepository.findAllByIdWithAlbumAndArtist(winnerIdsOfType(allWinners, CatalogItemType.TRACK))
             .forEach(track -> cards.put(track.getId(), toWinnerCard(track)));
-        artistRepository.findAllById(winnerIdsOfType(allWinners, CatalogItemType.ARTIST))
-            .forEach(artist -> cards.put(artist.getId(), toWinnerCard(artist)));
         return cards;
     }
 
@@ -339,19 +309,6 @@ public class ChatExchangeService {
     }
 
     /**
-     * Builds the display-ready card for a resolved album.
-     *
-     * @param album the resolved catalog row
-     * @return the card the frontend renders
-     */
-    private static WinnerCard toWinnerCard(Album album) {
-        return new AlbumWinnerCard(
-            album.getId(), album.getName(), album.getImageUrl(),
-            album.getArtist().getName(), album.getReleaseYear(), album.getSpotifyUrl()
-        );
-    }
-
-    /**
      * Builds the display-ready card for a resolved track.
      *
      * @param track the resolved catalog row
@@ -362,15 +319,5 @@ public class ChatExchangeService {
             track.getId(), track.getName(), track.getImageUrl(), track.getAlbum().getArtist().getName(),
             track.getAlbum().getName(), track.getDurationMs(), track.getSpotifyUrl()
         );
-    }
-
-    /**
-     * Builds the display-ready card for a resolved artist.
-     *
-     * @param artist the resolved catalog row
-     * @return the card the frontend renders
-     */
-    private static WinnerCard toWinnerCard(Artist artist) {
-        return new ArtistWinnerCard(artist.getId(), artist.getName(), artist.getImageUrl(), artist.getSpotifyUrl());
     }
 }

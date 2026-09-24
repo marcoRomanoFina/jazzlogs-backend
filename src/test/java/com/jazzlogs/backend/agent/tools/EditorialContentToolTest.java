@@ -71,7 +71,7 @@ class EditorialContentToolTest {
     void noCategories_fetchesAllBlocksOrderedByPosition() throws Exception {
         UUID editorialId = UUID.randomUUID();
         EditorialBlock block = block(0, "text 1", BlockContentCategory.HISTORICAL_CONTEXT);
-        when(editorialBlockRepository.findByEditorialIdOrderByPositionAsc(editorialId)).thenReturn(List.of(block));
+        when(editorialBlockRepository.findByTrackEditorialIdOrderByPositionAsc(editorialId)).thenReturn(List.of(block));
 
         ToolExecutionResult result = tool.execute(callWith("{\"editorialId\":\"" + editorialId + "\"}"), USER_ID);
 
@@ -85,7 +85,7 @@ class EditorialContentToolTest {
     void withCategories_filtersByContentCategory() throws Exception {
         UUID editorialId = UUID.randomUUID();
         EditorialBlock block = block(0, "a story", BlockContentCategory.ANECDOTE);
-        when(editorialBlockRepository.findByEditorialIdAndContentCategoryInOrderByPositionAsc(editorialId, List.of(BlockContentCategory.ANECDOTE)))
+        when(editorialBlockRepository.findByTrackEditorialIdAndContentCategoryInOrderByPositionAsc(editorialId, List.of(BlockContentCategory.ANECDOTE)))
             .thenReturn(List.of(block));
 
         ToolExecutionResult result = tool.execute(callWith(
@@ -94,13 +94,13 @@ class EditorialContentToolTest {
 
         JsonNode metadata = JSON.readTree(result.payload()).get("metadata");
         assertThat(metadata.get("blocks")).hasSize(1);
-        verify(editorialBlockRepository).findByEditorialIdAndContentCategoryInOrderByPositionAsc(editorialId, List.of(BlockContentCategory.ANECDOTE));
+        verify(editorialBlockRepository).findByTrackEditorialIdAndContentCategoryInOrderByPositionAsc(editorialId, List.of(BlockContentCategory.ANECDOTE));
     }
 
     @Test
     void noBlocksFound_hasPlainTextContent() throws Exception {
         UUID editorialId = UUID.randomUUID();
-        when(editorialBlockRepository.findByEditorialIdOrderByPositionAsc(editorialId)).thenReturn(List.of());
+        when(editorialBlockRepository.findByTrackEditorialIdOrderByPositionAsc(editorialId)).thenReturn(List.of());
 
         ToolExecutionResult result = tool.execute(callWith("{\"editorialId\":\"" + editorialId + "\"}"), USER_ID);
 

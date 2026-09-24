@@ -3,45 +3,21 @@ package com.jazzlogs.backend.album;
 import java.util.List;
 import java.util.UUID;
 
-import jakarta.validation.Valid;
-
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.multipart.MultipartFile;
 
 import com.jazzlogs.backend.album.dto.AlbumHeaderDto;
 import com.jazzlogs.backend.album.dto.ContextTagRequest;
-import com.jazzlogs.backend.album.dto.CoverColorRequest;
-import com.jazzlogs.backend.album.dto.CreateAlbumRequest;
-import com.jazzlogs.backend.album.dto.LetterColorRequest;
 import com.jazzlogs.backend.album.dto.MoodTagRequest;
-import com.jazzlogs.backend.album.dto.PersonnelRequest;
 import com.jazzlogs.backend.album.dto.StyleTagRequest;
-import com.jazzlogs.backend.editorial.AlbumEditorial;
-import com.jazzlogs.backend.editorial.EditorialService;
-import com.jazzlogs.backend.editorial.dto.AlbumEditorialDto;
-import com.jazzlogs.backend.editorial.dto.AlbumEditorialRequest;
-import com.jazzlogs.backend.review.ReviewService;
-import com.jazzlogs.backend.review.dto.CreateReviewRequest;
-import com.jazzlogs.backend.review.dto.ReviewDto;
-import com.jazzlogs.backend.track.Track;
-import com.jazzlogs.backend.track.TrackService;
-import com.jazzlogs.backend.track.dto.CreateTrackRequest;
 import com.jazzlogs.backend.track.dto.TrackDto;
 import com.jazzlogs.backend.user.UserService;
 
@@ -52,164 +28,24 @@ import lombok.AllArgsConstructor;
 @AllArgsConstructor
 public class AlbumController {
 
-    /** Fixed server-side, not a client-controlled ?size — see {@link #getAlbumReviews}. */
-    private static final int REVIEWS_PAGE_SIZE = 6;
-
     private final AlbumService albumService;
-    private final TrackService trackService;
-    private final EditorialService editorialService;
-    private final ReviewService reviewService;
     private final UserService userService;
 
     /**
-     * The album page's fast, above-the-fold load — see {@link AlbumService#getAlbumHeader}.
+     * The album's minimal support metadata — see {@link AlbumService#getAlbumHeader}.
      *
-     * @param id  the album to load
-     * @param jwt the caller, resolved to a user id only to compute listen/save state
+     * @param id the album to load
      * @return the album header
      */
     @GetMapping("/{id}")
-    public AlbumHeaderDto getAlbum(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
-        return albumService.getAlbumHeader(id, currentUserId(jwt));
+    public AlbumHeaderDto getAlbum(@PathVariable UUID id) {
+        return albumService.getAlbumHeader(id);
     }
 
     /** The album page's track list, fetched separately from the header — see {@link AlbumService#getAlbumTracks}. */
     @GetMapping("/{id}/tracks")
     public List<TrackDto> getAlbumTracks(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
         return albumService.getAlbumTracks(id, currentUserId(jwt));
-    }
-
-    // Upserts by spotifyAlbumId — posting the same album again updates it in
-    // place instead of creating a duplicate. See AlbumService.createOrUpdateAlbum.
-    @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<AlbumHeaderDto> createOrUpdateAlbum(@Valid @RequestBody CreateAlbumRequest request, @AuthenticationPrincipal Jwt jwt) {
-        Album album = albumService.createOrUpdateAlbum(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(albumService.getAlbumHeader(album.getId(), currentUserId(jwt)));
-    }
-
-    // Upserts by spotifyTrackId — posting the same track again updates it in
-    // place instead of creating a duplicate. See TrackService.createOrUpdateTrack.
-    @PostMapping("/{id}/tracks")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<TrackDto> createOrUpdateTrack(@PathVariable UUID id, @Valid @RequestBody CreateTrackRequest request) {
-        Track track = trackService.createOrUpdateTrack(id, request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(trackService.toTrackDto(track));
-    }
-
-    @PostMapping("/{id}/editorial")
-    @PreAuthorize("hasRole('ADMIN')")
-    public AlbumEditorialDto upsertEditorial(@PathVariable UUID id, @Valid @RequestBody AlbumEditorialRequest request, @AuthenticationPrincipal Jwt jwt) {
-        AlbumEditorial editorial = editorialService.upsertAlbumEditorial(id, request);
-        return editorialService.toAlbumEditorialDto(editorial, currentUserId(jwt));
-    }
-
-    /**
-     * Uploads this album's editorial's principal/hero image — see {@link EditorialService#setAlbumEditorialPrincipalImage}.
-     *
-     * @param id   the album
-     * @param file the image file (jpeg/png/webp only, see {@code ImageStorageService})
-     */
-    @PutMapping(value = "/{id}/editorial/principal-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> setEditorialPrincipalImage(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
-        editorialService.setAlbumEditorialPrincipalImage(id, file);
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * Uploads this album's editorial's secondary image — see {@link EditorialService#setAlbumEditorialSecondaryImage}.
-     *
-     * @param id   the album
-     * @param file the image file (jpeg/png/webp only, see {@code ImageStorageService})
-     */
-    @PutMapping(value = "/{id}/editorial/secondary-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> setEditorialSecondaryImage(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
-        editorialService.setAlbumEditorialSecondaryImage(id, file);
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * Uploads this album's editorial's banner image — see {@link EditorialService#setAlbumEditorialBannerImage}.
-     *
-     * @param id   the album
-     * @param file the image file (jpeg/png/webp only, see {@code ImageStorageService})
-     */
-    @PutMapping(value = "/{id}/editorial/banner-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> setEditorialBannerImage(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
-        editorialService.setAlbumEditorialBannerImage(id, file);
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * Uploads this album's editorial's footer image — see {@link EditorialService#setAlbumEditorialFooterImage}.
-     *
-     * @param id   the album
-     * @param file the image file (jpeg/png/webp only, see {@code ImageStorageService})
-     */
-    @PutMapping(value = "/{id}/editorial/footer-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> setEditorialFooterImage(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
-        editorialService.setAlbumEditorialFooterImage(id, file);
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * Adds this artist to the album's personnel — {@code LEADER_OF} or
-     * {@code SIDEMAN_ON} in Neo4j depending on {@code request.role()} — see
-     * {@link AlbumService#addPersonnel}.
-     *
-     * @param id      the album
-     * @param request the artist, role (LEADER/SIDEMAN), and instruments played
-     */
-    @PostMapping("/{id}/personnel")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> addPersonnel(@PathVariable UUID id, @RequestBody PersonnelRequest request) {
-        albumService.addPersonnel(id, request);
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * Removes this artist from the album's personnel — see {@link
-     * AlbumService#removePersonnel}.
-     *
-     * @param id       the album
-     * @param artistId the artist
-     * @param role     which edge to remove (LEADER/SIDEMAN) — same shape as {@code POST}'s body
-     */
-    @DeleteMapping("/{id}/personnel/{artistId}")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> removePersonnel(@PathVariable UUID id, @PathVariable UUID artistId, @RequestParam PersonnelRole role) {
-        albumService.removePersonnel(id, artistId, role);
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * Marks this album as a good entry point into an artist — see {@link AlbumService#markEntryPoint}.
-     *
-     * @param id       the album
-     * @param artistId the artist this album is a good entry point into
-     */
-    @PostMapping("/{id}/entry-point/{artistId}")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> markEntryPoint(@PathVariable UUID id, @PathVariable UUID artistId) {
-        albumService.markEntryPoint(id, artistId);
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * Unmarks this album as a good entry point into an artist — see {@link AlbumService#unmarkEntryPoint}.
-     *
-     * @param id       the album
-     * @param artistId the artist
-     */
-    @DeleteMapping("/{id}/entry-point/{artistId}")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> unmarkEntryPoint(@PathVariable UUID id, @PathVariable UUID artistId) {
-        albumService.unmarkEntryPoint(id, artistId);
-        return ResponseEntity.noContent().build();
     }
 
     // Full replace, not add-one — see StyleTagRequest's comment.
@@ -234,137 +70,11 @@ public class AlbumController {
         return ResponseEntity.noContent().build();
     }
 
-    /**
-     * Sets the album's curated cover color — see {@link AlbumService#setCoverColor}.
-     *
-     * @param id      the album
-     * @param request the color to set
-     */
-    @PutMapping("/{id}/cover-color")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> setCoverColor(@PathVariable UUID id, @Valid @RequestBody CoverColorRequest request) {
-        albumService.setCoverColor(id, request);
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * Clears the album's curated cover color — see {@link AlbumService#clearCoverColor}.
-     *
-     * @param id the album
-     */
-    @DeleteMapping("/{id}/cover-color")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> clearCoverColor(@PathVariable UUID id) {
-        albumService.clearCoverColor(id);
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * Sets the album's curated letter (text) color — see {@link AlbumService#setLetterColor}.
-     *
-     * @param id      the album
-     * @param request the color to set
-     */
-    @PutMapping("/{id}/letter-color")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> setLetterColor(@PathVariable UUID id, @Valid @RequestBody LetterColorRequest request) {
-        albumService.setLetterColor(id, request);
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * Clears the album's curated letter color — see {@link AlbumService#clearLetterColor}.
-     *
-     * @param id the album
-     */
-    @DeleteMapping("/{id}/letter-color")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> clearLetterColor(@PathVariable UUID id) {
-        albumService.clearLetterColor(id);
-        return ResponseEntity.noContent().build();
-    }
-
-    /** Marks this album as THE featured album — see {@link AlbumService#setFeatured}. */
-    @PostMapping("/{id}/featured")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> setFeatured(@PathVariable UUID id) {
-        albumService.setFeatured(id);
-        return ResponseEntity.noContent().build();
-    }
-
-    /** Removes this album from being featured — see {@link AlbumService#unsetFeatured}. */
-    @DeleteMapping("/{id}/featured")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> unsetFeatured(@PathVariable UUID id) {
-        albumService.unsetFeatured(id);
-        return ResponseEntity.noContent().build();
-    }
-
     // No POST/DELETE /{id}/listen anymore — an album's "listened" state
     // isn't something a user sets directly, it's a consequence of listening
     // to every one of its tracks (POST/DELETE /tracks/{id}/listen), computed
     // in AlbumService.getAlbumHeader and reconciled by
     // ListenService.syncAlbumCompletionState.
-
-    /**
-     * Creates the caller's own review of this album — see {@link ReviewService#createReview}.
-     *
-     * @param id      the album being reviewed
-     * @param request the review's own fields
-     * @param jwt     the caller
-     * @return the created review
-     */
-    @PostMapping("/{id}/reviews")
-    public ReviewDto createReview(@PathVariable UUID id, @Valid @RequestBody CreateReviewRequest request, @AuthenticationPrincipal Jwt jwt) {
-        return reviewService.createReview(currentUserId(jwt), id, request.rating(), request.text(), request.standoutTrackIds());
-    }
-
-    /**
-     * Edits the caller's own existing review of this album — see {@link ReviewService#updateReview}.
-     *
-     * @param id      the album being reviewed
-     * @param request the review's own fields — a full replace, not a partial patch
-     * @param jwt     the caller
-     * @return the updated review
-     */
-    @PutMapping("/{id}/reviews")
-    public ReviewDto updateReview(@PathVariable UUID id, @Valid @RequestBody CreateReviewRequest request, @AuthenticationPrincipal Jwt jwt) {
-        return reviewService.updateReview(currentUserId(jwt), id, request.rating(), request.text(), request.standoutTrackIds());
-    }
-
-    /**
-     * Deletes the caller's own review of this album — see {@link ReviewService#deleteReview}.
-     *
-     * @param id  the album being reviewed
-     * @param jwt the caller
-     */
-    @DeleteMapping("/{id}/reviews")
-    public ResponseEntity<Void> deleteReview(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
-        reviewService.deleteReview(currentUserId(jwt), id);
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * The album's reviews, paginated — the caller's own review (if any)
-     * always leads, then everyone else's newest first. Same shape as
-     * {@code TrackController#getTrackNotes}; the frontend uses page 0's
-     * first item (if its {@code userId} matches the caller) to know
-     * whether to {@link #createReview} or {@link #updateReview} — there's
-     * no separate "my review" endpoint anymore.
-     *
-     * @param id   the album
-     * @param jwt  the caller, resolved to a user id for "mine first" and each review's {@code likedByCurrentUser}
-     * @param page 0-based; page size is fixed at {@link #REVIEWS_PAGE_SIZE}, not client-controlled
-     * @return the matching page
-     */
-    @GetMapping("/{id}/reviews")
-    public Page<ReviewDto> getAlbumReviews(
-        @PathVariable UUID id,
-        @AuthenticationPrincipal Jwt jwt,
-        @RequestParam(defaultValue = "0") int page
-    ) {
-        return reviewService.getAlbumReviews(id, currentUserId(jwt), PageRequest.of(page, REVIEWS_PAGE_SIZE));
-    }
 
     private UUID currentUserId(Jwt jwt) {
         return userService.resolveFromJwt(jwt).getId();

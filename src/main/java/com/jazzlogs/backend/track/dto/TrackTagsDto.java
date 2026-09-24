@@ -9,6 +9,7 @@ import com.jazzlogs.backend.graph.VocabularyTag;
 // endpoint (no GET /tracks/{id}), so this is purpose-built rather than a
 // slice of a bigger DTO.
 public record TrackTagsDto(
+    List<VocabularyTag> styles,
     List<VocabularyTag> moods,
     List<VocabularyTag> contexts,
     List<VocabularyTag> rhythms,

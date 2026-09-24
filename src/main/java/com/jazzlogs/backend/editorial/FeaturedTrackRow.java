@@ -14,7 +14,6 @@ public record FeaturedTrackRow(
     String title,
     String dek,
     EditorialByline byline,
-    String logNumber,
     String trackName,
     String imageUrl,
     String albumName,

@@ -14,8 +14,6 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.album.AlbumRepository;
-import com.jazzlogs.backend.album.Level;
-import com.jazzlogs.backend.album.VocalProfile;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
 import com.jazzlogs.backend.graph.GraphService;
@@ -27,8 +25,8 @@ import com.jazzlogs.backend.user.User;
 import com.jazzlogs.backend.user.UserRepository;
 
 // GraphService is mocked here (not the real Neo4jClient-backed bean) — same
-// reasoning as PlaylistServiceTest/ReviewServiceTest: these tests cover
-// LikeService's own Postgres logic, not Neo4j behavior.
+// reasoning as PlaylistServiceTest: these tests cover LikeService's own
+// Postgres logic, not Neo4j behavior.
 @SpringBootTest
 @Transactional
 class LikeServiceTest {
@@ -99,8 +97,7 @@ class LikeServiceTest {
     private Note persistNote() {
         Artist artist = artistRepository.save(new Artist("Like Test Artist " + UUID.randomUUID(), null, null, null));
         Album album = albumRepository.save(new Album(
-            artist, "Like Test Album " + UUID.randomUUID(), null, null, null, 2024, 1,
-            "LOG-" + UUID.randomUUID(), "LABEL", VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
+            artist, "Like Test Album " + UUID.randomUUID(), null, null, null, 2024, 1
         ));
         Track track = trackRepository.save(new Track(
             album, null, "Like Test Track", null, null, null, false, null, null, null, null, null, null

@@ -149,13 +149,37 @@ public class SpotifyCatalogService {
             ? null
             : item.album().images().get(0).url();
 
+        SpotifyTrackAlbumData albumData = item.album() == null ? null : new SpotifyTrackAlbumData(
+            item.album().id(),
+            item.album().name(),
+            imageUrl,
+            item.album().externalUrls() == null ? null : item.album().externalUrls().spotify(),
+            parseReleaseYear(item.album().releaseDate())
+        );
+
+        SpotifyTrackArtistData artistData = (item.artists() == null || item.artists().isEmpty())
+            ? null
+            : toTrackArtistData(item.artists().get(0));
+
         return new SpotifyTrackData(
             item.id(),
             item.name(),
             item.durationMs(),
             item.externalUrls() == null ? null : item.externalUrls().spotify(),
             item.trackNumber(),
-            imageUrl
+            imageUrl,
+            albumData,
+            artistData
+        );
+    }
+
+    // Only the track's primary (first) artist — enough to resolve/create a
+    // minimal Artist as a side effect of track ingestion. Any additional
+    // artists on the track go through the existing PERFORMED_ON personnel
+    // endpoint by hand, not auto-imported here.
+    private SpotifyTrackArtistData toTrackArtistData(SpotifyTrackArtist artist) {
+        return new SpotifyTrackArtistData(
+            artist.id(), artist.name(), artist.externalUrls() == null ? null : artist.externalUrls().spotify()
         );
     }
 
@@ -210,17 +234,39 @@ public class SpotifyCatalogService {
     // care about are identical whether the track comes from an album's embedded
     // list or a direct track lookup. "album" is only populated on the direct
     // lookup — a track has no cover art of its own, so we borrow its album's.
+    // "artists" is the track's own credited artist(s), first one taken as the
+    // primary (see toTrackArtistData) — used to resolve/create a minimal
+    // Artist without a separate fetchArtist call.
     private record SpotifyTrackItem(
         String id,
         String name,
         @JsonProperty("duration_ms") Integer durationMs,
         @JsonProperty("track_number") Integer trackNumber,
         @JsonProperty("external_urls") ExternalUrls externalUrls,
-        SpotifyTrackAlbum album
+        SpotifyTrackAlbum album,
+        List<SpotifyTrackArtist> artists
     ) {
     }
 
-    private record SpotifyTrackAlbum(List<Image> images) {
+    // Spotify's "simplified album object" embedded on a track — no `label`,
+    // no `total_tracks` reliably present across API versions, so those stay
+    // sourced from a direct fetchAlbum call where they're still needed.
+    private record SpotifyTrackAlbum(
+        String id,
+        String name,
+        @JsonProperty("release_date") String releaseDate,
+        @JsonProperty("external_urls") ExternalUrls externalUrls,
+        List<Image> images
+    ) {
+    }
+
+    // Spotify's "simplified artist object" — no images/genres/followers,
+    // those only come back from a direct fetchArtist call.
+    private record SpotifyTrackArtist(
+        String id,
+        String name,
+        @JsonProperty("external_urls") ExternalUrls externalUrls
+    ) {
     }
 
     // "genres" (also present on this response) is deliberately not parsed or stored:

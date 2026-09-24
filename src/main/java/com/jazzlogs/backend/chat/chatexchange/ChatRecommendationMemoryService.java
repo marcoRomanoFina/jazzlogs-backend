@@ -84,7 +84,7 @@ public class ChatRecommendationMemoryService {
 
     /**
      * Builds the {@code sync_failures} payload for a failed {@link #syncMemoryUpdate}
-     * call — canonical-strings contract (see {@code ReviewService}), winners
+     * call — canonical-strings contract (see {@code TrackRatingService}), winners
      * nested as a list of maps since {@link WinnerReference} isn't primitive-only.
      */
     public static Map<String, Object> toPayload(UUID chatId, List<WinnerReference> winners, String updatedSessionSummary) {

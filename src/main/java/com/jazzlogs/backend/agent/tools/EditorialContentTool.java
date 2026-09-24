@@ -73,8 +73,8 @@ public class EditorialContentTool extends JazzTool {
         List<BlockContentCategory> categories = parseEnumList(args.categories(), BlockContentCategory.class, "category");
 
         List<EditorialBlock> blocks = categories.isEmpty()
-            ? editorialBlockRepository.findByEditorialIdOrderByPositionAsc(editorialId)
-            : editorialBlockRepository.findByEditorialIdAndContentCategoryInOrderByPositionAsc(editorialId, categories);
+            ? editorialBlockRepository.findByTrackEditorialIdOrderByPositionAsc(editorialId)
+            : editorialBlockRepository.findByTrackEditorialIdAndContentCategoryInOrderByPositionAsc(editorialId, categories);
 
         List<Block> blockDtos = blocks.stream().map(EditorialContentTool::toBlock).toList();
         Output output = new Output(buildContent(editorialId, blockDtos), new Metadata(editorialId, blockDtos));

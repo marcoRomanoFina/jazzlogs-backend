@@ -65,7 +65,7 @@ public class Series {
     @Column(nullable = false)
     private SeriesVoice voice;
 
-    // Denormalized, same contract as Playlist/Review/Note.likeCount — mutated
+    // Denormalized, same contract as Playlist/Editorial/Note.likeCount — mutated
     // only via SeriesRepository's atomic increment/decrement UPDATE queries.
     @Column(name = "like_count", nullable = false)
     private int likeCount;
