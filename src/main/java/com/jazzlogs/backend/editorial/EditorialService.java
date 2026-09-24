@@ -182,7 +182,7 @@ public class EditorialService {
 
     private FeaturedTrackDto toFeaturedTrackDto(FeaturedTrackRow row, boolean likedByCurrentUser) {
         return new FeaturedTrackDto(
-            row.id(), row.title(), row.dek(), row.byline(), row.logNumber(),
+            row.id(), row.title(), row.dek(), row.byline(),
             row.trackName(), row.imageUrl(), row.albumName(), row.albumId(), row.createdAt(), row.likeCount(),
             likedByCurrentUser
         );

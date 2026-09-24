@@ -20,8 +20,6 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.album.AlbumRepository;
-import com.jazzlogs.backend.album.Level;
-import com.jazzlogs.backend.album.VocalProfile;
 import com.jazzlogs.backend.artist.dto.ArtistTagsDto;
 import com.jazzlogs.backend.artist.dto.ArtistHeaderDto;
 import com.jazzlogs.backend.artist.dto.AlbumSummaryDto;
@@ -237,8 +235,7 @@ class ArtistServiceTest {
 
     private Album persistAlbum(Artist artist, String name, Integer releaseYear) {
         return albumRepository.save(new Album(
-            artist, name, null, null, null, releaseYear, 1,
-            "LOG-" + UUID.randomUUID(), "LABEL", VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
+            artist, name, null, null, null, releaseYear, 1, null, null
         ));
     }
 }

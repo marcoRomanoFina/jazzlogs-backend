@@ -1,5 +1,6 @@
 package com.jazzlogs.backend.track;
 
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -20,6 +21,8 @@ import com.jazzlogs.backend.editorial.dto.TrackEditorialDto;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.TrackPlacement;
 import com.jazzlogs.backend.spotify.SpotifyCatalogService;
+import com.jazzlogs.backend.spotify.SpotifyTrackAlbumData;
+import com.jazzlogs.backend.spotify.SpotifyTrackArtistData;
 import com.jazzlogs.backend.spotify.SpotifyTrackData;
 import com.jazzlogs.backend.track.dto.CreateTrackRequest;
 import com.jazzlogs.backend.track.dto.FeaturedInstrumentsRequest;
@@ -48,49 +51,88 @@ public class TrackService {
 
     // Upsert on spotifyTrackId: re-posting a track that's already in the
     // catalog updates it in place (fresh Spotify data + the editable fields
-    // below) instead of creating a duplicate. The track's album is never
-    // reassigned on update — see AlbumService.applyToExisting for the same
-    // reasoning on albums/artists — so the Neo4j CONTAINS edge uses the
-    // track's actual album, not necessarily the one in the URL. A brand-new
+    // below) instead of creating a duplicate. Track-first: the track's own
+    // Spotify lookup carries its embedded album/artist, resolved or created
+    // as a side effect on the create path only (see resolveOrCreateArtist/
+    // resolveOrCreateAlbum) — no separate album/artist admin step anymore.
+    // The track's album is never reassigned on update, so the Neo4j CONTAINS
+    // edge always uses the track's actual (original) album. A brand-new
     // track's position (CONTAINS.trackNumber) and the album's totalTracks
     // are both assigned by upload order here, not Spotify's own
     // track_number/total_tracks — those count bonus/alternate takes we
     // often deliberately skip cataloguing, which would leave gaps
     // otherwise. An update to an existing track never touches either.
     @Transactional
-    public Track createOrUpdateTrack(UUID albumId, CreateTrackRequest request) {
-        Album album = getAlbumOrThrow(albumId);
+    public Track createOrUpdateTrack(CreateTrackRequest request) {
         SpotifyTrackData data = spotifyCatalogService.fetchTrack(request.spotifyTrackId());
 
         Optional<Track> existingTrack = trackRepository.findBySpotifyTrackId(request.spotifyTrackId());
         Track track = existingTrack
             .map(existing -> applyToExisting(existing, data, request))
-            .orElseGet(() -> new Track(
-                album,
-                data.spotifyTrackId(),
-                data.name(),
-                data.durationMs(),
-                data.spotifyUrl(),
-                data.imageUrl(),
-                request.standout(),
-                request.vocalProfile(),
-                request.energy(),
-                request.accessibility(),
-                request.moodIntensity(),
-                request.tempoFeel(),
-                request.compositionType()
-            ));
+            .orElseGet(() -> {
+                Artist artist = resolveOrCreateArtist(data.artist());
+                Album album = resolveOrCreateAlbum(data.album(), artist);
+                return new Track(
+                    album,
+                    data.spotifyTrackId(),
+                    data.name(),
+                    data.durationMs(),
+                    data.spotifyUrl(),
+                    data.imageUrl(),
+                    request.standout(),
+                    request.vocalProfile(),
+                    request.energy(),
+                    request.accessibility(),
+                    request.moodIntensity(),
+                    request.tempoFeel(),
+                    request.compositionType()
+                );
+            });
         Track saved = trackRepository.save(track);
 
         graphService.syncTrackNode(saved.getId(), saved.getName());
 
         if (existingTrack.isEmpty()) {
+            Album album = saved.getAlbum();
             int trackNumber = graphService.getTrackPlacements(album.getId()).size() + 1;
             graphService.addTrackToAlbum(album.getId(), saved.getId(), trackNumber);
             album.setTotalTracks(trackNumber);
         }
 
         return saved;
+    }
+
+    /**
+     * Resolves the track's primary Spotify artist to an existing {@link
+     * Artist} row, or creates a minimal one — upsert by spotifyArtistId. An
+     * already-existing artist is returned as-is, never overwritten: this
+     * runs on every new-track ingestion, so re-fetching wouldn't add
+     * anything (no image comes from a track lookup anyway, see {@link
+     * SpotifyTrackArtistData}) and could clobber curated data (e.g. an
+     * admin-set image) added some other way later.
+     */
+    private Artist resolveOrCreateArtist(SpotifyTrackArtistData data) {
+        return artistRepository.findBySpotifyArtistId(data.spotifyArtistId())
+            .orElseGet(() -> {
+                Artist artist = new Artist(data.name(), data.spotifyArtistId(), data.spotifyUrl(), null);
+                Artist saved = artistRepository.save(artist);
+                graphService.syncArtistNode(saved.getId(), saved.getName());
+                return saved;
+            });
+    }
+
+    /** Same "resolve, don't overwrite" contract as {@link #resolveOrCreateArtist} — upsert by spotifyAlbumId. */
+    private Album resolveOrCreateAlbum(SpotifyTrackAlbumData data, Artist artist) {
+        return albumRepository.findBySpotifyAlbumId(data.spotifyAlbumId())
+            .orElseGet(() -> {
+                Album album = new Album(
+                    artist, data.name(), data.spotifyAlbumId(), data.spotifyUrl(), data.imageUrl(),
+                    data.releaseYear(), 0, Instant.now(), null
+                );
+                Album saved = albumRepository.save(album);
+                graphService.syncAlbumNode(saved.getId(), saved.getName());
+                return saved;
+            });
     }
 
     private Track applyToExisting(Track track, SpotifyTrackData data, CreateTrackRequest request) {
@@ -291,11 +333,6 @@ public class TrackService {
             ctx.hasListened(),
             ctx.isSaved()
         );
-    }
-
-    private Album getAlbumOrThrow(UUID albumId) {
-        return albumRepository.findById(albumId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Album not found: " + albumId));
     }
 
     private Track getTrackOrThrow(UUID trackId) {

@@ -14,8 +14,6 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.album.AlbumRepository;
-import com.jazzlogs.backend.album.Level;
-import com.jazzlogs.backend.album.VocalProfile;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
 import com.jazzlogs.backend.graph.GraphService;
@@ -99,8 +97,7 @@ class LikeServiceTest {
     private Note persistNote() {
         Artist artist = artistRepository.save(new Artist("Like Test Artist " + UUID.randomUUID(), null, null, null));
         Album album = albumRepository.save(new Album(
-            artist, "Like Test Album " + UUID.randomUUID(), null, null, null, 2024, 1,
-            "LOG-" + UUID.randomUUID(), "LABEL", VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
+            artist, "Like Test Album " + UUID.randomUUID(), null, null, null, 2024, 1, null, null
         ));
         Track track = trackRepository.save(new Track(
             album, null, "Like Test Track", null, null, null, false, null, null, null, null, null, null

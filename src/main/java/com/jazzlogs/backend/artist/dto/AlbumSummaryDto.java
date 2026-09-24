@@ -16,9 +16,7 @@ import java.util.UUID;
  * @param name        the album's name
  * @param imageUrl    cover art
  * @param releaseYear year of original release
- * @param label       the record label
  * @param totalTracks how many tracks are catalogued so far, by upload order — not Spotify's own count (see {@code TrackService#createOrUpdateTrack})
- * @param logNumber   the catalog/log number
  * @param artistId    the album's own leading artist
  * @param artistName  the album's own leading artist's name
  */
@@ -27,9 +25,7 @@ public record AlbumSummaryDto(
     String name,
     String imageUrl,
     Integer releaseYear,
-    String label,
     Integer totalTracks,
-    String logNumber,
     UUID artistId,
     String artistName
 ) {

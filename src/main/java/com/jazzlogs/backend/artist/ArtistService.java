@@ -217,9 +217,7 @@ public class ArtistService {
             album.getName(),
             album.getImageUrl(),
             album.getReleaseYear(),
-            album.getLabel(),
             album.getTotalTracks(),
-            album.getLogNumber(),
             album.getArtist().getId(),
             album.getArtist().getName()
         ));

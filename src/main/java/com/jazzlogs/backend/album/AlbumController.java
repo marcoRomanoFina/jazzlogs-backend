@@ -5,7 +5,6 @@ import java.util.UUID;
 
 import jakarta.validation.Valid;
 
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -17,20 +16,14 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.jazzlogs.backend.album.dto.AlbumHeaderDto;
 import com.jazzlogs.backend.album.dto.ContextTagRequest;
 import com.jazzlogs.backend.album.dto.CoverColorRequest;
-import com.jazzlogs.backend.album.dto.CreateAlbumRequest;
 import com.jazzlogs.backend.album.dto.LetterColorRequest;
 import com.jazzlogs.backend.album.dto.MoodTagRequest;
-import com.jazzlogs.backend.album.dto.PersonnelRequest;
 import com.jazzlogs.backend.album.dto.StyleTagRequest;
-import com.jazzlogs.backend.track.Track;
-import com.jazzlogs.backend.track.TrackService;
-import com.jazzlogs.backend.track.dto.CreateTrackRequest;
 import com.jazzlogs.backend.track.dto.TrackDto;
 import com.jazzlogs.backend.user.UserService;
 
@@ -42,7 +35,6 @@ import lombok.AllArgsConstructor;
 public class AlbumController {
 
     private final AlbumService albumService;
-    private final TrackService trackService;
     private final UserService userService;
 
     /**
@@ -61,54 +53,6 @@ public class AlbumController {
     @GetMapping("/{id}/tracks")
     public List<TrackDto> getAlbumTracks(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
         return albumService.getAlbumTracks(id, currentUserId(jwt));
-    }
-
-    // Upserts by spotifyAlbumId — posting the same album again updates it in
-    // place instead of creating a duplicate. See AlbumService.createOrUpdateAlbum.
-    @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<AlbumHeaderDto> createOrUpdateAlbum(@Valid @RequestBody CreateAlbumRequest request, @AuthenticationPrincipal Jwt jwt) {
-        Album album = albumService.createOrUpdateAlbum(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(albumService.getAlbumHeader(album.getId(), currentUserId(jwt)));
-    }
-
-    // Upserts by spotifyTrackId — posting the same track again updates it in
-    // place instead of creating a duplicate. See TrackService.createOrUpdateTrack.
-    @PostMapping("/{id}/tracks")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<TrackDto> createOrUpdateTrack(@PathVariable UUID id, @Valid @RequestBody CreateTrackRequest request) {
-        Track track = trackService.createOrUpdateTrack(id, request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(trackService.toTrackDto(track));
-    }
-
-    /**
-     * Adds this artist to the album's personnel — {@code LEADER_OF} or
-     * {@code SIDEMAN_ON} in Neo4j depending on {@code request.role()} — see
-     * {@link AlbumService#addPersonnel}.
-     *
-     * @param id      the album
-     * @param request the artist, role (LEADER/SIDEMAN), and instruments played
-     */
-    @PostMapping("/{id}/personnel")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> addPersonnel(@PathVariable UUID id, @RequestBody PersonnelRequest request) {
-        albumService.addPersonnel(id, request);
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * Removes this artist from the album's personnel — see {@link
-     * AlbumService#removePersonnel}.
-     *
-     * @param id       the album
-     * @param artistId the artist
-     * @param role     which edge to remove (LEADER/SIDEMAN) — same shape as {@code POST}'s body
-     */
-    @DeleteMapping("/{id}/personnel/{artistId}")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> removePersonnel(@PathVariable UUID id, @PathVariable UUID artistId, @RequestParam PersonnelRole role) {
-        albumService.removePersonnel(id, artistId, role);
-        return ResponseEntity.noContent().build();
     }
 
     /**

@@ -22,8 +22,6 @@ import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
 import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.album.AlbumRepository;
-import com.jazzlogs.backend.album.Level;
-import com.jazzlogs.backend.album.VocalProfile;
 import com.jazzlogs.backend.editorial.dto.FeaturedTrackDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialRequest;
 import com.jazzlogs.backend.graph.GraphService;
@@ -179,8 +177,7 @@ class EditorialServiceTest {
     private Album persistAlbum(String name) {
         Artist artist = artistRepository.save(new Artist(name + " Artist", null, null, null));
         return albumRepository.save(new Album(
-            artist, name, null, null, null, 2024, 1, "LOG-" + UUID.randomUUID(), "LABEL",
-            VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
+            artist, name, null, null, null, 2024, 1, null, null
         ));
     }
 

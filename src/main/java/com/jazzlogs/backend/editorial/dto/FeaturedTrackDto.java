@@ -14,7 +14,6 @@ import com.jazzlogs.backend.editorial.EditorialByline;
  * @param title              the track editorial's headline
  * @param dek                the editorial's short standfirst text
  * @param byline             who wrote it
- * @param logNumber          the track's album's catalog/release identifier
  * @param trackName          the track's own name
  * @param imageUrl           the track's cover image (borrowed from its album — see {@code Track#imageUrl})
  * @param albumName          the track's album
@@ -28,7 +27,6 @@ public record FeaturedTrackDto(
     String title,
     String dek,
     EditorialByline byline,
-    String logNumber,
     String trackName,
     String imageUrl,
     String albumName,

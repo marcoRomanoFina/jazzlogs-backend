@@ -4,8 +4,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
-import com.jazzlogs.backend.album.Level;
-import com.jazzlogs.backend.album.VocalProfile;
 import com.jazzlogs.backend.graph.AlbumPersonnelEntry;
 
 /**
@@ -26,12 +24,6 @@ import com.jazzlogs.backend.graph.AlbumPersonnelEntry;
  * @param totalTracks        how many tracks are catalogued so far, by upload
  *                           order — not Spotify's own track count, which
  *                           can include bonus/alternate takes we skip
- * @param logNumber          JazzLogs' own catalog/release identifier
- * @param label              the record label
- * @param vocalProfile       instrumental/vocal classification
- * @param energy             tag: how energetic the album is
- * @param moodIntensity      tag: how strong the mood is
- * @param accessibility      tag: how approachable/accessible the album is
  * @param postedAt           when this album was first added to JazzLogs
  * @param instagramPermalink optional link to an Instagram post about this album
  * @param coverColor         admin-curated accent color, hex (e.g. {@code #a86b32}),
@@ -59,12 +51,6 @@ public record AlbumHeaderDto(
     String imageUrl,
     Integer releaseYear,
     Integer totalTracks,
-    String logNumber,
-    String label,
-    VocalProfile vocalProfile,
-    Level energy,
-    Level moodIntensity,
-    Level accessibility,
     Instant postedAt,
     String instagramPermalink,
     String coverColor,

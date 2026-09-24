@@ -35,9 +35,11 @@ import com.jazzlogs.backend.listen.ListenService;
 import com.jazzlogs.backend.note.NoteService;
 import com.jazzlogs.backend.note.dto.CreateNoteRequest;
 import com.jazzlogs.backend.note.dto.NoteDto;
+import com.jazzlogs.backend.track.dto.CreateTrackRequest;
 import com.jazzlogs.backend.track.dto.FeaturedInstrumentsRequest;
 import com.jazzlogs.backend.track.dto.PerformerRequest;
 import com.jazzlogs.backend.track.dto.RhythmTagRequest;
+import com.jazzlogs.backend.track.dto.TrackDto;
 import com.jazzlogs.backend.track.dto.TrackTagsDto;
 import com.jazzlogs.backend.trackrating.TrackRatingService;
 import com.jazzlogs.backend.trackrating.dto.CreateTrackRatingRequest;
@@ -60,6 +62,17 @@ public class TrackController {
     private final NoteService noteService;
     private final TrackRatingService trackRatingService;
     private final UserService userService;
+
+    // Upserts by spotifyTrackId — posting the same track again updates it in
+    // place instead of creating a duplicate. Track-first: Album/Artist are
+    // resolved or created automatically from the track's own Spotify data
+    // (see TrackService.createOrUpdateTrack), no separate album/artist step.
+    @PostMapping
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<TrackDto> createOrUpdateTrack(@Valid @RequestBody CreateTrackRequest request) {
+        Track track = trackService.createOrUpdateTrack(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(trackService.toTrackDto(track));
+    }
 
     @PostMapping("/{id}/editorial")
     @PreAuthorize("hasRole('ADMIN')")

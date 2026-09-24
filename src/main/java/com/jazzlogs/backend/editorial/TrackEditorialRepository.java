@@ -70,7 +70,7 @@ public interface TrackEditorialRepository extends LikeableRepository<TrackEditor
      */
     @Query("""
         SELECT new com.jazzlogs.backend.editorial.FeaturedTrackRow(
-            te.id, te.title, te.dek, te.byline, alb.logNumber,
+            te.id, te.title, te.dek, te.byline,
             t.name, t.imageUrl, alb.name, alb.id, te.createdAt, te.likeCount
         )
         FROM TrackEditorial te
