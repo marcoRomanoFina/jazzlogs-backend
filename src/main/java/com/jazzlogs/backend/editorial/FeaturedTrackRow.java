@@ -13,7 +13,7 @@ public record FeaturedTrackRow(
     UUID id,
     String title,
     String dek,
-    String byline,
+    EditorialByline byline,
     String logNumber,
     String trackName,
     String imageUrl,

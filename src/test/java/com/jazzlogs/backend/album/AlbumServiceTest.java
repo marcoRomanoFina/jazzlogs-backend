@@ -23,6 +23,7 @@ import com.jazzlogs.backend.album.dto.CoverColorRequest;
 import com.jazzlogs.backend.album.dto.LetterColorRequest;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
+import com.jazzlogs.backend.editorial.EditorialByline;
 import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.editorial.dto.AlbumEditorialRequest;
 import com.jazzlogs.backend.graph.AlbumHeaderGraphData;
@@ -224,8 +225,8 @@ class AlbumServiceTest {
         Artist artist = artistRepository.save(new Artist("Featured Test Artist", null, null, null));
         Album albumA = persistAlbum(artist, "Featured Album A", 2020);
         Album albumB = persistAlbum(artist, "Featured Album B", 2021);
-        editorialService.upsertAlbumEditorial(albumA.getId(), new AlbumEditorialRequest("A", "dek", "byline", List.of()));
-        editorialService.upsertAlbumEditorial(albumB.getId(), new AlbumEditorialRequest("B", "dek", "byline", List.of()));
+        editorialService.upsertAlbumEditorial(albumA.getId(), new AlbumEditorialRequest("A", "dek", EditorialByline.JAZZLOGS, List.of()));
+        editorialService.upsertAlbumEditorial(albumB.getId(), new AlbumEditorialRequest("B", "dek", EditorialByline.JAZZLOGS, List.of()));
 
         albumService.setFeatured(albumA.getId());
         assertThat(albumRepository.findByFeaturedTrue().map(Album::getId)).contains(albumA.getId());
@@ -269,7 +270,7 @@ class AlbumServiceTest {
     void unsetFeatured_removesTheFeaturedFlag() {
         Artist artist = artistRepository.save(new Artist("Remove Featured Test Artist", null, null, null));
         Album album = persistAlbum(artist, "Remove Featured Album", 2020);
-        editorialService.upsertAlbumEditorial(album.getId(), new AlbumEditorialRequest("Title", "dek", "byline", List.of()));
+        editorialService.upsertAlbumEditorial(album.getId(), new AlbumEditorialRequest("Title", "dek", EditorialByline.JAZZLOGS, List.of()));
         albumService.setFeatured(album.getId());
 
         albumService.unsetFeatured(album.getId());

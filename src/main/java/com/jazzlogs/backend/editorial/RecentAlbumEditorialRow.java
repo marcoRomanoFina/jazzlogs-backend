@@ -18,7 +18,7 @@ public record RecentAlbumEditorialRow(
     String albumName,
     String artistName,
     String dek,
-    String byline,
+    EditorialByline byline,
     String logNumber,
     int likeCount
 ) {

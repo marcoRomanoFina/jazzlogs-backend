@@ -4,6 +4,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+import com.jazzlogs.backend.editorial.EditorialByline;
+
 /**
  * "The Last Log" — the archive's other hero slot: the single most recently
  * published album editorial, together with every track editorial on that
@@ -31,7 +33,7 @@ public record LastLogDto(
     String title,
     String artistName,
     String dek,
-    String byline,
+    EditorialByline byline,
     Integer releaseYear,
     Instant postedAt,
     String imageUrl,

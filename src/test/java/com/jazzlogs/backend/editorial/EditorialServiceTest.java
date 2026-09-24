@@ -12,6 +12,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -36,6 +37,7 @@ import com.jazzlogs.backend.editorial.dto.RecentAlbumEditorialDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialRequest;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.TrackPlacement;
+import com.jazzlogs.backend.storage.ImageStorageService;
 import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackRepository;
 
@@ -67,6 +69,15 @@ class EditorialServiceTest {
     @MockitoBean
     private GraphService graphService;
 
+    @MockitoBean
+    private ImageStorageService imageStorageService;
+
+    @Autowired
+    private AlbumEditorialRepository albumEditorialRepository;
+
+    @Autowired
+    private TrackEditorialRepository trackEditorialRepository;
+
     @Test
     void upsertAlbumEditorial_persistsAcrossJoinedInheritanceTables() {
         Artist artist = artistRepository.save(new Artist("Test Artist", null, null, null));
@@ -75,12 +86,28 @@ class EditorialServiceTest {
             VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
         ));
 
-        AlbumEditorialRequest request = new AlbumEditorialRequest("A Title", "A dek", "A byline", List.of());
+        AlbumEditorialRequest request = new AlbumEditorialRequest("A Title", "A dek", EditorialByline.JAZZLOGS, List.of());
 
         AlbumEditorial saved = editorialService.upsertAlbumEditorial(album.getId(), request);
 
         assertThat(saved.getId()).isNotNull();
         assertThat(saved.getTitle()).isEqualTo("A Title");
+    }
+
+    /** Unsigned pieces (byline omitted) default to the outlet itself. */
+    @Test
+    void upsertAlbumEditorial_defaultsBylineToJazzlogsWhenOmitted() {
+        Artist artist = artistRepository.save(new Artist("Byline Default Artist", null, null, null));
+        Album album = albumRepository.save(new Album(
+            artist, "Byline Default Album", null, null, null, 2024, 1, "LOG-BYLINE", "LABEL-BYLINE",
+            VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
+        ));
+
+        AlbumEditorial saved = editorialService.upsertAlbumEditorial(
+            album.getId(), new AlbumEditorialRequest("No Byline Title", "dek", null, List.of())
+        );
+
+        assertThat(saved.getByline()).isEqualTo(EditorialByline.JAZZLOGS);
     }
 
     @Test
@@ -92,7 +119,7 @@ class EditorialServiceTest {
             artist, "Count Test Album", null, null, null, 2024, 1, "LOG-COUNT", "LABEL-COUNT",
             VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
         ));
-        editorialService.upsertAlbumEditorial(album.getId(), new AlbumEditorialRequest("Title", "Dek", "Byline", List.of()));
+        editorialService.upsertAlbumEditorial(album.getId(), new AlbumEditorialRequest("Title", "Dek", EditorialByline.JAZZLOGS, List.of()));
 
         // editorial_summaries is a plain SQL view — Hibernate's dirty-checking
         // has no idea writes to editorials/album_editorials/albums touch it, so
@@ -122,8 +149,8 @@ class EditorialServiceTest {
             artist, "Featured Album B", null, null, null, 2024, 1, "LOG-FEAT-B", "LABEL-FEAT-B",
             VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
         ));
-        editorialService.upsertAlbumEditorial(albumA.getId(), new AlbumEditorialRequest("A", "dek", "byline", List.of()));
-        editorialService.upsertAlbumEditorial(albumB.getId(), new AlbumEditorialRequest("B", "dek", "byline", List.of()));
+        editorialService.upsertAlbumEditorial(albumA.getId(), new AlbumEditorialRequest("A", "dek", EditorialByline.JAZZLOGS, List.of()));
+        editorialService.upsertAlbumEditorial(albumB.getId(), new AlbumEditorialRequest("B", "dek", EditorialByline.JAZZLOGS, List.of()));
 
         albumRepository.clearFeatured(); // in case some other album is already featured (real curated data, not test fixtures)
         albumRepository.markFeatured(albumA.getId());
@@ -157,7 +184,7 @@ class EditorialServiceTest {
             VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
         ));
         editorialService.upsertAlbumEditorial(
-            album.getId(), new AlbumEditorialRequest("Catalogue Test Title", "dek", "byline", List.of())
+            album.getId(), new AlbumEditorialRequest("Catalogue Test Title", "dek", EditorialByline.JAZZLOGS, List.of())
         );
         entityManager.flush();
 
@@ -176,7 +203,7 @@ class EditorialServiceTest {
     void listEditorials_artistHasNoLogNumber() {
         Artist artist = artistRepository.save(new Artist("Catalogue Artist No Log", null, null, null));
         editorialService.upsertArtistEditorial(
-            artist.getId(), new ArtistEditorialRequest("Catalogue Artist Title", "dek", "byline", List.of())
+            artist.getId(), new ArtistEditorialRequest("Catalogue Artist Title", "dek", EditorialByline.JAZZLOGS, List.of())
         );
         entityManager.flush();
 
@@ -200,13 +227,13 @@ class EditorialServiceTest {
             VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
         ));
         editorialService.upsertAlbumEditorial(
-            albumA.getId(), new AlbumEditorialRequest("Duplicate Title Test", "dek", "byline", List.of())
+            albumA.getId(), new AlbumEditorialRequest("Duplicate Title Test", "dek", EditorialByline.JAZZLOGS, List.of())
         );
 
         ResponseStatusException ex = catchThrowableOfType(
             ResponseStatusException.class,
             () -> editorialService.upsertAlbumEditorial(
-                albumB.getId(), new AlbumEditorialRequest("Duplicate Title Test", "dek", "byline", List.of())
+                albumB.getId(), new AlbumEditorialRequest("Duplicate Title Test", "dek", EditorialByline.JAZZLOGS, List.of())
             )
         );
 
@@ -221,11 +248,11 @@ class EditorialServiceTest {
             VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
         ));
         editorialService.upsertAlbumEditorial(
-            album.getId(), new AlbumEditorialRequest("Resave Same Title", "dek", "byline", List.of())
+            album.getId(), new AlbumEditorialRequest("Resave Same Title", "dek", EditorialByline.JAZZLOGS, List.of())
         );
 
         AlbumEditorial resaved = editorialService.upsertAlbumEditorial(
-            album.getId(), new AlbumEditorialRequest("Resave Same Title", "new dek", "new byline", List.of())
+            album.getId(), new AlbumEditorialRequest("Resave Same Title", "new dek", EditorialByline.JAZZLOGS, List.of())
         );
 
         assertThat(resaved.getDek()).isEqualTo("new dek");
@@ -239,7 +266,7 @@ class EditorialServiceTest {
             "LOG-RECENT-1", "LABEL-RECENT", VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
         ));
         editorialService.upsertAlbumEditorial(
-            album.getId(), new AlbumEditorialRequest("Recent Test Editorial Title", "dek", "byline", List.of())
+            album.getId(), new AlbumEditorialRequest("Recent Test Editorial Title", "dek", EditorialByline.JAZZLOGS, List.of())
         );
         entityManager.flush();
 
@@ -267,7 +294,7 @@ class EditorialServiceTest {
             "LOG-LAST", "LABEL-LAST", VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
         ));
         editorialService.upsertAlbumEditorial(
-            album.getId(), new AlbumEditorialRequest("Last Log Editorial", "dek", "byline", List.of())
+            album.getId(), new AlbumEditorialRequest("Last Log Editorial", "dek", EditorialByline.JAZZLOGS, List.of())
         );
 
         Track trackA = trackRepository.save(new Track(
@@ -277,10 +304,10 @@ class EditorialServiceTest {
             album, null, "Track B", null, null, null, false, null, null, null, null, null, null
         ));
         editorialService.upsertTrackEditorial(
-            trackA.getId(), new TrackEditorialRequest("Track A Editorial", "dek A", "byline A", List.of())
+            trackA.getId(), new TrackEditorialRequest("Track A Editorial", "dek A", EditorialByline.JAZZLOGS, List.of())
         );
         editorialService.upsertTrackEditorial(
-            trackB.getId(), new TrackEditorialRequest("Track B Editorial", "dek B", "byline B", List.of())
+            trackB.getId(), new TrackEditorialRequest("Track B Editorial", "dek B", EditorialByline.JAZZLOGS, List.of())
         );
         entityManager.flush();
 
@@ -323,10 +350,10 @@ class EditorialServiceTest {
             album, null, "Not Featured Track", null, null, null, false, null, null, null, null, null, null
         ));
         editorialService.upsertTrackEditorial(
-            featuredTrack.getId(), new TrackEditorialRequest("Featured Track Editorial", "dek", "byline", List.of())
+            featuredTrack.getId(), new TrackEditorialRequest("Featured Track Editorial", "dek", EditorialByline.JAZZLOGS, List.of())
         );
         editorialService.upsertTrackEditorial(
-            otherTrack.getId(), new TrackEditorialRequest("Not Featured Track Editorial", "dek", "byline", List.of())
+            otherTrack.getId(), new TrackEditorialRequest("Not Featured Track Editorial", "dek", EditorialByline.JAZZLOGS, List.of())
         );
 
         trackRepository.markFeatured(featuredTrack.getId());
@@ -348,5 +375,98 @@ class EditorialServiceTest {
         entityManager.flush();
 
         assertThat(editorialService.getLastLog(UUID.randomUUID())).isEmpty();
+    }
+
+    @Test
+    void setTrackEditorialImage_uploadsUnderItsOwnKeyAndPersistsTheReturnedUrl() {
+        Artist artist = artistRepository.save(new Artist("Track Image Artist", null, null, null));
+        Album album = albumRepository.save(new Album(
+            artist, "Track Image Album", null, null, null, 2024, 1, "LOG-TRACK-IMAGE", "LABEL-TRACK-IMAGE",
+            VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
+        ));
+        Track track = trackRepository.save(new Track(
+            album, null, "Track Image Track", null, null, null, false, null, null, null, null, null, null
+        ));
+        editorialService.upsertTrackEditorial(
+            track.getId(), new TrackEditorialRequest("Track Image Editorial", "dek", EditorialByline.JAZZLOGS, List.of())
+        );
+        MockMultipartFile file = new MockMultipartFile("file", "image.jpg", "image/jpeg", "fake-bytes".getBytes());
+        when(imageStorageService.upload("track-editorials/" + track.getId() + "/image", file))
+            .thenReturn("http://localhost:9000/jazzlogs-images/track-editorials/" + track.getId() + "/image.jpg");
+
+        editorialService.setTrackEditorialImage(track.getId(), file);
+
+        TrackEditorial reloaded = trackEditorialRepository.findByTrackId(track.getId()).orElseThrow();
+        assertThat(reloaded.getImageUrl()).isEqualTo("http://localhost:9000/jazzlogs-images/track-editorials/" + track.getId() + "/image.jpg");
+    }
+
+    @Test
+    void setTrackEditorialImage_rejectsATrackWithNoEditorialYet() {
+        Artist artist = artistRepository.save(new Artist("No Editorial Track Artist", null, null, null));
+        Album album = albumRepository.save(new Album(
+            artist, "No Editorial Track Album", null, null, null, 2024, 1, "LOG-NO-EDITORIAL-TRACK", "LABEL-NO-EDITORIAL-TRACK",
+            VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
+        ));
+        Track track = trackRepository.save(new Track(
+            album, null, "No Editorial Track", null, null, null, false, null, null, null, null, null, null
+        ));
+        MockMultipartFile file = new MockMultipartFile("file", "image.jpg", "image/jpeg", "fake-bytes".getBytes());
+
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> editorialService.setTrackEditorialImage(track.getId(), file)
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void setAlbumEditorialImages_uploadEachUnderItsOwnKeyAndPersistTheReturnedUrls() {
+        Artist artist = artistRepository.save(new Artist("Album Image Artist", null, null, null));
+        Album album = albumRepository.save(new Album(
+            artist, "Album Image Album", null, null, null, 2024, 1, "LOG-ALBUM-IMAGE", "LABEL-ALBUM-IMAGE",
+            VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
+        ));
+        editorialService.upsertAlbumEditorial(
+            album.getId(), new AlbumEditorialRequest("Album Image Editorial", "dek", EditorialByline.JAZZLOGS, List.of())
+        );
+        MockMultipartFile principal = new MockMultipartFile("file", "principal.jpg", "image/jpeg", "fake-bytes".getBytes());
+        MockMultipartFile secondary = new MockMultipartFile("file", "secondary.jpg", "image/jpeg", "fake-bytes".getBytes());
+        MockMultipartFile banner = new MockMultipartFile("file", "banner.jpg", "image/jpeg", "fake-bytes".getBytes());
+        MockMultipartFile footer = new MockMultipartFile("file", "footer.jpg", "image/jpeg", "fake-bytes".getBytes());
+        when(imageStorageService.upload("album-editorials/" + album.getId() + "/principal", principal))
+            .thenReturn("http://localhost:9000/jazzlogs-images/album-editorials/" + album.getId() + "/principal.jpg");
+        when(imageStorageService.upload("album-editorials/" + album.getId() + "/secondary", secondary))
+            .thenReturn("http://localhost:9000/jazzlogs-images/album-editorials/" + album.getId() + "/secondary.jpg");
+        when(imageStorageService.upload("album-editorials/" + album.getId() + "/banner", banner))
+            .thenReturn("http://localhost:9000/jazzlogs-images/album-editorials/" + album.getId() + "/banner.jpg");
+        when(imageStorageService.upload("album-editorials/" + album.getId() + "/footer", footer))
+            .thenReturn("http://localhost:9000/jazzlogs-images/album-editorials/" + album.getId() + "/footer.jpg");
+
+        editorialService.setAlbumEditorialPrincipalImage(album.getId(), principal);
+        editorialService.setAlbumEditorialSecondaryImage(album.getId(), secondary);
+        editorialService.setAlbumEditorialBannerImage(album.getId(), banner);
+        editorialService.setAlbumEditorialFooterImage(album.getId(), footer);
+
+        AlbumEditorial reloaded = albumEditorialRepository.findByAlbumId(album.getId()).orElseThrow();
+        assertThat(reloaded.getPrincipalImageUrl()).isEqualTo("http://localhost:9000/jazzlogs-images/album-editorials/" + album.getId() + "/principal.jpg");
+        assertThat(reloaded.getSecondaryImageUrl()).isEqualTo("http://localhost:9000/jazzlogs-images/album-editorials/" + album.getId() + "/secondary.jpg");
+        assertThat(reloaded.getBannerImageUrl()).isEqualTo("http://localhost:9000/jazzlogs-images/album-editorials/" + album.getId() + "/banner.jpg");
+        assertThat(reloaded.getFooterImageUrl()).isEqualTo("http://localhost:9000/jazzlogs-images/album-editorials/" + album.getId() + "/footer.jpg");
+    }
+
+    @Test
+    void setAlbumEditorialPrincipalImage_rejectsAnAlbumWithNoEditorialYet() {
+        Artist artist = artistRepository.save(new Artist("No Editorial Album Artist", null, null, null));
+        Album album = albumRepository.save(new Album(
+            artist, "No Editorial Album", null, null, null, 2024, 1, "LOG-NO-EDITORIAL-ALBUM", "LABEL-NO-EDITORIAL-ALBUM",
+            VocalProfile.INSTRUMENTAL, Level.MEDIUM, Level.MEDIUM, Level.MEDIUM, null, null
+        ));
+        MockMultipartFile file = new MockMultipartFile("file", "principal.jpg", "image/jpeg", "fake-bytes".getBytes());
+
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> editorialService.setAlbumEditorialPrincipalImage(album.getId(), file)
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 }

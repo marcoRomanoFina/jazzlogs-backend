@@ -3,6 +3,7 @@ package com.jazzlogs.backend.editorial.dto;
 import java.time.Instant;
 import java.util.UUID;
 
+import com.jazzlogs.backend.editorial.EditorialByline;
 import com.jazzlogs.backend.editorial.EditorialOwnerType;
 import com.jazzlogs.backend.editorial.EditorialSummary;
 
@@ -46,7 +47,7 @@ public record EditorialSummaryDto(
     String ownerImageUrl,
     String title,
     String dek,
-    String byline,
+    EditorialByline byline,
     Instant createdAt,
     int likeCount,
     boolean likedByCurrentUser,

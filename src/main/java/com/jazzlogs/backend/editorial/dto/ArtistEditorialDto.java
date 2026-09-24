@@ -3,6 +3,8 @@ package com.jazzlogs.backend.editorial.dto;
 import java.util.List;
 import java.util.UUID;
 
+import com.jazzlogs.backend.editorial.EditorialByline;
+
 /**
  * An artist's own editorial, as nested in {@code ArtistHeaderDto}.
  *
@@ -18,7 +20,7 @@ public record ArtistEditorialDto(
     UUID id,
     String title,
     String dek,
-    String byline,
+    EditorialByline byline,
     List<EditorialBlockDto> blocks,
     int likeCount,
     boolean likedByCurrentUser

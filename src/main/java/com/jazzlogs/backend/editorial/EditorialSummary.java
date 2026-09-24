@@ -51,7 +51,8 @@ public class EditorialSummary {
 
     private String dek;
 
-    private String byline;
+    @Enumerated(EnumType.STRING)
+    private EditorialByline byline;
 
     @Column(name = "created_at")
     private Instant createdAt;
