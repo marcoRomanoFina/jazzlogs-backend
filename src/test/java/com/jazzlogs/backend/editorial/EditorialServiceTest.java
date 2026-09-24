@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.catchThrowableOfType;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -22,8 +23,10 @@ import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
 import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.album.AlbumRepository;
+import com.jazzlogs.backend.editorial.dto.BlockRequest;
 import com.jazzlogs.backend.editorial.dto.FeaturedTrackDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialRequest;
+import com.jazzlogs.backend.embedding.EmbeddingService;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.storage.ImageStorageService;
 import com.jazzlogs.backend.track.Track;
@@ -56,6 +59,9 @@ class EditorialServiceTest {
 
     @MockitoBean
     private ImageStorageService imageStorageService;
+
+    @MockitoBean
+    private EmbeddingService embeddingService;
 
     @Test
     void upsertTrackEditorial_persists() {
@@ -111,6 +117,28 @@ class EditorialServiceTest {
         );
 
         assertThat(resaved.getDek()).isEqualTo("new dek");
+    }
+
+    @Test
+    void upsertTrackEditorial_embedsBlocksWithTrackAlbumArtistMetadata() {
+        Album album = persistAlbum("Metadata Test Album");
+        Track track = trackRepository.save(new Track(
+            album, null, "Metadata Test Track", null, null, null, false, null, null, null, null, null, null
+        ));
+        when(embeddingService.embedBatch(List.of("Some editorial prose."))).thenReturn(List.of(new float[] {0.1f}));
+
+        BlockRequest block = new BlockRequest(EditorialBlockType.PARA, null, "Some editorial prose.", BlockContentCategory.HISTORICAL_CONTEXT);
+        TrackEditorial saved = editorialService.upsertTrackEditorial(
+            track.getId(), new TrackEditorialRequest("Metadata Test Editorial", "dek", EditorialByline.JAZZLOGS, List.of(block))
+        );
+
+        Map<String, Object> metadata = saved.getBlocks().get(0).getEmbeddingMetadata();
+        assertThat(metadata)
+            .containsEntry("editorialType", "TrackEditorial")
+            .containsEntry("editorialId", saved.getId().toString())
+            .containsEntry("trackName", "Metadata Test Track")
+            .containsEntry("albumName", "Metadata Test Album")
+            .containsEntry("artistName", "Metadata Test Album Artist");
     }
 
     @Test

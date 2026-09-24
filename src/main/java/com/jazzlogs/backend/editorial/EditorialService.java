@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.editorial.dto.BlockRequest;
 import com.jazzlogs.backend.editorial.dto.EditorialBlockDto;
 import com.jazzlogs.backend.editorial.dto.FeaturedTrackDto;
@@ -207,9 +208,15 @@ public class EditorialService {
     }
 
     private Map<String, Object> buildBaseMetadata(TrackEditorial editorial) {
+        Track track = editorial.getTrack();
+        Album album = track.getAlbum();
+
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("editorialType", "TrackEditorial");
         metadata.put("editorialId", editorial.getId().toString());
+        metadata.put("trackName", track.getName());
+        metadata.put("albumName", album.getName());
+        metadata.put("artistName", album.getArtist().getName());
         return metadata;
     }
 
