@@ -20,6 +20,9 @@ import org.springframework.web.server.ResponseStatusException;
 import com.jazzlogs.backend.album.dto.AlbumHeaderDto;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
+import com.jazzlogs.backend.editorial.EditorialByline;
+import com.jazzlogs.backend.editorial.EditorialService;
+import com.jazzlogs.backend.editorial.dto.TrackEditorialRequest;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.TrackPlacement;
 import com.jazzlogs.backend.track.Track;
@@ -51,6 +54,9 @@ class AlbumServiceTest {
     @Autowired
     private EntityManager entityManager;
 
+    @Autowired
+    private EditorialService editorialService;
+
     @MockitoBean
     private GraphService graphService;
 
@@ -67,6 +73,23 @@ class AlbumServiceTest {
         assertThat(dto.name()).isEqualTo("Header Test Album");
         assertThat(dto.releaseYear()).isEqualTo(2021);
         assertThat(dto.totalTracks()).isEqualTo(1);
+        assertThat(dto.loggedTrackCount()).isZero();
+    }
+
+    @Test
+    void getAlbumHeader_loggedTrackCount_reflectsOnlyTracksWithAnEditorial() {
+        Artist artist = artistRepository.save(new Artist("Logged Count Artist", null, null, null));
+        Album album = persistAlbum(artist, "Logged Count Album", 2022);
+        Track loggedTrack = persistTrack(album, "Logged Track");
+        persistTrack(album, "Unlogged Track");
+
+        editorialService.upsertTrackEditorial(
+            loggedTrack.getId(), new TrackEditorialRequest("Logged Track Editorial", "dek", EditorialByline.JAZZLOGS, List.of())
+        );
+
+        AlbumHeaderDto dto = albumService.getAlbumHeader(album.getId());
+
+        assertThat(dto.loggedTrackCount()).isEqualTo(1);
     }
 
     @Test

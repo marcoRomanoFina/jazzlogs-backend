@@ -77,7 +77,8 @@ public class SemanticSearchService {
         // The query already does its own ORDER BY <=> in SQL, so this IS the
         // final, ranked result — no merge/re-sort needed here.
         List<SemanticMatchRow> rows = editorialBlockRepository.semanticSearchTracks(
-            queryEmbedding, candidateIds, category, energy, accessibility, moodIntensity, MAX_MATCHES
+            queryEmbedding, candidateIds, category, energy, accessibility, moodIntensity,
+            request.albumId(), request.artistId(), MAX_MATCHES
         );
 
         return toScoredBlocks(request.entityType(), request.category(), rows);

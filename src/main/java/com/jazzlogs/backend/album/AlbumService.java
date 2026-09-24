@@ -18,6 +18,7 @@ import com.jazzlogs.backend.album.dto.ContextTagRequest;
 import com.jazzlogs.backend.album.dto.MoodTagRequest;
 import com.jazzlogs.backend.album.dto.StyleTagRequest;
 import com.jazzlogs.backend.editorial.EditorialService;
+import com.jazzlogs.backend.editorial.TrackEditorialRepository;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialDto;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.TrackPerformerEntry;
@@ -47,6 +48,7 @@ public class AlbumService {
     private final GraphService graphService;
     private final TrackService trackService;
     private final EditorialService editorialService;
+    private final TrackEditorialRepository trackEditorialRepository;
     private final ListenService listenService;
     private final SavedItemService savedItemService;
     private final TrackRatingRepository trackRatingRepository;
@@ -89,7 +91,8 @@ public class AlbumService {
             album.getSpotifyUrl(),
             album.getImageUrl(),
             album.getReleaseYear(),
-            album.getTotalTracks()
+            album.getTotalTracks(),
+            trackEditorialRepository.countByTrackAlbumId(albumId)
         );
     }
 

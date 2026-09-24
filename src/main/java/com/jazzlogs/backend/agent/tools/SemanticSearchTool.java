@@ -47,6 +47,8 @@ public class SemanticSearchTool extends JazzTool {
             "energy", Map.of("type", List.of("string", "null"), "enum", levelNamesOrNull()),
             "accessibility", Map.of("type", List.of("string", "null"), "enum", levelNamesOrNull()),
             "moodIntensity", Map.of("type", List.of("string", "null"), "enum", levelNamesOrNull()),
+            "albumId", Map.of("type", List.of("string", "null")),
+            "artistId", Map.of("type", List.of("string", "null")),
             "queryText", Map.of(
                 "type", "string",
                 "description", "What actually gets embedded and compared against real editorial prose — "
@@ -74,7 +76,9 @@ public class SemanticSearchTool extends JazzTool {
                 + "category). Use this after GRAPH_FILTER to write from real text instead of inventing it, "
                 + "or standalone with a candidate set you already have. An empty candidateIds list returns "
                 + "no matches without erroring. energy/accessibility/moodIntensity are optional extra "
-                + "filters on the track.",
+                + "filters on the track. albumId/artistId (resolve the id first with "
+                + "RESOLVE_JAZZLOGS_ENTITY) optionally narrow matches to one album's or artist's own "
+                + "tracks, same scoping idea as GRAPH_FILTER.",
             "Buscando en las editoriales"
         );
         this.semanticSearchService = semanticSearchService;
@@ -97,6 +101,8 @@ public class SemanticSearchTool extends JazzTool {
             parseLevel(args.energy(), "energy"),
             parseLevel(args.accessibility(), "accessibility"),
             parseLevel(args.moodIntensity(), "moodIntensity"),
+            parseOptionalUuid(args.albumId(), "albumId"),
+            parseOptionalUuid(args.artistId(), "artistId"),
             requireQueryText(args.queryText())
         );
 
@@ -138,6 +144,18 @@ public class SemanticSearchTool extends JazzTool {
     /** energy/accessibility/moodIntensity are optional — a missing field is a real {@code null}, not an error. */
     private Level parseLevel(String raw, String kind) {
         return raw == null ? null : parseEnumValue(raw, Level.class, kind);
+    }
+
+    /** albumId/artistId are optional scope — a missing/null value means "no scope", not an error; a present one must be a real UUID. */
+    private UUID parseOptionalUuid(String raw, String kind) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(raw);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException(kind + " is not a valid id: " + raw);
+        }
     }
 
     /** Rejects a missing/blank queryText. */
@@ -191,6 +209,8 @@ public class SemanticSearchTool extends JazzTool {
         String energy,
         String accessibility,
         String moodIntensity,
+        String albumId,
+        String artistId,
         String queryText
     ) {
     }

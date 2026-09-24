@@ -25,6 +25,9 @@ public interface EditorialBlockRepository extends JpaRepository<EditorialBlock, 
      * "one block per category" — nothing enforces that invariant (no DB
      * constraint, {@code EditorialService.upsertBlocks} doesn't dedupe), so
      * a single editorial can legitimately contribute more than one match.
+     * {@code albumId}/{@code artistId} optionally narrow the match set to
+     * one album's/artist's own tracks — same scoping idea as {@code
+     * GraphFilterTool}'s album/artist scope.
      */
     @Query(value = """
         SELECT
@@ -35,11 +38,14 @@ public interface EditorialBlockRepository extends JpaRepository<EditorialBlock, 
         FROM editorial_blocks eb
         JOIN track_editorials te ON eb.editorial_id = te.id
         JOIN tracks t ON t.id = te.track_id
+        JOIN albums alb ON alb.id = t.album_id
         WHERE eb.content_category = :category
           AND te.track_id IN (:trackIds)
           AND (:energy IS NULL OR t.energy = :energy)
           AND (:accessibility IS NULL OR t.accessibility = :accessibility)
           AND (:moodIntensity IS NULL OR t.mood_intensity = :moodIntensity)
+          AND (:albumId IS NULL OR t.album_id = :albumId)
+          AND (:artistId IS NULL OR alb.artist_id = :artistId)
         ORDER BY eb.embedding <=> CAST(:queryEmbedding AS vector)
         LIMIT :limit
         """, nativeQuery = true)
@@ -50,6 +56,8 @@ public interface EditorialBlockRepository extends JpaRepository<EditorialBlock, 
         @Param("energy") String energy,
         @Param("accessibility") String accessibility,
         @Param("moodIntensity") String moodIntensity,
+        @Param("albumId") UUID albumId,
+        @Param("artistId") UUID artistId,
         @Param("limit") int limit
     );
 

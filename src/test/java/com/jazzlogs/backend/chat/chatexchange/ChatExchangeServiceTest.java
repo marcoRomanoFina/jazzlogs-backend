@@ -26,14 +26,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.jazzlogs.backend.album.Album;
-import com.jazzlogs.backend.album.AlbumRepository;
 import com.jazzlogs.backend.artist.Artist;
-import com.jazzlogs.backend.artist.ArtistRepository;
 import com.jazzlogs.backend.chat.CatalogItemType;
 import com.jazzlogs.backend.chat.chat.Chat;
 import com.jazzlogs.backend.chat.chat.ChatRepository;
 import com.jazzlogs.backend.chat.chat.ChatService;
-import com.jazzlogs.backend.chat.chatexchange.dto.AlbumWinnerCard;
 import com.jazzlogs.backend.chat.chatexchange.dto.ChatExchangeDto;
 import com.jazzlogs.backend.chat.chatexchange.dto.TrackWinnerCard;
 import com.jazzlogs.backend.track.Track;
@@ -45,7 +42,10 @@ import com.jazzlogs.backend.user.User;
 // JazzlogsAgentTest, which mocks this class entirely). These tests are the
 // real coverage for "a partially hallucinated id gets dropped, but a
 // totally hallucinated set rejects the turn" and "DIRECT_RESPONSE has null
-// winners, not an empty list".
+// winners, not an empty list". TRACK is the only recommendable type — a
+// stray ALBUM/ARTIST ref (model schema no longer produces one, but old
+// persisted rows could still carry one) simply never resolves, same as any
+// other hallucinated/stale id.
 @ExtendWith(MockitoExtension.class)
 class ChatExchangeServiceTest {
 
@@ -62,13 +62,7 @@ class ChatExchangeServiceTest {
     private ChatRecommendationMemoryService chatRecommendationMemoryService;
 
     @Mock
-    private AlbumRepository albumRepository;
-
-    @Mock
     private TrackRepository trackRepository;
-
-    @Mock
-    private ArtistRepository artistRepository;
 
     private ChatExchangeService service;
     private Chat chat;
@@ -76,8 +70,7 @@ class ChatExchangeServiceTest {
     @BeforeEach
     void setUp() {
         service = new ChatExchangeService(
-            chatService, chatRepository, chatExchangeRepository, chatRecommendationMemoryService,
-            albumRepository, trackRepository, artistRepository
+            chatService, chatRepository, chatExchangeRepository, chatRecommendationMemoryService, trackRepository
         );
 
         User user = new User(UUID.randomUUID(), "test@example.com");
@@ -98,34 +91,7 @@ class ChatExchangeServiceTest {
     }
 
     @Test
-    void resolvesRealAlbumId_andDropsHallucinatedOne() {
-        stubSaveAssignsIdAndCreatedAt();
-        Artist artist = new Artist("Miles Davis", null, null, null);
-        Album album = new Album(artist, "Kind of Blue", null, null, null, 1959, 5);
-        UUID albumId = UUID.randomUUID();
-        ReflectionTestUtils.setField(album, "id", albumId);
-
-        when(albumRepository.findAllByIdWithArtist(anyList())).thenReturn(List.of(album));
-
-        ChatExchangeDto result = service.persist(
-            chat, "recommend something mellow", "here you go",
-            List.of(
-                new CatalogReference(CatalogItemType.ALBUM, albumId.toString()),
-                new CatalogReference(CatalogItemType.ALBUM, "hallucinated-id-the-model-made-up")
-            ),
-            null, null
-        );
-
-        assertThat(result.winners()).hasSize(1);
-        assertThat(result.winners().get(0)).isInstanceOf(AlbumWinnerCard.class);
-        AlbumWinnerCard card = (AlbumWinnerCard) result.winners().get(0);
-        assertThat(card.id()).isEqualTo(albumId);
-        assertThat(card.name()).isEqualTo("Kind of Blue");
-        assertThat(card.primaryArtist()).isEqualTo("Miles Davis");
-    }
-
-    @Test
-    void resolvesRealTrackId_primaryArtistComesFromItsAlbum() {
+    void resolvesRealTrackId_andDropsHallucinatedOne() {
         stubSaveAssignsIdAndCreatedAt();
         Artist artist = new Artist("John Coltrane", null, null, null);
         Album album = new Album(artist, "A Love Supreme", null, null, null, 1965, 4);
@@ -136,14 +102,46 @@ class ChatExchangeServiceTest {
         when(trackRepository.findAllByIdWithAlbumAndArtist(anyList())).thenReturn(List.of(track));
 
         ChatExchangeDto result = service.persist(
-            chat, "recommend a track", "here you go",
-            List.of(new CatalogReference(CatalogItemType.TRACK, trackId.toString())),
+            chat, "recommend something mellow", "here you go",
+            List.of(
+                new CatalogReference(CatalogItemType.TRACK, trackId.toString()),
+                new CatalogReference(CatalogItemType.TRACK, "hallucinated-id-the-model-made-up")
+            ),
             null, null
         );
 
         assertThat(result.winners()).hasSize(1);
         assertThat(result.winners().get(0)).isInstanceOf(TrackWinnerCard.class);
-        assertThat(((TrackWinnerCard) result.winners().get(0)).primaryArtist()).isEqualTo("John Coltrane");
+        TrackWinnerCard card = (TrackWinnerCard) result.winners().get(0);
+        assertThat(card.id()).isEqualTo(trackId);
+        assertThat(card.name()).isEqualTo("Acknowledgement");
+        assertThat(card.primaryArtist()).isEqualTo("John Coltrane");
+        assertThat(card.albumName()).isEqualTo("A Love Supreme");
+    }
+
+    @Test
+    void aStrayAlbumTypedReference_neverResolves_trackIsTheOnlyRecommendableType() {
+        stubSaveAssignsIdAndCreatedAt();
+        Artist artist = new Artist("Miles Davis", null, null, null);
+        Album album = new Album(artist, "Kind of Blue", null, null, null, 1959, 5);
+        Track track = new Track(album, null, "So What", null, null, null, false, null, null, null, null, null, null);
+        UUID trackId = UUID.randomUUID();
+        UUID albumId = UUID.randomUUID();
+        ReflectionTestUtils.setField(track, "id", trackId);
+
+        when(trackRepository.findAllByIdWithAlbumAndArtist(anyList())).thenReturn(List.of(track));
+
+        ChatExchangeDto result = service.persist(
+            chat, "recommend something mellow", "here you go",
+            List.of(
+                new CatalogReference(CatalogItemType.TRACK, trackId.toString()),
+                new CatalogReference(CatalogItemType.ALBUM, albumId.toString())
+            ),
+            null, null
+        );
+
+        assertThat(result.winners()).hasSize(1);
+        assertThat(result.winners().get(0)).isInstanceOf(TrackWinnerCard.class);
     }
 
     @Test
@@ -152,19 +150,17 @@ class ChatExchangeServiceTest {
         ChatExchangeDto result = service.persist(chat, "hi", "hey there", null, null, null);
 
         assertThat(result.winners()).isNull();
-        verify(albumRepository, never()).findAllByIdWithArtist(any());
         verify(trackRepository, never()).findAllByIdWithAlbumAndArtist(any());
-        verify(artistRepository, never()).findAllById(any());
         verify(chatRecommendationMemoryService, never()).syncMemoryUpdate(any(), any(), any());
     }
 
     @Test
     void allIdsHallucinated_rejectsTheWholeTurn_ratherThanPersistingEmptyWinners() {
-        when(albumRepository.findAllByIdWithArtist(anyList())).thenReturn(List.of());
+        when(trackRepository.findAllByIdWithAlbumAndArtist(anyList())).thenReturn(List.of());
 
         assertThatThrownBy(() -> service.persist(
             chat, "recommend something", "here you go",
-            List.of(new CatalogReference(CatalogItemType.ALBUM, "not-a-uuid")),
+            List.of(new CatalogReference(CatalogItemType.TRACK, "not-a-uuid")),
             null, null
         )).isInstanceOf(IllegalStateException.class);
 
@@ -188,16 +184,17 @@ class ChatExchangeServiceTest {
 
         Artist artist = new Artist("Miles Davis", null, null, null);
         Album album = new Album(artist, "Kind of Blue (Remastered)", null, null, null, 1959, 5);
-        UUID albumId = UUID.randomUUID();
-        ReflectionTestUtils.setField(album, "id", albumId);
+        Track track = new Track(album, null, "So What (Remastered)", null, null, null, false, null, null, null, null, null, null);
+        UUID trackId = UUID.randomUUID();
+        ReflectionTestUtils.setField(track, "id", trackId);
 
         // Deliberately stale — a fresh lookup must win over this snapshot.
-        WinnerReference staleRef = new WinnerReference(CatalogItemType.ALBUM, albumId, "Kind of Blue", "Miles Davis");
+        WinnerReference staleRef = new WinnerReference(CatalogItemType.TRACK, trackId, "So What", "Miles Davis");
         ChatExchange exchange = newExchange(chat, "recommend something mellow", "here you go", List.of(staleRef));
 
         when(chatService.getOwnedChat(chatId, userId)).thenReturn(chat);
         when(chatExchangeRepository.findByChatId(chatId, pageable)).thenReturn(new PageImpl<>(List.of(exchange)));
-        when(albumRepository.findAllByIdWithArtist(anyList())).thenReturn(List.of(album));
+        when(trackRepository.findAllByIdWithAlbumAndArtist(anyList())).thenReturn(List.of(track));
 
         Page<ChatExchangeDto> result = service.getChatExchanges(chatId, userId, pageable);
 
@@ -207,10 +204,10 @@ class ChatExchangeServiceTest {
         assertThat(dto.userMessage()).isEqualTo("recommend something mellow");
         assertThat(dto.finalResponse()).isEqualTo("here you go");
         assertThat(dto.winners()).hasSize(1);
-        AlbumWinnerCard card = (AlbumWinnerCard) dto.winners().get(0);
-        assertThat(card.id()).isEqualTo(albumId);
+        TrackWinnerCard card = (TrackWinnerCard) dto.winners().get(0);
+        assertThat(card.id()).isEqualTo(trackId);
         // Re-resolved name, not the stale WinnerReference.name snapshot.
-        assertThat(card.name()).isEqualTo("Kind of Blue (Remastered)");
+        assertThat(card.name()).isEqualTo("So What (Remastered)");
     }
 
     @Test
@@ -220,30 +217,31 @@ class ChatExchangeServiceTest {
         ReflectionTestUtils.setField(chat, "id", chatId);
 
         Artist artist = new Artist("Bill Evans", null, null, null);
-        Album firstAlbum = new Album(artist, "Waltz for Debby", null, null, null, 1961, 5);
-        Album secondAlbum = new Album(artist, "Sunday at the Village Vanguard", null, null, null, 1961, 6);
-        UUID firstAlbumId = UUID.randomUUID();
-        UUID secondAlbumId = UUID.randomUUID();
-        ReflectionTestUtils.setField(firstAlbum, "id", firstAlbumId);
-        ReflectionTestUtils.setField(secondAlbum, "id", secondAlbumId);
+        Album album = new Album(artist, "Waltz for Debby", null, null, null, 1961, 5);
+        Track firstTrack = new Track(album, null, "My Foolish Heart", null, null, null, false, null, null, null, null, null, null);
+        Track secondTrack = new Track(album, null, "Waltz for Debby", null, null, null, false, null, null, null, null, null, null);
+        UUID firstTrackId = UUID.randomUUID();
+        UUID secondTrackId = UUID.randomUUID();
+        ReflectionTestUtils.setField(firstTrack, "id", firstTrackId);
+        ReflectionTestUtils.setField(secondTrack, "id", secondTrackId);
 
         ChatExchange firstExchange = newExchange(
-            chat, "first", "first reply", List.of(new WinnerReference(CatalogItemType.ALBUM, firstAlbumId, "Waltz for Debby", "Bill Evans"))
+            chat, "first", "first reply", List.of(new WinnerReference(CatalogItemType.TRACK, firstTrackId, "My Foolish Heart", "Bill Evans"))
         );
         ChatExchange secondExchange = newExchange(
-            chat, "second", "second reply", List.of(new WinnerReference(CatalogItemType.ALBUM, secondAlbumId, "Sunday at the Village Vanguard", "Bill Evans"))
+            chat, "second", "second reply", List.of(new WinnerReference(CatalogItemType.TRACK, secondTrackId, "Waltz for Debby", "Bill Evans"))
         );
 
         when(chatService.getOwnedChat(any(), any())).thenReturn(chat);
         when(chatExchangeRepository.findByChatId(chatId, pageable)).thenReturn(new PageImpl<>(List.of(firstExchange, secondExchange)));
-        when(albumRepository.findAllByIdWithArtist(anyList())).thenReturn(List.of(firstAlbum, secondAlbum));
+        when(trackRepository.findAllByIdWithAlbumAndArtist(anyList())).thenReturn(List.of(firstTrack, secondTrack));
 
         Page<ChatExchangeDto> result = service.getChatExchanges(chatId, UUID.randomUUID(), pageable);
 
         assertThat(result.getContent()).hasSize(2);
         assertThat(result.getContent()).allSatisfy(dto -> assertThat(dto.winners()).hasSize(1));
-        // One batched call for the whole page's albums, not one per exchange.
-        verify(albumRepository, times(1)).findAllByIdWithArtist(anyList());
+        // One batched call for the whole page's tracks, not one per exchange.
+        verify(trackRepository, times(1)).findAllByIdWithAlbumAndArtist(anyList());
     }
 
     @Test
@@ -252,13 +250,33 @@ class ChatExchangeServiceTest {
         Pageable pageable = PageRequest.of(0, 10);
         ReflectionTestUtils.setField(chat, "id", chatId);
 
-        WinnerReference refToDeletedAlbum = new WinnerReference(CatalogItemType.ALBUM, UUID.randomUUID(), "Some Album", "Some Artist");
-        ChatExchange exchange = newExchange(chat, "recommend something", "here you go", List.of(refToDeletedAlbum));
+        WinnerReference refToDeletedTrack = new WinnerReference(CatalogItemType.TRACK, UUID.randomUUID(), "Some Track", "Some Artist");
+        ChatExchange exchange = newExchange(chat, "recommend something", "here you go", List.of(refToDeletedTrack));
 
         when(chatService.getOwnedChat(any(), any())).thenReturn(chat);
         when(chatExchangeRepository.findByChatId(chatId, pageable)).thenReturn(new PageImpl<>(List.of(exchange)));
-        // The album was deleted since — no row comes back for its id.
-        when(albumRepository.findAllByIdWithArtist(anyList())).thenReturn(List.of());
+        // The track was deleted since — no row comes back for its id.
+        when(trackRepository.findAllByIdWithAlbumAndArtist(anyList())).thenReturn(List.of());
+
+        Page<ChatExchangeDto> result = service.getChatExchanges(chatId, UUID.randomUUID(), pageable);
+
+        assertThat(result.getContent()).hasSize(1);
+        assertThat(result.getContent().get(0).winners()).isEmpty();
+    }
+
+    @Test
+    void getChatExchanges_historicalAlbumTypedWinner_isDroppedWithoutThrowing() {
+        UUID chatId = UUID.randomUUID();
+        Pageable pageable = PageRequest.of(0, 10);
+        ReflectionTestUtils.setField(chat, "id", chatId);
+
+        // From before TRACK became the only recommendable type — no card
+        // builder exists for ALBUM anymore, so this must drop silently, not error.
+        WinnerReference historicalAlbumWinner = new WinnerReference(CatalogItemType.ALBUM, UUID.randomUUID(), "Some Album", "Some Artist");
+        ChatExchange exchange = newExchange(chat, "recommend something", "here you go", List.of(historicalAlbumWinner));
+
+        when(chatService.getOwnedChat(any(), any())).thenReturn(chat);
+        when(chatExchangeRepository.findByChatId(chatId, pageable)).thenReturn(new PageImpl<>(List.of(exchange)));
 
         Page<ChatExchangeDto> result = service.getChatExchanges(chatId, UUID.randomUUID(), pageable);
 
@@ -281,9 +299,7 @@ class ChatExchangeServiceTest {
 
         assertThat(result.getContent()).hasSize(1);
         assertThat(result.getContent().get(0).winners()).isNull();
-        verify(albumRepository, never()).findAllByIdWithArtist(any());
         verify(trackRepository, never()).findAllByIdWithAlbumAndArtist(any());
-        verify(artistRepository, never()).findAllById(any());
     }
 
     // Builds an already-persisted ChatExchange — id/createdAt are normally

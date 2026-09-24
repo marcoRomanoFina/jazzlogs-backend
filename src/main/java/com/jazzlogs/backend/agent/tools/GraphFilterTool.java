@@ -12,7 +12,6 @@ import tools.jackson.databind.json.JsonMapper;
 
 import com.jazzlogs.backend.agent.ToolCallRequest;
 import com.jazzlogs.backend.agent.ToolExecutionResult;
-import com.jazzlogs.backend.chat.CatalogItemType;
 import com.jazzlogs.backend.graph.GraphCandidate;
 import com.jazzlogs.backend.graph.GraphFilterFilters;
 import com.jazzlogs.backend.graph.GraphFilterResult;
@@ -25,20 +24,21 @@ import com.jazzlogs.backend.vocabulary.StyleVocabulary;
 
 /**
  * Structural (graph-topology) prefilter: given vocabulary filters, ranks
- * candidates of ONE entity type (Album, Track, or Artist — call this again
- * for another type, same rule already applied to semanticSearch's category)
- * by which requested dimensions they match in Neo4j (matchedDimensions —
- * the specific (dimension, code) pairs, not just a count), excluding what
- * the current user already listened to / rated by default. Matching a
- * single requested dimension is enough to be eligible (OR, not AND) —
- * candidates with no matches at all are already excluded in Cypher, never
- * returned here. Standalone — the model can synthesize an answer from
- * matchedDimensions alone, or chain the returned candidates into
- * semanticSearch itself; this tool holds no memory between calls. All the
- * actual short-circuit/dispatch logic lives in {@link GraphFilterService} —
- * this class only translates the model's JSON args into strongly-typed
- * {@link GraphFilterFilters} (rejecting invalid codes) and serializes the
- * result back out.
+ * Track candidates by which requested dimensions they match in Neo4j
+ * (matchedDimensions — the specific (dimension, code) pairs, not just a
+ * count), excluding what the current user already listened to / rated by
+ * default. Matching a single requested dimension is enough to be eligible
+ * (OR, not AND) — candidates with no matches at all are already excluded in
+ * Cypher, never returned here. Optionally scoped to one album's/artist's
+ * own tracks via albumId/artistId (resolve the id first with
+ * RESOLVE_JAZZLOGS_ENTITY) — Album/Artist are not recommendable outcomes
+ * themselves anymore, only useful as search scope. Standalone — the model
+ * can synthesize an answer from matchedDimensions alone, or chain the
+ * returned candidates into semanticSearch itself; this tool holds no memory
+ * between calls. All the actual filtering logic lives in {@link
+ * GraphFilterService} — this class only translates the model's JSON args
+ * into strongly-typed {@link GraphFilterFilters} (rejecting invalid codes)
+ * and serializes the result back out.
  */
 @Component
 public class GraphFilterTool extends JazzTool {
@@ -48,7 +48,6 @@ public class GraphFilterTool extends JazzTool {
     private static final Map<String, Object> SCHEMA = Map.of(
         "type", "object",
         "properties", Map.ofEntries(
-            Map.entry("entityType", Map.of("type", "string", "enum", List.of("ALBUM", "TRACK", "ARTIST"))),
             Map.entry("styles", Map.of(
                 "type", "array",
                 "items", Map.of("type", "string", "enum", namesOf(StyleVocabulary.class))
@@ -69,11 +68,13 @@ public class GraphFilterTool extends JazzTool {
                 "type", "array",
                 "items", Map.of("type", "string", "enum", namesOf(InstrumentVocabulary.class))
             )),
+            Map.entry("albumId", Map.of("type", List.of("string", "null"))),
+            Map.entry("artistId", Map.of("type", List.of("string", "null"))),
             Map.entry("excludeListened", Map.of("type", List.of("boolean", "null"))),
             Map.entry("excludeAlreadyRated", Map.of("type", List.of("boolean", "null"))),
             Map.entry("topK", Map.of("type", List.of("integer", "null")))
         ),
-        "required", List.of("entityType")
+        "required", List.of()
     );
 
     private final JsonMapper objectMapper;
@@ -82,25 +83,22 @@ public class GraphFilterTool extends JazzTool {
     public GraphFilterTool(GraphFilterService graphFilterService, JsonMapper objectMapper) {
         super(
             NAME,
-            "Rank candidates of ONE entity type (ALBUM, TRACK, or ARTIST) by graph-topology overlap with "
-                + "the given style/rhythm/mood/context/instrument vocabulary filters. Call this again with "
-                + "a different entityType to cover more than one. Not every filter applies to every "
-                + "entityType — an irrelevant one is silently ignored, not an error, so check first: ALBUM "
-                + "only connects to styles/moods/contexts (no rhythms/instruments); TRACK connects to "
-                + "styles/moods/contexts/rhythms/instruments (all five); ARTIST only to styles/contexts/"
-                + "instruments (no moods/rhythms). Returns each candidate's id, name (entityName — use "
-                + "this, never the id, when referring to a candidate in your answer), and exactly which "
-                + "filters it matched (matchedDimensions) — no long-form description or editorial text "
-                + "(use SEMANTIC_SEARCH for that, required before recommending anything specific — see "
-                + "KNOWLEDGE SOURCE RULE). A candidate only needs to match one of the requested filters to "
-                + "be included, not all of them — matchedDimensions tells you which ones actually matched, "
-                + "so a candidate matching only 1 of 3 requested filters is not necessarily a strong fit, "
-                + "check before assuming it's central to the request. Use this to narrow down the catalog "
-                + "before writing an answer, or on its own when structural overlap alone is enough. By "
-                + "default excludes items the current user already listened to or rated. Omit every "
-                + "vocabulary filter and this returns no candidates — at least one of "
-                + "styles/rhythms/moods/contexts/instruments (whichever apply to the chosen entityType) is "
-                + "required for a useful result.",
+            "Rank Track candidates by graph-topology overlap with the given style/rhythm/mood/context/"
+                + "instrument vocabulary filters. Returns each candidate's id, name (entityName — use this, "
+                + "never the id, when referring to a candidate in your answer), and exactly which filters "
+                + "it matched (matchedDimensions) — no long-form description or editorial text (use "
+                + "SEMANTIC_SEARCH for that, required before recommending anything specific — see KNOWLEDGE "
+                + "SOURCE RULE). A candidate only needs to match one of the requested filters to be "
+                + "included, not all of them — matchedDimensions tells you which ones actually matched, so "
+                + "a candidate matching only 1 of 3 requested filters is not necessarily a strong fit, check "
+                + "before assuming it's central to the request. Use this to narrow down the catalog before "
+                + "writing an answer, or on its own when structural overlap alone is enough. By default "
+                + "excludes items the current user already listened to or rated. Optionally set albumId "
+                + "and/or artistId (resolve the id first with RESOLVE_JAZZLOGS_ENTITY) to scope the search "
+                + "to one album's or artist's own tracks — e.g. for \"something from this album\", resolve "
+                + "the album then call this with just albumId set and no vocabulary filters. At least one "
+                + "of styles/rhythms/moods/contexts/instruments/albumId/artistId is required for a useful "
+                + "result — omitting all of them returns no candidates.",
             "Filtrando por estilo y clima"
         );
         this.graphFilterService = graphFilterService;
@@ -112,17 +110,18 @@ public class GraphFilterTool extends JazzTool {
         return SCHEMA;
     }
 
-    /** Ranks one entity type's candidates by graph-topology overlap with the given vocabulary filters. */
+    /** Ranks Track candidates by graph-topology overlap with the given vocabulary filters, optionally scoped to an album/artist. */
     @Override
     public ToolExecutionResult execute(ToolCallRequest call, UUID userId) {
         Args args = parseArgs(call.argumentsJson());
         GraphFilterFilters filters = new GraphFilterFilters(
-            parseRequiredEnum(args.entityType(), CatalogItemType.class, "entityType"),
             parseEnumList(args.styles(), StyleVocabulary.class, "styles"),
             parseEnumList(args.rhythms(), RhythmVocabulary.class, "rhythms"),
             parseEnumList(args.moods(), MoodVocabulary.class, "moods"),
             parseEnumList(args.contexts(), ContextVocabulary.class, "contexts"),
             parseEnumList(args.instruments(), InstrumentVocabulary.class, "instruments"),
+            parseOptionalUuid(args.albumId(), "albumId"),
+            parseOptionalUuid(args.artistId(), "artistId"),
             args.excludeListened(),
             args.excludeAlreadyRated(),
             args.topK()
@@ -140,6 +139,18 @@ public class GraphFilterTool extends JazzTool {
             return objectMapper.readValue(argumentsJson, Args.class);
         } catch (JacksonException e) {
             throw new IllegalArgumentException(NAME + " arguments were not valid JSON: " + e.getMessage(), e);
+        }
+    }
+
+    /** albumId/artistId are optional scope — a missing/null value means "no scope", not an error; a present one must be a real UUID. */
+    private UUID parseOptionalUuid(String raw, String kind) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(raw);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException(kind + " is not a valid id: " + raw);
         }
     }
 
@@ -167,12 +178,13 @@ public class GraphFilterTool extends JazzTool {
 
     /** The model's raw tool-call arguments, before validation. */
     private record Args(
-        String entityType,
         List<String> styles,
         List<String> rhythms,
         List<String> moods,
         List<String> contexts,
         List<String> instruments,
+        String albumId,
+        String artistId,
         Boolean excludeListened,
         Boolean excludeAlreadyRated,
         Integer topK

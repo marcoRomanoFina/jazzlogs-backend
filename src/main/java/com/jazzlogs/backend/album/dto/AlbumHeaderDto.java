@@ -21,6 +21,9 @@ import java.util.UUID;
  * @param totalTracks    how many tracks are catalogued so far, by upload
  *                       order — not Spotify's own track count, which can
  *                       include bonus/alternate takes we skip
+ * @param loggedTrackCount how many of those catalogued tracks have a
+ *                         written editorial — i.e. how many logs this
+ *                         album actually has
  */
 public record AlbumHeaderDto(
     UUID id,
@@ -31,6 +34,7 @@ public record AlbumHeaderDto(
     String spotifyUrl,
     String imageUrl,
     Integer releaseYear,
-    Integer totalTracks
+    Integer totalTracks,
+    long loggedTrackCount
 ) {
 }

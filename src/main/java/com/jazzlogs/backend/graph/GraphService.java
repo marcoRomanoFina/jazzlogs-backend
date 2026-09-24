@@ -854,92 +854,50 @@ public class GraphService {
     // --- graphFilter (agent tool) ---
 
     /**
-     * One of {@link #findAlbumCandidates}/{@link #findTrackCandidates}/
-     * {@link #findArtistCandidates} — one method per entity type, not one
-     * query with label branching: Album/Track/Artist each connect to a
-     * different subset of vocabulary dimensions, so a single combined query
-     * would need per-label conditionals throughout. {@code
-     * GraphFilterFilters.entityType} is singular and required, so a given
-     * graphFilter call only ever invokes exactly one of these — {@code
-     * GraphFilterService} picks which one via a {@code Map<CatalogItemType,
-     * ...>} lookup, not an if/switch chain.
+     * Ranks Track candidates by graph-topology overlap with the given
+     * vocabulary filters, optionally narrowed to one album's/artist's own
+     * tracks via {@code albumId}/{@code artistId} (either or both may be
+     * {@code null} — a pure vocabulary search with no scope). TRACK is the
+     * only entity type this searches: Album/Artist are no longer
+     * independently recommendable, only resolvable as scope (see {@code
+     * ResolveJazzlogsEntityTool}) — this method IS the "search this
+     * album's/artist's tracks" capability that scope feeds into.
      *
      * <p>Matching is permissive by design (OR, not AND): a candidate doesn't
      * need to match every requested dimension, matching at least one is
-     * enough — that's what {@code WHERE matchCount > 0} enforces, nothing
-     * stronger. Ranking (by matchCount, i.e. {@code matchedDimensions.size()})
-     * is a separate concern from eligibility, done right here via {@code
-     * ORDER BY matchCount DESC LIMIT $limit} — {@code GraphFilterService}
-     * never re-sorts or re-clamps what comes back.
+     * enough — that's what {@code matchCount > 0} enforces below, nothing
+     * stronger. When no vocabulary was requested at all (every code list
+     * empty) but a scope was, {@code requireVocabMatch} relaxes that so a
+     * pure "tracks from this album" query still returns candidates. Ranking
+     * (by matchCount, i.e. {@code matchedDimensions.size()}) is a separate
+     * concern from eligibility, done right here via {@code ORDER BY
+     * matchCount DESC LIMIT $limit} — {@code GraphFilterService} never
+     * re-sorts or re-clamps what comes back.
      *
      * <p>Each dimension is a pattern comprehension — e.g. {@code
-     * [(al)-[:BELONGS_TO]->(s:Style) WHERE s.code IN $styleCodes | s.code]}
+     * [(tr)-[:BELONGS_TO]->(s:Style) WHERE s.code IN $styleCodes | s.code]}
      * — collecting the actual codes that matched, not just a 0/1 flag: the
      * LLM gets to see e.g. "matched Mood=RELAXED" instead of a bare count.
      * An empty codes list for a dimension naturally yields an empty match
      * list ({@code s.code IN []} is never true), so "not requested" and
      * "requested but nothing matched" both fall out without a separate
-     * guard.
-     */
-    public List<GraphCandidate> findAlbumCandidates(
-        List<String> styleCodes, List<String> moodCodes, List<String> contextCodes,
-        UUID userId, boolean excludeListened, boolean excludeAlreadyRated, int limit
-    ) {
-        return read("find Album candidates for graphFilter", () ->
-            neo4jClient.query("""
-                    MATCH (al:Album)
-                    WHERE ($excludeListened = false OR NOT EXISTS { (u:User {id: $userId})-[:LISTENED]->(al) })
-                      AND ($excludeRated = false OR NOT EXISTS { (u:User {id: $userId})-[:RATED]->(al) })
-                    WITH al,
-                        [(al)-[:BELONGS_TO]->(s:Style) WHERE s.code IN $styleCodes | s.code] AS styleMatches,
-                        [(al)-[:EVOKES_MOOD]->(m:Mood) WHERE m.code IN $moodCodes | m.code] AS moodMatches,
-                        [(al)-[:PERFECT_FOR]->(c:Context) WHERE c.code IN $contextCodes | c.code] AS contextMatches
-                    WITH al, styleMatches, moodMatches, contextMatches,
-                        (size(styleMatches) + size(moodMatches) + size(contextMatches)) AS matchCount
-                    WHERE matchCount > 0
-                    RETURN al.id AS entityId, al.name AS entityName, styleMatches, moodMatches, contextMatches
-                    ORDER BY matchCount DESC
-                    LIMIT $limit
-                    """)
-                .bind(userId.toString()).to("userId")
-                .bind(excludeListened).to("excludeListened")
-                .bind(excludeAlreadyRated).to("excludeRated")
-                .bind(styleCodes).to("styleCodes")
-                .bind(moodCodes).to("moodCodes")
-                .bind(contextCodes).to("contextCodes")
-                .bind(limit).to("limit")
-                .fetch()
-                .all()
-                .stream()
-                .map(row -> new GraphCandidate(
-                    CatalogItemType.ALBUM,
-                    UUID.fromString((String) row.get("entityId")),
-                    (String) row.get("entityName"),
-                    concatMatches(List.of(
-                        dimensionMatches(VocabularyDimension.STYLE, row.get("styleMatches")),
-                        dimensionMatches(VocabularyDimension.MOOD, row.get("moodMatches")),
-                        dimensionMatches(VocabularyDimension.CONTEXT, row.get("contextMatches"))
-                    ))
-                ))
-                .toList());
-    }
-
-    /**
-     * Same shape as {@link #findAlbumCandidates} — see its Javadoc. {@code
-     * excludeAlreadyRated} checks RATED_TRACK, not RATED — that's the
-     * Track-level rating relationship (see {@link #rateTrack}), kept under
-     * its own name to avoid ambiguity with {@link #rateAlbum}'s Album-level
-     * RATED.
+     * guard. {@code excludeAlreadyRated} checks RATED_TRACK, not RATED —
+     * that's the Track-level rating relationship (see {@link #rateTrack}).
      */
     public List<GraphCandidate> findTrackCandidates(
         List<String> styleCodes, List<String> moodCodes, List<String> contextCodes, List<String> rhythmCodes, List<String> instrumentCodes,
-        UUID userId, boolean excludeListened, boolean excludeAlreadyRated, int limit
+        UUID albumId, UUID artistId, UUID userId, boolean excludeListened, boolean excludeAlreadyRated, int limit
     ) {
+        boolean requireVocabMatch = !styleCodes.isEmpty() || !moodCodes.isEmpty() || !contextCodes.isEmpty()
+            || !rhythmCodes.isEmpty() || !instrumentCodes.isEmpty();
+
         return read("find Track candidates for graphFilter", () ->
             neo4jClient.query("""
                     MATCH (tr:Track)
                     WHERE ($excludeListened = false OR NOT EXISTS { (u:User {id: $userId})-[:LISTENED]->(tr) })
                       AND ($excludeRated = false OR NOT EXISTS { (u:User {id: $userId})-[:RATED_TRACK]->(tr) })
+                      AND ($albumId IS NULL OR EXISTS { (:Album {id: $albumId})-[:CONTAINS]->(tr) })
+                      AND ($artistId IS NULL OR EXISTS { (:Artist {id: $artistId})-[:PERFORMED_ON]->(tr) })
                     WITH tr,
                         [(tr)-[:BELONGS_TO]->(s:Style) WHERE s.code IN $styleCodes | s.code] AS styleMatches,
                         [(tr)-[:EVOKES_MOOD]->(m:Mood) WHERE m.code IN $moodCodes | m.code] AS moodMatches,
@@ -948,7 +906,7 @@ public class GraphService {
                         [(tr)-[:FEATURES_INSTRUMENT]->(i:Instrument) WHERE i.code IN $instrumentCodes | i.code] AS instrumentMatches
                     WITH tr, styleMatches, moodMatches, contextMatches, rhythmMatches, instrumentMatches,
                         (size(styleMatches) + size(moodMatches) + size(contextMatches) + size(rhythmMatches) + size(instrumentMatches)) AS matchCount
-                    WHERE matchCount > 0
+                    WHERE $requireVocabMatch = false OR matchCount > 0
                     RETURN tr.id AS entityId, tr.name AS entityName, styleMatches, moodMatches, contextMatches, rhythmMatches, instrumentMatches
                     ORDER BY matchCount DESC
                     LIMIT $limit
@@ -956,11 +914,14 @@ public class GraphService {
                 .bind(userId.toString()).to("userId")
                 .bind(excludeListened).to("excludeListened")
                 .bind(excludeAlreadyRated).to("excludeRated")
+                .bind(albumId == null ? null : albumId.toString()).to("albumId")
+                .bind(artistId == null ? null : artistId.toString()).to("artistId")
                 .bind(styleCodes).to("styleCodes")
                 .bind(moodCodes).to("moodCodes")
                 .bind(contextCodes).to("contextCodes")
                 .bind(rhythmCodes).to("rhythmCodes")
                 .bind(instrumentCodes).to("instrumentCodes")
+                .bind(requireVocabMatch).to("requireVocabMatch")
                 .bind(limit).to("limit")
                 .fetch()
                 .all()
@@ -974,48 +935,6 @@ public class GraphService {
                         dimensionMatches(VocabularyDimension.MOOD, row.get("moodMatches")),
                         dimensionMatches(VocabularyDimension.CONTEXT, row.get("contextMatches")),
                         dimensionMatches(VocabularyDimension.RHYTHM, row.get("rhythmMatches")),
-                        dimensionMatches(VocabularyDimension.INSTRUMENT, row.get("instrumentMatches"))
-                    ))
-                ))
-                .toList());
-    }
-
-    /**
-     * Same shape as {@link #findAlbumCandidates} — see its Javadoc. No
-     * userId/excludeListened/excludeAlreadyRated: Artist has neither a
-     * LISTENED nor a RATED relationship in the graph today.
-     */
-    public List<GraphCandidate> findArtistCandidates(
-        List<String> styleCodes, List<String> contextCodes, List<String> instrumentCodes, int limit
-    ) {
-        return read("find Artist candidates for graphFilter", () ->
-            neo4jClient.query("""
-                    MATCH (ar:Artist)
-                    WITH ar,
-                        [(ar)-[:HAS_STYLE]->(s:Style) WHERE s.code IN $styleCodes | s.code] AS styleMatches,
-                        [(ar)-[:PERFECT_FOR]->(c:Context) WHERE c.code IN $contextCodes | c.code] AS contextMatches,
-                        [(ar)-[:PLAYS_INSTRUMENT]->(i:Instrument) WHERE i.code IN $instrumentCodes | i.code] AS instrumentMatches
-                    WITH ar, styleMatches, contextMatches, instrumentMatches,
-                        (size(styleMatches) + size(contextMatches) + size(instrumentMatches)) AS matchCount
-                    WHERE matchCount > 0
-                    RETURN ar.id AS entityId, ar.name AS entityName, styleMatches, contextMatches, instrumentMatches
-                    ORDER BY matchCount DESC
-                    LIMIT $limit
-                    """)
-                .bind(styleCodes).to("styleCodes")
-                .bind(contextCodes).to("contextCodes")
-                .bind(instrumentCodes).to("instrumentCodes")
-                .bind(limit).to("limit")
-                .fetch()
-                .all()
-                .stream()
-                .map(row -> new GraphCandidate(
-                    CatalogItemType.ARTIST,
-                    UUID.fromString((String) row.get("entityId")),
-                    (String) row.get("entityName"),
-                    concatMatches(List.of(
-                        dimensionMatches(VocabularyDimension.STYLE, row.get("styleMatches")),
-                        dimensionMatches(VocabularyDimension.CONTEXT, row.get("contextMatches")),
                         dimensionMatches(VocabularyDimension.INSTRUMENT, row.get("instrumentMatches"))
                     ))
                 ))

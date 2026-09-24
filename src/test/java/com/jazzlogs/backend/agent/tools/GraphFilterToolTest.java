@@ -37,8 +37,9 @@ import com.jazzlogs.backend.vocabulary.StyleVocabulary;
 // Pure Mockito unit test, no Spring context — GraphFilterService is mocked,
 // so this only covers what the tool itself is responsible for: turning the
 // model's raw JSON args into typed GraphFilterFilters (rejecting unknown
-// vocabulary/entityType codes, and a missing entityType, along the way),
-// threading userId through, and shaping the JSON output.
+// vocabulary codes and a malformed albumId/artistId along the way),
+// threading userId through, and shaping the JSON output. TRACK is the only
+// entity type this searches now — there is no entityType arg anymore.
 @ExtendWith(MockitoExtension.class)
 class GraphFilterToolTest {
 
@@ -56,22 +57,15 @@ class GraphFilterToolTest {
     }
 
     @Test
-    void missingEntityType_throws() {
-        ToolCallRequest call = callWith("{\"styles\":[\"BEBOP\"]}");
-
-        assertThatThrownBy(() -> tool.execute(call, USER_ID)).isInstanceOf(IllegalArgumentException.class);
-    }
-
-    @Test
-    void unknownEntityType_throws() {
-        ToolCallRequest call = callWith("{\"entityType\":\"PLAYLIST\",\"styles\":[\"BEBOP\"]}");
-
-        assertThatThrownBy(() -> tool.execute(call, USER_ID)).isInstanceOf(IllegalArgumentException.class);
-    }
-
-    @Test
     void unknownStyleCode_throws() {
-        ToolCallRequest call = callWith("{\"entityType\":\"ALBUM\",\"styles\":[\"NOT_REAL\"]}");
+        ToolCallRequest call = callWith("{\"styles\":[\"NOT_REAL\"]}");
+
+        assertThatThrownBy(() -> tool.execute(call, USER_ID)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void malformedAlbumId_throws() {
+        ToolCallRequest call = callWith("{\"styles\":[\"BEBOP\"],\"albumId\":\"not-a-uuid\"}");
 
         assertThatThrownBy(() -> tool.execute(call, USER_ID)).isInstanceOf(IllegalArgumentException.class);
     }
@@ -87,7 +81,7 @@ class GraphFilterToolTest {
     void parsesArgs_andDelegatesToServiceWithUserId() {
         when(graphFilterService.filter(any(), eq(USER_ID))).thenReturn(new GraphFilterResult(List.of()));
         ToolCallRequest call = callWith(
-            "{\"entityType\":\"ALBUM\",\"styles\":[\"BEBOP\"],\"moods\":[\"MELANCHOLIC\"],"
+            "{\"styles\":[\"BEBOP\"],\"moods\":[\"MELANCHOLIC\"],"
                 + "\"excludeListened\":false,\"excludeAlreadyRated\":false,\"topK\":5}"
         );
 
@@ -96,18 +90,37 @@ class GraphFilterToolTest {
         ArgumentCaptor<GraphFilterFilters> captor = ArgumentCaptor.forClass(GraphFilterFilters.class);
         verify(graphFilterService).filter(captor.capture(), eq(USER_ID));
         GraphFilterFilters filters = captor.getValue();
-        assertThat(filters.entityType()).isEqualTo(CatalogItemType.ALBUM);
         assertThat(filters.styles()).containsExactly(StyleVocabulary.BEBOP);
         assertThat(filters.moods()).containsExactly(MoodVocabulary.MELANCHOLIC);
         assertThat(filters.excludeListened()).isFalse();
         assertThat(filters.excludeAlreadyRated()).isFalse();
         assertThat(filters.topK()).isEqualTo(5);
+        assertThat(filters.albumId()).isNull();
+        assertThat(filters.artistId()).isNull();
+    }
+
+    @Test
+    void albumAndArtistId_areParsedAsUuids() {
+        when(graphFilterService.filter(any(), eq(USER_ID))).thenReturn(new GraphFilterResult(List.of()));
+        UUID albumId = UUID.randomUUID();
+        UUID artistId = UUID.randomUUID();
+        ToolCallRequest call = callWith(
+            "{\"albumId\":\"" + albumId + "\",\"artistId\":\"" + artistId + "\"}"
+        );
+
+        tool.execute(call, USER_ID);
+
+        ArgumentCaptor<GraphFilterFilters> captor = ArgumentCaptor.forClass(GraphFilterFilters.class);
+        verify(graphFilterService).filter(captor.capture(), eq(USER_ID));
+        GraphFilterFilters filters = captor.getValue();
+        assertThat(filters.albumId()).isEqualTo(albumId);
+        assertThat(filters.artistId()).isEqualTo(artistId);
     }
 
     @Test
     void omittedFilters_areParsedAsEmptyLists_notNullElements() {
         when(graphFilterService.filter(any(), eq(USER_ID))).thenReturn(new GraphFilterResult(List.of()));
-        ToolCallRequest call = callWith("{\"entityType\":\"ALBUM\",\"styles\":[\"BEBOP\"]}");
+        ToolCallRequest call = callWith("{\"styles\":[\"BEBOP\"]}");
 
         tool.execute(call, USER_ID);
 
@@ -131,16 +144,16 @@ class GraphFilterToolTest {
             new MatchedDimension(VocabularyDimension.MOOD, "MELANCHOLIC")
         );
         when(graphFilterService.filter(any(), eq(USER_ID))).thenReturn(
-            new GraphFilterResult(List.of(new GraphCandidate(CatalogItemType.ALBUM, candidateId, "Kind of Blue", matches)))
+            new GraphFilterResult(List.of(new GraphCandidate(CatalogItemType.TRACK, candidateId, "So What", matches)))
         );
-        ToolCallRequest call = callWith("{\"entityType\":\"ALBUM\",\"styles\":[\"BEBOP\"]}");
+        ToolCallRequest call = callWith("{\"styles\":[\"BEBOP\"]}");
 
         ToolExecutionResult result = tool.execute(call, USER_ID);
 
         JsonNode candidate = JSON.readTree(result.payload()).get("metadata").get("candidates").get(0);
-        assertThat(candidate.get("entityType").asText()).isEqualTo("ALBUM");
+        assertThat(candidate.get("entityType").asText()).isEqualTo("TRACK");
         assertThat(candidate.get("entityId").asText()).isEqualTo(candidateId.toString());
-        assertThat(candidate.get("entityName").asText()).isEqualTo("Kind of Blue");
+        assertThat(candidate.get("entityName").asText()).isEqualTo("So What");
         assertThat(candidate.get("matchedDimensions")).hasSize(2);
         assertThat(candidate.get("matchedDimensions").get(0).get("dimension").asText()).isEqualTo("STYLE");
         assertThat(candidate.get("matchedDimensions").get(0).get("code").asText()).isEqualTo("BEBOP");
@@ -150,7 +163,7 @@ class GraphFilterToolTest {
     @Test
     void noCandidates_hasPlainTextContent() throws Exception {
         when(graphFilterService.filter(any(), eq(USER_ID))).thenReturn(new GraphFilterResult(List.of()));
-        ToolCallRequest call = callWith("{\"entityType\":\"ALBUM\",\"styles\":[\"BEBOP\"]}");
+        ToolCallRequest call = callWith("{\"styles\":[\"BEBOP\"]}");
 
         ToolExecutionResult result = tool.execute(call, USER_ID);
 
@@ -160,7 +173,7 @@ class GraphFilterToolTest {
     }
 
     @Test
-    void schema_declaresEntityTypeAsRequired() {
+    void schema_isNamedCorrectly() {
         assertThat(tool.name()).isEqualTo(GraphFilterTool.NAME);
         assertThat(tool.toFunctionTool().name()).isEqualTo(GraphFilterTool.NAME);
     }

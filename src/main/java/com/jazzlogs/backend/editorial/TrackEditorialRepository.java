@@ -44,6 +44,9 @@ public interface TrackEditorialRepository extends LikeableRepository<TrackEditor
         """)
     List<TrackEditorial> findByTrackAlbumId(@Param("albumId") UUID albumId);
 
+    /** How many of this album's tracks have a written editorial — see {@code AlbumService#getAlbumHeader}. Cheap: {@code COUNT(*)}, no fetch join. */
+    long countByTrackAlbumId(UUID albumId);
+
     /**
      * The archive's free-form search/browse listing — {@code pattern} is a
      * lowercased {@code "%...%"} substring, matched against either the

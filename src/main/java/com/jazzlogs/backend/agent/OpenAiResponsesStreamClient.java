@@ -52,7 +52,7 @@ public class OpenAiResponsesStreamClient {
                 "items", Map.of(
                     "type", "object",
                     "properties", Map.of(
-                        "type", Map.of("type", "string", "enum", List.of("ALBUM", "TRACK", "ARTIST")),
+                        "type", Map.of("type", "string", "enum", List.of("TRACK")),
                         "id", Map.of("type", "string")
                     ),
                     "required", List.of("type", "id"),
