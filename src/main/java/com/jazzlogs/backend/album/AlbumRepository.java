@@ -51,9 +51,9 @@ public interface AlbumRepository extends JpaRepository<Album, UUID>, SavedItemRe
 
     /**
      * Same {@code JOIN FETCH a.artist} as {@link #findAllByIdWithArtist},
-     * paginated — for {@code ArtistService.getEssentialListening}, whose
+     * paginated — for {@code ArtistService.getSidemanAlbums}, whose
      * candidate album ids come from a single unpaged Neo4j read
-     * ({@code GraphService.getEntryPointAlbumIds}) and get their real
+     * ({@code GraphService.getSidemanAlbumIds}) and get their real
      * pagination (and {@code Page}'s total count) done here instead.
      * {@code artist} is a to-one association, not a collection — combining
      * a fetch join with {@code Pageable} is safe here, unlike fetch-joining

@@ -36,9 +36,6 @@ import lombok.AllArgsConstructor;
 @AllArgsConstructor
 public class ArtistController {
 
-    /** Fixed server-side, not a client-controlled ?size — see {@link #getEssentialListening}. */
-    private static final int ESSENTIAL_LISTENING_PAGE_SIZE = 5;
-
     /** Fixed server-side, not a client-controlled ?size — see {@link #getSidemanAlbums}. */
     private static final int SIDEMAN_ALBUMS_PAGE_SIZE = 6;
 
@@ -100,19 +97,6 @@ public class ArtistController {
     public ResponseEntity<Void> replaceContexts(@PathVariable UUID id, @RequestBody ContextTagRequest request) {
         artistService.replaceContexts(id, request);
         return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * The artist page's "Essential Listening" section, paginated — see
-     * {@link ArtistService#getEssentialListening}.
-     *
-     * @param id   the artist
-     * @param page 0-based; page size is fixed at {@link #ESSENTIAL_LISTENING_PAGE_SIZE}, not client-controlled
-     * @return the matching page
-     */
-    @GetMapping("/{id}/essential-listening")
-    public Page<AlbumSummaryDto> getEssentialListening(@PathVariable UUID id, @RequestParam(defaultValue = "0") int page) {
-        return artistService.getEssentialListening(id, PageRequest.of(page, ESSENTIAL_LISTENING_PAGE_SIZE));
     }
 
     /**

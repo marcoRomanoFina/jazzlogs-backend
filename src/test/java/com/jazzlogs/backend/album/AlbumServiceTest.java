@@ -2,7 +2,6 @@ package com.jazzlogs.backend.album;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
@@ -99,29 +98,6 @@ class AlbumServiceTest {
 
         assertThat(tracks).extracting(TrackDto::name).containsExactly("Track B", "Track A");
         assertThat(tracks).extracting(TrackDto::trackNumber).containsExactly(1, 2);
-    }
-
-    @Test
-    void markEntryPoint_acceptsTheAlbumsOwnArtist() {
-        Artist artist = artistRepository.save(new Artist("Entry Point Test Artist", null, null, null));
-        Album album = persistAlbum(artist, "Entry Point Test Album", 2018);
-
-        albumService.markEntryPoint(album.getId(), artist.getId());
-
-        verify(graphService).markAsEntryPoint(album.getId(), artist.getId());
-    }
-
-    @Test
-    void markEntryPoint_rejectsAnArtistThatDoesNotOwnTheAlbum() {
-        Artist owner = artistRepository.save(new Artist("Owner Test Artist", null, null, null));
-        Artist someoneElse = artistRepository.save(new Artist("Someone Else Test Artist", null, null, null));
-        Album album = persistAlbum(owner, "Mismatch Test Album", 2018);
-
-        ResponseStatusException ex = catchThrowableOfType(
-            ResponseStatusException.class, () -> albumService.markEntryPoint(album.getId(), someoneElse.getId())
-        );
-
-        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
     @Test

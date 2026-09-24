@@ -168,28 +168,11 @@ public class ArtistService {
     }
 
     /**
-     * The artist page's "Essential Listening" section — albums curated as a
-     * good entry point into this artist, paginated. The candidate album ids
-     * come from one unpaged Neo4j read ({@link GraphService#getEntryPointAlbumIds}) —
-     * the real pagination (and {@code Page}'s total count) happens here in
-     * Postgres, not in Cypher, since that candidate set is small and curated.
-     *
-     * @param artistId the artist
-     * @param pageable page request
-     * @return the matching page, empty if this artist has no entry-point albums
-     * @throws ResponseStatusException 404 if the artist doesn't exist
-     */
-    @Transactional(readOnly = true)
-    public Page<AlbumSummaryDto> getEssentialListening(UUID artistId, Pageable pageable) {
-        getArtistOrThrow(artistId);
-        return resolveAlbumPage(graphService.getEntryPointAlbumIds(artistId), pageable);
-    }
-
-    /**
      * Albums where this artist appears as a sideman ({@code SIDEMAN_ON}), not
-     * as the leading artist — paginated. Same architecture and same
-     * per-row data as {@link #getEssentialListening}, just a different
-     * Neo4j source edge for the candidate album ids.
+     * as the leading artist — paginated. The candidate album ids come from
+     * one unpaged Neo4j read ({@link GraphService#getSidemanAlbumIds}) — the
+     * real pagination (and {@code Page}'s total count) happens here in
+     * Postgres, not in Cypher, since that candidate set is small and curated.
      *
      * @param artistId the artist
      * @param pageable page request
@@ -202,9 +185,6 @@ public class ArtistService {
         return resolveAlbumPage(graphService.getSidemanAlbumIds(artistId), pageable);
     }
 
-    // Shared by getEssentialListening/getSidemanAlbums: both paginate the
-    // same way over a Neo4j-sourced, unpaged album id candidate set — real
-    // pagination (and Page's total count) happens here in Postgres.
     private Page<AlbumSummaryDto> resolveAlbumPage(List<UUID> albumIds, Pageable pageable) {
         if (albumIds.isEmpty()) {
             return Page.empty(pageable);
@@ -227,7 +207,7 @@ public class ArtistService {
      * The artist's "similar artists" list ({@code SIMILAR_TO} in Neo4j),
      * paginated. Same "Neo4j gives the small curated candidate set (plus its
      * per-artist {@code reason}), Postgres does the real {@code Page}" split
-     * as {@link #getEssentialListening} — {@code reason} is merged onto the
+     * as {@link #getSidemanAlbums} — {@code reason} is merged onto the
      * page from a map built off that same unpaged Neo4j read, not a second
      * Neo4j round trip.
      *

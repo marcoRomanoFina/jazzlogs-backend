@@ -17,8 +17,6 @@ import com.jazzlogs.backend.album.dto.AlbumHeaderDto;
 import com.jazzlogs.backend.album.dto.ContextTagRequest;
 import com.jazzlogs.backend.album.dto.MoodTagRequest;
 import com.jazzlogs.backend.album.dto.StyleTagRequest;
-import com.jazzlogs.backend.artist.Artist;
-import com.jazzlogs.backend.artist.ArtistRepository;
 import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialDto;
 import com.jazzlogs.backend.graph.GraphService;
@@ -46,43 +44,12 @@ import lombok.AllArgsConstructor;
 public class AlbumService {
 
     private final AlbumRepository albumRepository;
-    private final ArtistRepository artistRepository;
     private final GraphService graphService;
     private final TrackService trackService;
     private final EditorialService editorialService;
     private final ListenService listenService;
     private final SavedItemService savedItemService;
     private final TrackRatingRepository trackRatingRepository;
-
-    /**
-     * Marks this album as a good entry point into an artist — see {@code
-     * ArtistService#getEssentialListening}.
-     *
-     * @param albumId  the album
-     * @param artistId the artist this album is a good entry point into — must be this album's own artist
-     * @throws ResponseStatusException 400 if this artist isn't this album's own artist
-     */
-    public void markEntryPoint(UUID albumId, UUID artistId) {
-        Album album = getAlbumOrThrow(albumId);
-        getArtistOrThrow(artistId);
-        if (!album.getArtist().getId().equals(artistId)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Album " + albumId + " isn't by artist " + artistId);
-        }
-        graphService.markAsEntryPoint(albumId, artistId);
-    }
-
-    /**
-     * Unmarks this album as a good entry point into an artist — idempotent,
-     * does nothing if it wasn't marked.
-     *
-     * @param albumId  the album
-     * @param artistId the artist
-     */
-    public void unmarkEntryPoint(UUID albumId, UUID artistId) {
-        getAlbumOrThrow(albumId);
-        getArtistOrThrow(artistId);
-        graphService.unmarkAsEntryPoint(albumId, artistId);
-    }
 
     public void replaceStyles(UUID albumId, StyleTagRequest request) {
         getAlbumOrThrow(albumId);
@@ -148,11 +115,12 @@ public class AlbumService {
         // One query for every track's own editorial, instead of one per track.
         Map<UUID, TrackEditorialDto> editorialsByTrack = editorialService.getTrackEditorialDtosByAlbumId(albumId);
 
-        // Same idea again, this time for the five Neo4j lookups toDto used to
-        // run once per track (performers, moods, contexts, rhythms, featured
-        // instruments) — this was the real N+1: 5 graph round-trips per
-        // track, not just the one editorial query above.
+        // Same idea again, this time for the six Neo4j lookups toDto used to
+        // run once per track (performers, styles, moods, contexts, rhythms,
+        // featured instruments) — this was the real N+1: 6 graph round-trips
+        // per track, not just the one editorial query above.
         Map<UUID, List<TrackPerformerEntry>> performersByTrack = graphService.getTrackPerformersForAlbum(albumId);
+        Map<UUID, List<VocabularyTag>> stylesByTrack = graphService.getTrackStylesForAlbum(albumId);
         Map<UUID, List<VocabularyTag>> moodsByTrack = graphService.getTrackMoodsForAlbum(albumId);
         Map<UUID, List<VocabularyTag>> contextsByTrack = graphService.getTrackContextsForAlbum(albumId);
         Map<UUID, List<VocabularyTag>> rhythmsByTrack = graphService.getTrackRhythmsForAlbum(albumId);
@@ -183,6 +151,7 @@ public class AlbumService {
                     placements.get(trackId),
                     editorialsByTrack.get(trackId),
                     performersByTrack.getOrDefault(trackId, List.of()),
+                    stylesByTrack.getOrDefault(trackId, List.of()),
                     moodsByTrack.getOrDefault(trackId, List.of()),
                     contextsByTrack.getOrDefault(trackId, List.of()),
                     rhythmsByTrack.getOrDefault(trackId, List.of()),
@@ -201,10 +170,5 @@ public class AlbumService {
     private Album getAlbumOrThrow(UUID albumId) {
         return albumRepository.findById(albumId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Album not found: " + albumId));
-    }
-
-    private Artist getArtistOrThrow(UUID artistId) {
-        return artistRepository.findById(artistId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Artist not found: " + artistId));
     }
 }

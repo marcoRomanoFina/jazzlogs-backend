@@ -83,7 +83,7 @@ class GraphFilterServiceTest {
         graphFilterService.filter(filters, USER_ID);
 
         verify(graphService).findAlbumCandidates(any(), any(), any(), eq(USER_ID), anyBoolean(), anyBoolean(), anyInt());
-        verify(graphService, never()).findTrackCandidates(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean(), anyInt());
+        verify(graphService, never()).findTrackCandidates(any(), any(), any(), any(), any(), any(), anyBoolean(), anyBoolean(), anyInt());
         verify(graphService, never()).findArtistCandidates(any(), any(), any(), anyInt());
     }
 
@@ -92,13 +92,32 @@ class GraphFilterServiceTest {
         GraphFilterFilters filters = new GraphFilterFilters(
             CatalogItemType.TRACK, null, null, List.of(MoodVocabulary.MELANCHOLIC), null, null, null, null, null
         );
-        when(graphService.findTrackCandidates(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean(), anyInt())).thenReturn(List.of());
+        when(graphService.findTrackCandidates(any(), any(), any(), any(), any(), any(), anyBoolean(), anyBoolean(), anyInt())).thenReturn(List.of());
 
         graphFilterService.filter(filters, USER_ID);
 
-        verify(graphService).findTrackCandidates(any(), any(), any(), any(), eq(USER_ID), anyBoolean(), anyBoolean(), anyInt());
+        verify(graphService).findTrackCandidates(any(), any(), any(), any(), any(), eq(USER_ID), anyBoolean(), anyBoolean(), anyInt());
         verify(graphService, never()).findAlbumCandidates(any(), any(), any(), any(), anyBoolean(), anyBoolean(), anyInt());
         verify(graphService, never()).findArtistCandidates(any(), any(), any(), anyInt());
+    }
+
+    // Style used to be Album/Artist-only — Track gained a BELONGS_TO->Style
+    // relation too (see GraphService.findTrackCandidates), so a track filter
+    // with only styles set must reach GraphService, not short-circuit like
+    // the ARTIST+rhythms case above.
+    @SuppressWarnings("unchecked")
+    @Test
+    void trackEntityType_includesStyleCodes() {
+        GraphFilterFilters filters = new GraphFilterFilters(
+            CatalogItemType.TRACK, List.of(StyleVocabulary.BEBOP), null, null, null, null, null, null, null
+        );
+        when(graphService.findTrackCandidates(any(), any(), any(), any(), any(), any(), anyBoolean(), anyBoolean(), anyInt())).thenReturn(List.of());
+
+        ArgumentCaptor<List<String>> styleCodes = ArgumentCaptor.forClass(List.class);
+        graphFilterService.filter(filters, USER_ID);
+
+        verify(graphService).findTrackCandidates(styleCodes.capture(), any(), any(), any(), any(), eq(USER_ID), anyBoolean(), anyBoolean(), anyInt());
+        assertThat(styleCodes.getValue()).containsExactly("BEBOP");
     }
 
     @Test
@@ -112,7 +131,7 @@ class GraphFilterServiceTest {
 
         verify(graphService).findArtistCandidates(any(), any(), any(), anyInt());
         verify(graphService, never()).findAlbumCandidates(any(), any(), any(), any(), anyBoolean(), anyBoolean(), anyInt());
-        verify(graphService, never()).findTrackCandidates(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean(), anyInt());
+        verify(graphService, never()).findTrackCandidates(any(), any(), any(), any(), any(), any(), anyBoolean(), anyBoolean(), anyInt());
     }
 
     @Test
@@ -144,11 +163,11 @@ class GraphFilterServiceTest {
         GraphFilterFilters filters = new GraphFilterFilters(
             CatalogItemType.TRACK, null, null, List.of(MoodVocabulary.MELANCHOLIC), null, null, null, null, null
         );
-        when(graphService.findTrackCandidates(any(), any(), any(), any(), any(), anyBoolean(), anyBoolean(), anyInt())).thenReturn(List.of());
+        when(graphService.findTrackCandidates(any(), any(), any(), any(), any(), any(), anyBoolean(), anyBoolean(), anyInt())).thenReturn(List.of());
 
         graphFilterService.filter(filters, USER_ID);
 
-        verify(graphService).findTrackCandidates(any(), any(), any(), any(), eq(USER_ID), eq(true), eq(true), anyInt());
+        verify(graphService).findTrackCandidates(any(), any(), any(), any(), any(), eq(USER_ID), eq(true), eq(true), anyInt());
     }
 
     @Test

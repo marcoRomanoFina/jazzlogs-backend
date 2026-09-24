@@ -37,10 +37,10 @@ import com.jazzlogs.backend.spotify.SpotifyTrackData;
 import com.jazzlogs.backend.track.dto.CreateTrackRequest;
 
 // GraphService is mocked here (not the real Neo4jClient-backed bean) — same
-// reasoning as AlbumServiceTest/ArtistServiceTest: markEntryPoint and
-// createOrUpdateTrack are the tests below that actually reach it.
-// SpotifyCatalogService is mocked too — createOrUpdateTrack calls out to the
-// real Spotify API otherwise, which a unit test can't rely on.
+// reasoning as AlbumServiceTest/ArtistServiceTest: createOrUpdateTrack is
+// the test below that actually reaches it. SpotifyCatalogService is mocked
+// too — createOrUpdateTrack calls out to the real Spotify API otherwise,
+// which a unit test can't rely on.
 @SpringBootTest
 @Transactional
 class TrackServiceTest {
@@ -152,29 +152,6 @@ class TrackServiceTest {
     }
 
     @Test
-    void markEntryPoint_acceptsTheTracksOwnArtist() {
-        Artist artist = artistRepository.save(new Artist("Entry Point Test Artist", null, null, null));
-        Track track = persistTrackFor(artist, "Entry Point Test Track");
-
-        trackService.markEntryPoint(track.getId(), artist.getId());
-
-        verify(graphService).markTrackAsEntryPoint(track.getId(), artist.getId());
-    }
-
-    @Test
-    void markEntryPoint_rejectsAnArtistThatDoesNotOwnTheTrack() {
-        Artist owner = artistRepository.save(new Artist("Owner Test Artist", null, null, null));
-        Artist someoneElse = artistRepository.save(new Artist("Someone Else Test Artist", null, null, null));
-        Track track = persistTrackFor(owner, "Mismatch Test Track");
-
-        ResponseStatusException ex = catchThrowableOfType(
-            ResponseStatusException.class, () -> trackService.markEntryPoint(track.getId(), someoneElse.getId())
-        );
-
-        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-    }
-
-    @Test
     void createOrUpdateTrack_assignsSequentialTrackNumberByUploadOrder_andBumpsTotalTracks() {
         Artist artist = artistRepository.save(new Artist("Upload Order Test Artist", "spotify-artist-upload-order", null, null));
         Album album = albumRepository.save(new Album(
@@ -259,15 +236,6 @@ class TrackServiceTest {
 
         assertThat(second.getAlbum().getId()).isEqualTo(first.getAlbum().getId());
         assertThat(second.getAlbum().getArtist().getId()).isEqualTo(first.getAlbum().getArtist().getId());
-    }
-
-    private Track persistTrackFor(Artist artist, String name) {
-        Album album = albumRepository.save(new Album(
-            artist, "Album for " + name, null, null, null, 2024, 1
-        ));
-        return trackRepository.save(new Track(
-            album, null, name, null, null, null, false, null, null, null, null, null, null
-        ));
     }
 
     // setFeatured requires a TrackEditorial to already exist — every scenario

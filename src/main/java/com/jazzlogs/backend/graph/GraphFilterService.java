@@ -62,7 +62,7 @@ public class GraphFilterService {
         // zero-match rows, this just skips the round-trip in Java too).
         Map<CatalogItemType, List<String>> relevantCodesByType = Map.of(
             CatalogItemType.ALBUM, concat(styleCodes, moodCodes, contextCodes),
-            CatalogItemType.TRACK, concat(moodCodes, contextCodes, rhythmCodes, instrumentCodes),
+            CatalogItemType.TRACK, concat(styleCodes, moodCodes, contextCodes, rhythmCodes, instrumentCodes),
             CatalogItemType.ARTIST, concat(styleCodes, contextCodes, instrumentCodes)
         );
 
@@ -76,7 +76,7 @@ public class GraphFilterService {
                 styleCodes, moodCodes, contextCodes, userId, excludeListened, excludeAlreadyRated, topK
             ),
             CatalogItemType.TRACK, () -> graphService.findTrackCandidates(
-                moodCodes, contextCodes, rhythmCodes, instrumentCodes, userId, excludeListened, excludeAlreadyRated, topK
+                styleCodes, moodCodes, contextCodes, rhythmCodes, instrumentCodes, userId, excludeListened, excludeAlreadyRated, topK
             ),
             CatalogItemType.ARTIST, () -> graphService.findArtistCandidates(styleCodes, contextCodes, instrumentCodes, topK)
         );

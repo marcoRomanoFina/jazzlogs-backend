@@ -31,9 +31,9 @@ import com.jazzlogs.backend.graph.VocabularyTag;
 // GraphService is mocked here (not the real Neo4jClient-backed bean) — same
 // reasoning as AlbumServiceTest: getArtistHeader doesn't call it at all, but
 // syncArtistNode (called by other ArtistService methods this test doesn't
-// exercise) does. getEssentialListening/getSidemanAlbums/getSimilarArtists
-// do call it (getEntryPointAlbumIds/getSidemanAlbumIds/getSimilarArtists
-// respectively), which is exactly what's stubbed per test below.
+// exercise) does. getSidemanAlbums/getSimilarArtists do call it
+// (getSidemanAlbumIds/getSimilarArtists respectively), which is exactly what's
+// stubbed per test below.
 @SpringBootTest
 @Transactional
 class ArtistServiceTest {
@@ -67,47 +67,6 @@ class ArtistServiceTest {
         );
 
         assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-    }
-
-    @Test
-    void getEssentialListening_rejectsUnknownArtist() {
-        ResponseStatusException ex = catchThrowableOfType(
-            ResponseStatusException.class,
-            () -> artistService.getEssentialListening(UUID.randomUUID(), PageRequest.of(0, 5))
-        );
-
-        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-    }
-
-    @Test
-    void getEssentialListening_returnsEmptyPage_whenNoEntryPointAlbums() {
-        Artist artist = persistArtist("No Entry Points Artist");
-        when(graphService.getEntryPointAlbumIds(artist.getId())).thenReturn(List.of());
-
-        Page<AlbumSummaryDto> page = artistService.getEssentialListening(artist.getId(), PageRequest.of(0, 5));
-
-        assertThat(page.getContent()).isEmpty();
-        assertThat(page.getTotalElements()).isZero();
-    }
-
-    @Test
-    void getEssentialListening_ordersByReleaseYearAscending_andIncludesTheAlbumsOwnArtist() {
-        Artist target = persistArtist("Target Artist");
-        // getEssentialListening trusts whatever GraphService.getEntryPointAlbumIds
-        // returns and resolves each album's own artist from Postgres — this
-        // stubs a mismatched artist purely to prove that resolution is
-        // correct, not because AlbumService.markEntryPoint would ever let a
-        // real request create one (it enforces album.artist == artistId).
-        Artist otherArtist = persistArtist("Other Artist");
-        Album newer = persistAlbum(otherArtist, "Newer Album", 2020);
-        Album older = persistAlbum(otherArtist, "Older Album", 1965);
-        when(graphService.getEntryPointAlbumIds(target.getId())).thenReturn(List.of(newer.getId(), older.getId()));
-
-        Page<AlbumSummaryDto> page = artistService.getEssentialListening(target.getId(), PageRequest.of(0, 5));
-
-        assertThat(page.getContent()).extracting(AlbumSummaryDto::name).containsExactly("Older Album", "Newer Album");
-        assertThat(page.getContent().get(0).artistId()).isEqualTo(otherArtist.getId());
-        assertThat(page.getContent().get(0).artistName()).isEqualTo("Other Artist");
     }
 
     @Test

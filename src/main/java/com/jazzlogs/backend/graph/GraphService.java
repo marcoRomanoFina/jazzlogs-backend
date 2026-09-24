@@ -107,70 +107,9 @@ public class GraphService {
     }
 
     /**
-     * Creates the {@code ENTRY_POINT_TO} edge from an album to an artist —
-     * see {@link #getEntryPointAlbumIds}, which reads it back.
-     *
-     * @param albumId  the album
-     * @param artistId the artist this album is a good entry point into
-     */
-    public void markAsEntryPoint(UUID albumId, UUID artistId) {
-        write("add ENTRY_POINT_TO album=" + albumId + " artist=" + artistId, () ->
-            neo4jClient.query("""
-                    MATCH (al:Album {id: $albumId}), (ar:Artist {id: $artistId})
-                    MERGE (al)-[:ENTRY_POINT_TO]->(ar)
-                    """)
-                .bind(albumId.toString()).to("albumId")
-                .bind(artistId.toString()).to("artistId")
-                .run());
-    }
-
-    /**
-     * Removes the {@code ENTRY_POINT_TO} edge from an album to an artist, if
-     * it exists — a no-op otherwise.
-     *
-     * @param albumId  the album
-     * @param artistId the artist
-     */
-    public void unmarkAsEntryPoint(UUID albumId, UUID artistId) {
-        write("remove ENTRY_POINT_TO album=" + albumId + " artist=" + artistId, () ->
-            neo4jClient.query("""
-                    MATCH (al:Album {id: $albumId})-[r:ENTRY_POINT_TO]->(ar:Artist {id: $artistId})
-                    DELETE r
-                    """)
-                .bind(albumId.toString()).to("albumId")
-                .bind(artistId.toString()).to("artistId")
-                .run());
-    }
-
-    /**
-     * Every album curated as a good entry point into an artist — unpaged,
-     * on purpose: this is a small, curated set (an admin picks each one via
-     * {@link #markAsEntryPoint}), not something that grows unbounded like a
-     * track/note feed. The caller (ArtistService.getEssentialListening)
-     * paginates over these ids in Postgres instead of paging this query.
-     *
-     * @param artistId the artist
-     * @return every entry-point album's id, unordered
-     */
-    public List<UUID> getEntryPointAlbumIds(UUID artistId) {
-        return read("read ENTRY_POINT_TO album ids for artist=" + artistId, () ->
-            neo4jClient.query("""
-                    MATCH (al:Album)-[:ENTRY_POINT_TO]->(ar:Artist {id: $artistId})
-                    RETURN al.id AS albumId
-                    """)
-                .bind(artistId.toString()).to("artistId")
-                .fetch()
-                .all()
-                .stream()
-                .map(row -> UUID.fromString((String) row.get("albumId")))
-                .toList());
-    }
-
-    /**
      * Every album where this artist appears as a sideman ({@code SIDEMAN_ON}),
-     * not as the leading artist — unpaged, same reasoning as {@link
-     * #getEntryPointAlbumIds}: a single id-only read, cheap even for a
-     * prolific session musician. The caller (ArtistService.getSidemanAlbums)
+     * not as the leading artist — unpaged: a small, cheap-to-read set even
+     * for a prolific session musician. The caller (ArtistService.getSidemanAlbums)
      * paginates over these ids in Postgres instead of paging this query.
      *
      * @param artistId the artist
@@ -270,6 +209,10 @@ public class GraphService {
                 .run());
     }
 
+    public void replaceTrackStyles(UUID trackId, List<String> styleCodes) {
+        replaceTags("Track", trackId, "BELONGS_TO", "Style", styleCodes);
+    }
+
     public void replaceTrackMoods(UUID trackId, List<String> moodCodes) {
         replaceTags("Track", trackId, "EVOKES_MOOD", "Mood", moodCodes);
     }
@@ -286,41 +229,6 @@ public class GraphService {
         replaceTags("Track", trackId, "FEATURES_INSTRUMENT", "Instrument", instrumentCodes);
     }
 
-    /**
-     * Creates the {@code ENTRY_POINT_TO} edge from a track to an artist.
-     *
-     * @param trackId  the track
-     * @param artistId the artist this track is a good entry point into
-     */
-    public void markTrackAsEntryPoint(UUID trackId, UUID artistId) {
-        write("add ENTRY_POINT_TO track=" + trackId + " artist=" + artistId, () ->
-            neo4jClient.query("""
-                    MATCH (tr:Track {id: $trackId}), (ar:Artist {id: $artistId})
-                    MERGE (tr)-[:ENTRY_POINT_TO]->(ar)
-                    """)
-                .bind(trackId.toString()).to("trackId")
-                .bind(artistId.toString()).to("artistId")
-                .run());
-    }
-
-    /**
-     * Removes the {@code ENTRY_POINT_TO} edge from a track to an artist, if
-     * it exists — a no-op otherwise.
-     *
-     * @param trackId  the track
-     * @param artistId the artist
-     */
-    public void unmarkTrackAsEntryPoint(UUID trackId, UUID artistId) {
-        write("remove ENTRY_POINT_TO track=" + trackId + " artist=" + artistId, () ->
-            neo4jClient.query("""
-                    MATCH (tr:Track {id: $trackId})-[r:ENTRY_POINT_TO]->(ar:Artist {id: $artistId})
-                    DELETE r
-                    """)
-                .bind(trackId.toString()).to("trackId")
-                .bind(artistId.toString()).to("artistId")
-                .run());
-    }
-
     /** Same MATCH-then-MERGE / non-swallowed-here contract as markAlbumListened. */
     public void markTrackListened(UUID userId, UUID trackId, Instant listenedAt) {
         write("add LISTENED user=" + userId + " track=" + trackId, () ->
@@ -335,6 +243,10 @@ public class GraphService {
                 // See markAlbumListened's comment — same Instant conversion.
                 .bind(listenedAt.atOffset(ZoneOffset.UTC)).to("listenedAt")
                 .run());
+    }
+
+    public List<VocabularyTag> getTrackStyles(UUID trackId) {
+        return getTags("Track", trackId, "BELONGS_TO", "Style");
     }
 
     public List<VocabularyTag> getTrackMoods(UUID trackId) {
@@ -381,6 +293,10 @@ public class GraphService {
      * call getTrackMoods/getTrackContexts/getTrackRhythms/
      * getTrackFeaturedInstruments/getTrackPerformers once per track).
      */
+    public Map<UUID, List<VocabularyTag>> getTrackStylesForAlbum(UUID albumId) {
+        return getTagsForAlbum(albumId, "BELONGS_TO", "Style");
+    }
+
     public Map<UUID, List<VocabularyTag>> getTrackMoodsForAlbum(UUID albumId) {
         return getTagsForAlbum(albumId, "EVOKES_MOOD", "Mood");
     }
@@ -1016,7 +932,7 @@ public class GraphService {
      * RATED.
      */
     public List<GraphCandidate> findTrackCandidates(
-        List<String> moodCodes, List<String> contextCodes, List<String> rhythmCodes, List<String> instrumentCodes,
+        List<String> styleCodes, List<String> moodCodes, List<String> contextCodes, List<String> rhythmCodes, List<String> instrumentCodes,
         UUID userId, boolean excludeListened, boolean excludeAlreadyRated, int limit
     ) {
         return read("find Track candidates for graphFilter", () ->
@@ -1025,20 +941,22 @@ public class GraphService {
                     WHERE ($excludeListened = false OR NOT EXISTS { (u:User {id: $userId})-[:LISTENED]->(tr) })
                       AND ($excludeRated = false OR NOT EXISTS { (u:User {id: $userId})-[:RATED_TRACK]->(tr) })
                     WITH tr,
+                        [(tr)-[:BELONGS_TO]->(s:Style) WHERE s.code IN $styleCodes | s.code] AS styleMatches,
                         [(tr)-[:EVOKES_MOOD]->(m:Mood) WHERE m.code IN $moodCodes | m.code] AS moodMatches,
                         [(tr)-[:PERFECT_FOR]->(c:Context) WHERE c.code IN $contextCodes | c.code] AS contextMatches,
                         [(tr)-[:HAS_RHYTHM]->(r:Rhythm) WHERE r.code IN $rhythmCodes | r.code] AS rhythmMatches,
                         [(tr)-[:FEATURES_INSTRUMENT]->(i:Instrument) WHERE i.code IN $instrumentCodes | i.code] AS instrumentMatches
-                    WITH tr, moodMatches, contextMatches, rhythmMatches, instrumentMatches,
-                        (size(moodMatches) + size(contextMatches) + size(rhythmMatches) + size(instrumentMatches)) AS matchCount
+                    WITH tr, styleMatches, moodMatches, contextMatches, rhythmMatches, instrumentMatches,
+                        (size(styleMatches) + size(moodMatches) + size(contextMatches) + size(rhythmMatches) + size(instrumentMatches)) AS matchCount
                     WHERE matchCount > 0
-                    RETURN tr.id AS entityId, tr.name AS entityName, moodMatches, contextMatches, rhythmMatches, instrumentMatches
+                    RETURN tr.id AS entityId, tr.name AS entityName, styleMatches, moodMatches, contextMatches, rhythmMatches, instrumentMatches
                     ORDER BY matchCount DESC
                     LIMIT $limit
                     """)
                 .bind(userId.toString()).to("userId")
                 .bind(excludeListened).to("excludeListened")
                 .bind(excludeAlreadyRated).to("excludeRated")
+                .bind(styleCodes).to("styleCodes")
                 .bind(moodCodes).to("moodCodes")
                 .bind(contextCodes).to("contextCodes")
                 .bind(rhythmCodes).to("rhythmCodes")
@@ -1052,6 +970,7 @@ public class GraphService {
                     UUID.fromString((String) row.get("entityId")),
                     (String) row.get("entityName"),
                     concatMatches(List.of(
+                        dimensionMatches(VocabularyDimension.STYLE, row.get("styleMatches")),
                         dimensionMatches(VocabularyDimension.MOOD, row.get("moodMatches")),
                         dimensionMatches(VocabularyDimension.CONTEXT, row.get("contextMatches")),
                         dimensionMatches(VocabularyDimension.RHYTHM, row.get("rhythmMatches")),
