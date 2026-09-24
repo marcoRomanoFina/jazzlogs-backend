@@ -70,9 +70,8 @@ public interface ArtistRepository extends JpaRepository<Artist, UUID>, SavedItem
                 WHEN ar.normalized_name LIKE '%' || :normalizedQuery || '%' THEN 'CONTAINS'
                 ELSE 'FUZZY'
             END AS matchType,
-            aed.editorial_id AS editorialId
+            NULL::uuid AS editorialId
         FROM artists ar
-        LEFT JOIN artist_editorials aed ON aed.artist_id = ar.id
         WHERE ar.normalized_name = :normalizedQuery
            OR ar.normalized_name LIKE :normalizedQuery || '%'
            OR ar.normalized_name LIKE '%' || :normalizedQuery || '%'

@@ -4,15 +4,30 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-public interface TrackEditorialRepository extends JpaRepository<TrackEditorial, UUID> {
+import com.jazzlogs.backend.like.LikeableRepository;
+
+public interface TrackEditorialRepository extends LikeableRepository<TrackEditorial> {
 
     Optional<TrackEditorial> findByTrackId(UUID trackId);
 
     boolean existsByTrackId(UUID trackId);
+
+    // Atomic UPDATE, not read-modify-save — two concurrent likes must not race
+    // and lose an increment.
+    @Modifying
+    @Query("UPDATE TrackEditorial te SET te.likeCount = te.likeCount + 1 WHERE te.id = :id")
+    void incrementLikeCount(@Param("id") UUID entityId);
+
+    @Modifying
+    @Query("UPDATE TrackEditorial te SET te.likeCount = GREATEST(te.likeCount - 1, 0) WHERE te.id = :id")
+    void decrementLikeCount(@Param("id") UUID entityId);
+
+    @Query("SELECT te.likeCount FROM TrackEditorial te WHERE te.id = :id")
+    Optional<Integer> findLikeCount(@Param("id") UUID entityId);
 
     // One query for every track editorial on this album (title/dek/byline +
     // blocks), instead of one per track — see AlbumService.getAlbumTracks,

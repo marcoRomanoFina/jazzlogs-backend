@@ -28,8 +28,6 @@ public class SyncRetryWorker {
     public SyncRetryWorker(
         SyncFailureRepository syncFailureRepository,
         ListenedSyncRetryHandler listenedHandler,
-        ReviewRatedSyncRetryHandler reviewRatedHandler,
-        ReviewHighlightedSyncRetryHandler reviewHighlightedHandler,
         TrackRatedSyncRetryHandler trackRatedHandler,
         PlaylistTrackAddedSyncRetryHandler playlistTrackAddedHandler,
         PlaylistTrackRemovedSyncRetryHandler playlistTrackRemovedHandler,
@@ -42,8 +40,6 @@ public class SyncRetryWorker {
         this.syncFailureRepository = syncFailureRepository;
         this.handlers = Map.of(
             SyncFailureEntityType.LISTENED, listenedHandler,
-            SyncFailureEntityType.REVIEW_RATED, reviewRatedHandler,
-            SyncFailureEntityType.REVIEW_HIGHLIGHTED, reviewHighlightedHandler,
             SyncFailureEntityType.TRACK_RATED, trackRatedHandler,
             SyncFailureEntityType.PLAYLIST_TRACK_ADDED, playlistTrackAddedHandler,
             SyncFailureEntityType.PLAYLIST_TRACK_REMOVED, playlistTrackRemovedHandler,

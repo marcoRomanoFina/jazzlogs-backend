@@ -16,7 +16,7 @@ import com.jazzlogs.backend.like.LikeableRepository;
 import com.jazzlogs.backend.saveditem.SavedItemResolver;
 
 // LikeableRepository<Playlist>: same atomic-UPDATE like_count pattern as
-// Editorial/Note/Review. SavedItemResolver: wires PLAYLIST into
+// Editorial/Note/Series. SavedItemResolver: wires PLAYLIST into
 // SavedItemService's resolver map (SaveableEntityType already had PLAYLIST
 // prepared, this is what fulfills it).
 public interface PlaylistRepository extends LikeableRepository<Playlist>, SavedItemResolver {

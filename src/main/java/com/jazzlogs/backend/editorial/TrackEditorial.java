@@ -1,11 +1,24 @@
 package com.jazzlogs.backend.editorial;
 
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.OneToOne;
-import jakarta.persistence.PrimaryKeyJoinColumn;
+import jakarta.persistence.OrderBy;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -13,27 +26,79 @@ import lombok.NoArgsConstructor;
 
 import com.jazzlogs.backend.track.Track;
 
+/**
+ * A track's own editorial — flat (no shared base table): tracks are the only
+ * kind of editorial content JazzLogs carries, so there's no other subtype to
+ * share columns with.
+ */
 @Entity
 @Table(name = "track_editorials")
-@PrimaryKeyJoinColumn(name = "editorial_id")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class TrackEditorial extends Editorial {
+public class TrackEditorial {
+
+    @Id
+    @GeneratedValue
+    private UUID id;
 
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "track_id", nullable = false, unique = true)
     private Track track;
 
-    // Upload-only, never set via Editorial.update(...) — only via its own
-    // endpoint (see EditorialService.setTrackEditorialImage).
+    @Column(nullable = false)
+    private String title;
+
+    @Column(columnDefinition = "TEXT")
+    private String dek;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private EditorialByline byline;
+
+    // Upload-only, never set via update(...) — only via its own endpoint
+    // (see EditorialService.setTrackEditorialImage).
     @Column(name = "image_url")
     private String imageUrl;
+
+    @OneToMany(mappedBy = "trackEditorial", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("position ASC")
+    private List<EditorialBlock> blocks = new ArrayList<>();
+
+    // Denormalized on purpose — mutated only via TrackEditorialRepository's
+    // atomic increment/decrement UPDATE queries (see LikeService), never
+    // read-modify-saved in Java, to avoid lost updates under concurrent likes.
+    @Column(name = "like_count", nullable = false)
+    private int likeCount;
+
+    @Column(nullable = false, updatable = false)
+    private Instant createdAt;
+
+    @Column(nullable = false)
+    private Instant updatedAt;
 
     public TrackEditorial(Track track) {
         this.track = track;
     }
 
+    public void update(String title, String dek, EditorialByline byline) {
+        this.title = title;
+        this.dek = dek;
+        this.byline = byline;
+    }
+
     public void updateImageUrl(String imageUrl) {
         this.imageUrl = imageUrl;
+    }
+
+    @PrePersist
+    void onCreate() {
+        Instant now = Instant.now();
+        createdAt = now;
+        updatedAt = now;
+    }
+
+    @PreUpdate
+    void onUpdate() {
+        updatedAt = Instant.now();
     }
 }

@@ -1,6 +1,5 @@
 package com.jazzlogs.backend.artist.dto;
 
-import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
@@ -20,8 +19,6 @@ import java.util.UUID;
  * @param label       the record label
  * @param totalTracks how many tracks are catalogued so far, by upload order — not Spotify's own count (see {@code TrackService#createOrUpdateTrack})
  * @param logNumber   the catalog/log number
- * @param avgRating   JazzLogs' own average review rating, {@code null} if unrated
- * @param dek         the album's own editorial's short standfirst text, {@code null} if no editorial written yet
  * @param artistId    the album's own leading artist
  * @param artistName  the album's own leading artist's name
  */
@@ -33,8 +30,6 @@ public record AlbumSummaryDto(
     String label,
     Integer totalTracks,
     String logNumber,
-    BigDecimal avgRating,
-    String dek,
     UUID artistId,
     String artistName
 ) {

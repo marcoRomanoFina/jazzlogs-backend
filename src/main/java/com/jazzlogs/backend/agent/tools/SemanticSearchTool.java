@@ -41,7 +41,7 @@ public class SemanticSearchTool extends JazzTool {
     private static final Map<String, Object> SCHEMA = Map.of(
         "type", "object",
         "properties", Map.of(
-            "entityType", Map.of("type", "string", "enum", List.of("ALBUM", "TRACK", "ARTIST")),
+            "entityType", Map.of("type", "string", "enum", List.of("TRACK")),
             "candidateIds", Map.of("type", "array", "items", Map.of("type", "string"), "maxItems", SemanticSearchService.MAX_MATCHES),
             "category", Map.of("type", "string", "enum", categoryNames()),
             "energy", Map.of("type", List.of("string", "null"), "enum", levelNamesOrNull()),
@@ -69,13 +69,12 @@ public class SemanticSearchTool extends JazzTool {
     public SemanticSearchTool(SemanticSearchService semanticSearchService, JsonMapper objectMapper) {
         super(
             NAME,
-            "Semantically rank editorial content blocks against a query, scoped to candidateIds of ONE "
-                + "entityType (ALBUM, TRACK, or ARTIST) and ONE content category per call (make separate "
-                + "calls for more than one type or category). Use this after GRAPH_FILTER to write from "
-                + "real text instead of inventing it, or standalone with a candidate set you already have. "
-                + "An empty candidateIds list returns no matches without erroring. energy/accessibility/"
-                + "moodIntensity are optional extra filters that only apply when entityType is ALBUM or "
-                + "TRACK — they're ignored for ARTIST.",
+            "Semantically rank track editorial content blocks against a query, scoped to candidateIds "
+                + "(track ids) and ONE content category per call (make separate calls for more than one "
+                + "category). Use this after GRAPH_FILTER to write from real text instead of inventing it, "
+                + "or standalone with a candidate set you already have. An empty candidateIds list returns "
+                + "no matches without erroring. energy/accessibility/moodIntensity are optional extra "
+                + "filters on the track.",
             "Buscando en las editoriales"
         );
         this.semanticSearchService = semanticSearchService;

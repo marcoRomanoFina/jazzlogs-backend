@@ -5,10 +5,7 @@ import java.util.UUID;
 
 import jakarta.validation.Valid;
 
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -22,7 +19,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.multipart.MultipartFile;
 
 import com.jazzlogs.backend.album.dto.AlbumHeaderDto;
 import com.jazzlogs.backend.album.dto.ContextTagRequest;
@@ -32,13 +28,6 @@ import com.jazzlogs.backend.album.dto.LetterColorRequest;
 import com.jazzlogs.backend.album.dto.MoodTagRequest;
 import com.jazzlogs.backend.album.dto.PersonnelRequest;
 import com.jazzlogs.backend.album.dto.StyleTagRequest;
-import com.jazzlogs.backend.editorial.AlbumEditorial;
-import com.jazzlogs.backend.editorial.EditorialService;
-import com.jazzlogs.backend.editorial.dto.AlbumEditorialDto;
-import com.jazzlogs.backend.editorial.dto.AlbumEditorialRequest;
-import com.jazzlogs.backend.review.ReviewService;
-import com.jazzlogs.backend.review.dto.CreateReviewRequest;
-import com.jazzlogs.backend.review.dto.ReviewDto;
 import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackService;
 import com.jazzlogs.backend.track.dto.CreateTrackRequest;
@@ -52,13 +41,8 @@ import lombok.AllArgsConstructor;
 @AllArgsConstructor
 public class AlbumController {
 
-    /** Fixed server-side, not a client-controlled ?size — see {@link #getAlbumReviews}. */
-    private static final int REVIEWS_PAGE_SIZE = 6;
-
     private final AlbumService albumService;
     private final TrackService trackService;
-    private final EditorialService editorialService;
-    private final ReviewService reviewService;
     private final UserService userService;
 
     /**
@@ -95,65 +79,6 @@ public class AlbumController {
     public ResponseEntity<TrackDto> createOrUpdateTrack(@PathVariable UUID id, @Valid @RequestBody CreateTrackRequest request) {
         Track track = trackService.createOrUpdateTrack(id, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(trackService.toTrackDto(track));
-    }
-
-    @PostMapping("/{id}/editorial")
-    @PreAuthorize("hasRole('ADMIN')")
-    public AlbumEditorialDto upsertEditorial(@PathVariable UUID id, @Valid @RequestBody AlbumEditorialRequest request, @AuthenticationPrincipal Jwt jwt) {
-        AlbumEditorial editorial = editorialService.upsertAlbumEditorial(id, request);
-        return editorialService.toAlbumEditorialDto(editorial, currentUserId(jwt));
-    }
-
-    /**
-     * Uploads this album's editorial's principal/hero image — see {@link EditorialService#setAlbumEditorialPrincipalImage}.
-     *
-     * @param id   the album
-     * @param file the image file (jpeg/png/webp only, see {@code ImageStorageService})
-     */
-    @PutMapping(value = "/{id}/editorial/principal-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> setEditorialPrincipalImage(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
-        editorialService.setAlbumEditorialPrincipalImage(id, file);
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * Uploads this album's editorial's secondary image — see {@link EditorialService#setAlbumEditorialSecondaryImage}.
-     *
-     * @param id   the album
-     * @param file the image file (jpeg/png/webp only, see {@code ImageStorageService})
-     */
-    @PutMapping(value = "/{id}/editorial/secondary-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> setEditorialSecondaryImage(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
-        editorialService.setAlbumEditorialSecondaryImage(id, file);
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * Uploads this album's editorial's banner image — see {@link EditorialService#setAlbumEditorialBannerImage}.
-     *
-     * @param id   the album
-     * @param file the image file (jpeg/png/webp only, see {@code ImageStorageService})
-     */
-    @PutMapping(value = "/{id}/editorial/banner-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> setEditorialBannerImage(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
-        editorialService.setAlbumEditorialBannerImage(id, file);
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * Uploads this album's editorial's footer image — see {@link EditorialService#setAlbumEditorialFooterImage}.
-     *
-     * @param id   the album
-     * @param file the image file (jpeg/png/webp only, see {@code ImageStorageService})
-     */
-    @PutMapping(value = "/{id}/editorial/footer-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> setEditorialFooterImage(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
-        editorialService.setAlbumEditorialFooterImage(id, file);
-        return ResponseEntity.noContent().build();
     }
 
     /**
@@ -305,66 +230,6 @@ public class AlbumController {
     // to every one of its tracks (POST/DELETE /tracks/{id}/listen), computed
     // in AlbumService.getAlbumHeader and reconciled by
     // ListenService.syncAlbumCompletionState.
-
-    /**
-     * Creates the caller's own review of this album — see {@link ReviewService#createReview}.
-     *
-     * @param id      the album being reviewed
-     * @param request the review's own fields
-     * @param jwt     the caller
-     * @return the created review
-     */
-    @PostMapping("/{id}/reviews")
-    public ReviewDto createReview(@PathVariable UUID id, @Valid @RequestBody CreateReviewRequest request, @AuthenticationPrincipal Jwt jwt) {
-        return reviewService.createReview(currentUserId(jwt), id, request.rating(), request.text(), request.standoutTrackIds());
-    }
-
-    /**
-     * Edits the caller's own existing review of this album — see {@link ReviewService#updateReview}.
-     *
-     * @param id      the album being reviewed
-     * @param request the review's own fields — a full replace, not a partial patch
-     * @param jwt     the caller
-     * @return the updated review
-     */
-    @PutMapping("/{id}/reviews")
-    public ReviewDto updateReview(@PathVariable UUID id, @Valid @RequestBody CreateReviewRequest request, @AuthenticationPrincipal Jwt jwt) {
-        return reviewService.updateReview(currentUserId(jwt), id, request.rating(), request.text(), request.standoutTrackIds());
-    }
-
-    /**
-     * Deletes the caller's own review of this album — see {@link ReviewService#deleteReview}.
-     *
-     * @param id  the album being reviewed
-     * @param jwt the caller
-     */
-    @DeleteMapping("/{id}/reviews")
-    public ResponseEntity<Void> deleteReview(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
-        reviewService.deleteReview(currentUserId(jwt), id);
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * The album's reviews, paginated — the caller's own review (if any)
-     * always leads, then everyone else's newest first. Same shape as
-     * {@code TrackController#getTrackNotes}; the frontend uses page 0's
-     * first item (if its {@code userId} matches the caller) to know
-     * whether to {@link #createReview} or {@link #updateReview} — there's
-     * no separate "my review" endpoint anymore.
-     *
-     * @param id   the album
-     * @param jwt  the caller, resolved to a user id for "mine first" and each review's {@code likedByCurrentUser}
-     * @param page 0-based; page size is fixed at {@link #REVIEWS_PAGE_SIZE}, not client-controlled
-     * @return the matching page
-     */
-    @GetMapping("/{id}/reviews")
-    public Page<ReviewDto> getAlbumReviews(
-        @PathVariable UUID id,
-        @AuthenticationPrincipal Jwt jwt,
-        @RequestParam(defaultValue = "0") int page
-    ) {
-        return reviewService.getAlbumReviews(id, currentUserId(jwt), PageRequest.of(page, REVIEWS_PAGE_SIZE));
-    }
 
     private UUID currentUserId(Jwt jwt) {
         return userService.resolveFromJwt(jwt).getId();

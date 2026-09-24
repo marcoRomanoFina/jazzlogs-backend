@@ -72,7 +72,7 @@ public class User {
      * displayName stays null until the user actually sets one — that null is
      * a real signal (UserResponse.from surfaces it as-is, so the frontend
      * can prompt onboarding), not a bug. Everywhere else a name gets shown
-     * to someone other than the user themself (note/review authorship,
+     * to someone other than the user themself (note authorship,
      * batched author-name lookups, chat context for the LLM), read this
      * instead of the raw field: falling back to the email's local part
      * keeps those call sites from ever handling a null, notably

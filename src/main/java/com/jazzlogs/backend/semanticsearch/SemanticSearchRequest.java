@@ -25,9 +25,10 @@ import com.jazzlogs.backend.editorial.BlockContentCategory;
  * <p>{@code category} is deliberately singular and required: comparing
  * blocks from different categories within the same similarity ranking
  * would mix semantically unrelated content, so the model makes separate
- * calls per category instead. {@code energy}/{@code accessibility}/{@code
- * moodIntensity} only apply when {@code entityType} is ALBUM or TRACK
- * (Artist has none of these columns) — see {@link SemanticSearchService}.
+ * calls per category instead. {@code entityType} must be TRACK — only
+ * tracks have an editorial to search — and {@code energy}/{@code
+ * accessibility}/{@code moodIntensity} are optional extra filters on the
+ * track. See {@link SemanticSearchService}.
  */
 public record SemanticSearchRequest(
     CatalogItemType entityType,

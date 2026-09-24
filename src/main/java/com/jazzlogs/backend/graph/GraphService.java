@@ -298,38 +298,9 @@ public class GraphService {
     }
 
     /**
-     * Delete-then-recreate, not MERGE+SET — a rating can change, so any stale
-     * RATED edge from a previous review must go before the new one lands.
-     * Same MATCH-then-MERGE / non-swallowed-here contract as markAlbumListened;
-     * ReviewService catches the GraphWriteException this throws on failure.
-     */
-    public void rateAlbum(UUID userId, UUID albumId, BigDecimal rating, Instant ratedAt) {
-        write("set RATED user=" + userId + " album=" + albumId, () ->
-            neo4jClient.query("""
-                    MATCH (u:User {id: $userId})
-                    MATCH (al:Album {id: $albumId})
-                    OPTIONAL MATCH (u)-[old:RATED]->(al)
-                    DELETE old
-                    MERGE (u)-[r:RATED]->(al)
-                    SET r.rating = $rating, r.ratedAt = $ratedAt
-                    """)
-                .bind(userId.toString()).to("userId")
-                .bind(albumId.toString()).to("albumId")
-                // Neither BigDecimal nor Instant is a type the driver's
-                // automatic Java -> Cypher conversion understands (see
-                // Values.value(Object)) — Cypher only has a 64-bit float, and
-                // temporal values need an offset/zone attached.
-                .bind(rating.doubleValue()).to("rating")
-                .bind(ratedAt.atOffset(ZoneOffset.UTC)).to("ratedAt")
-                .run());
-    }
-
-    /**
-     * Delete-then-recreate, same contract as rateAlbum — a rating can change,
+     * Delete-then-recreate, same contract as markAlbumListened — a rating can change,
      * so any stale RATED_TRACK edge must go before the new one lands.
-     * RATED_TRACK, not RATED, to avoid ambiguity with the Album-level
-     * relationship rateAlbum creates. TrackRatingService catches the
-     * GraphWriteException this throws on failure.
+     * TrackRatingService catches the GraphWriteException this throws on failure.
      */
     public void rateTrack(UUID userId, UUID trackId, BigDecimal rating, Instant ratedAt) {
         write("set RATED_TRACK user=" + userId + " track=" + trackId, () ->
@@ -503,37 +474,6 @@ public class GraphService {
                 // See markAlbumListened's comment — same Instant conversion.
                 .bind(listenedAt.atOffset(ZoneOffset.UTC)).to("listenedAt")
                 .run());
-    }
-
-    /**
-     * Clear + recreate — replaces every HIGHLIGHTED this user has on tracks of
-     * this specific album with exactly trackIds (empty list just clears). Two
-     * statements in one write(): delete is scoped to tracks of albumId via
-     * CONTAINS, so it never touches HIGHLIGHTED edges on other albums' tracks.
-     */
-    public void setHighlightedTracks(UUID userId, UUID albumId, List<UUID> trackIds) {
-        write("set HIGHLIGHTED user=" + userId + " album=" + albumId, () -> {
-            neo4jClient.query("""
-                    MATCH (u:User {id: $userId})-[r:HIGHLIGHTED]->(:Track)<-[:CONTAINS]-(al:Album {id: $albumId})
-                    DELETE r
-                    """)
-                .bind(userId.toString()).to("userId")
-                .bind(albumId.toString()).to("albumId")
-                .run();
-
-            if (!trackIds.isEmpty()) {
-                List<String> trackIdStrings = trackIds.stream().map(UUID::toString).toList();
-                neo4jClient.query("""
-                        MATCH (u:User {id: $userId})
-                        UNWIND $trackIds AS trackId
-                        MATCH (tr:Track {id: trackId})
-                        MERGE (u)-[:HIGHLIGHTED]->(tr)
-                        """)
-                    .bind(userId.toString()).to("userId")
-                    .bind(trackIdStrings).to("trackIds")
-                    .run();
-            }
-        });
     }
 
     public List<VocabularyTag> getTrackMoods(UUID trackId) {

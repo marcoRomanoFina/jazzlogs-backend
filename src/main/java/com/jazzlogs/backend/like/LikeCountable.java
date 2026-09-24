@@ -4,8 +4,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Implemented by each likeable entity's repository (EditorialRepository,
- * ReviewRepository, PlaylistRepository, NoteRepository, SeriesRepository) so
+ * Implemented by each likeable entity's repository (TrackEditorialRepository,
+ * PlaylistRepository, NoteRepository, SeriesRepository) so
  * {@link LikeService} can dispatch increment/decrement/read through a
  * {@code Map<LikeableEntityType, LikeableRepository<?>>} instead of a switch.
  */

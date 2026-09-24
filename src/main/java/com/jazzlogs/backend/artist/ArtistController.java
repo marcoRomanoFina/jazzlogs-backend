@@ -9,8 +9,6 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -29,12 +27,7 @@ import com.jazzlogs.backend.artist.dto.CreateArtistRequest;
 import com.jazzlogs.backend.artist.dto.AlbumSummaryDto;
 import com.jazzlogs.backend.artist.dto.SimilarArtistDto;
 import com.jazzlogs.backend.artist.dto.SimilarArtistRequest;
-import com.jazzlogs.backend.editorial.ArtistEditorial;
-import com.jazzlogs.backend.editorial.EditorialService;
-import com.jazzlogs.backend.editorial.dto.ArtistEditorialDto;
-import com.jazzlogs.backend.editorial.dto.ArtistEditorialRequest;
 import com.jazzlogs.backend.track.dto.InstrumentTagRequest;
-import com.jazzlogs.backend.user.UserService;
 
 import lombok.AllArgsConstructor;
 
@@ -53,19 +46,16 @@ public class ArtistController {
     private static final int SIMILAR_ARTISTS_PAGE_SIZE = 6;
 
     private final ArtistService artistService;
-    private final EditorialService editorialService;
-    private final UserService userService;
 
     /**
-     * The artist editorial page's header — see {@link ArtistService#getArtistHeader}.
+     * The artist page's header — see {@link ArtistService#getArtistHeader}.
      *
-     * @param id  the artist to load
-     * @param jwt the caller, resolved to a user id only for the editorial's like state
+     * @param id the artist to load
      * @return the artist header
      */
     @GetMapping("/{id}")
-    public ArtistHeaderDto getArtist(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
-        return artistService.getArtistHeader(id, currentUserId(jwt));
+    public ArtistHeaderDto getArtist(@PathVariable UUID id) {
+        return artistService.getArtistHeader(id);
     }
 
     /**
@@ -85,9 +75,9 @@ public class ArtistController {
     // (mostly older sidemen). See ArtistService.createOrUpdateArtist.
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<ArtistHeaderDto> createOrUpdateArtist(@Valid @RequestBody CreateArtistRequest request, @AuthenticationPrincipal Jwt jwt) {
+    public ResponseEntity<ArtistHeaderDto> createOrUpdateArtist(@Valid @RequestBody CreateArtistRequest request) {
         Artist artist = artistService.createOrUpdateArtist(request);
-        return ResponseEntity.status(HttpStatus.CREATED).body(artistService.getArtistHeader(artist.getId(), currentUserId(jwt)));
+        return ResponseEntity.status(HttpStatus.CREATED).body(artistService.getArtistHeader(artist.getId()));
     }
 
     @PostMapping("/{id}/instrument")
@@ -182,16 +172,5 @@ public class ArtistController {
     ) {
         artistService.removeSimilarArtist(id, similarArtistId, bidirectional);
         return ResponseEntity.noContent().build();
-    }
-
-    @PostMapping("/{id}/editorial")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ArtistEditorialDto upsertEditorial(@PathVariable UUID id, @Valid @RequestBody ArtistEditorialRequest request, @AuthenticationPrincipal Jwt jwt) {
-        ArtistEditorial editorial = editorialService.upsertArtistEditorial(id, request);
-        return editorialService.toArtistEditorialDto(editorial, currentUserId(jwt));
-    }
-
-    private UUID currentUserId(Jwt jwt) {
-        return userService.resolveFromJwt(jwt).getId();
     }
 }

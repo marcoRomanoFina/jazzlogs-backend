@@ -27,8 +27,8 @@ import com.jazzlogs.backend.user.User;
 import com.jazzlogs.backend.user.UserRepository;
 
 // GraphService is mocked here (not the real Neo4jClient-backed bean) — same
-// reasoning as PlaylistServiceTest/ReviewServiceTest: these tests cover
-// LikeService's own Postgres logic, not Neo4j behavior.
+// reasoning as PlaylistServiceTest: these tests cover LikeService's own
+// Postgres logic, not Neo4j behavior.
 @SpringBootTest
 @Transactional
 class LikeServiceTest {

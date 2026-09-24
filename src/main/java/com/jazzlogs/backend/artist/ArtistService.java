@@ -1,6 +1,5 @@
 package com.jazzlogs.backend.artist;
 
-import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -24,11 +23,8 @@ import com.jazzlogs.backend.artist.dto.CreateArtistRequest;
 import com.jazzlogs.backend.artist.dto.AlbumSummaryDto;
 import com.jazzlogs.backend.artist.dto.SimilarArtistDto;
 import com.jazzlogs.backend.artist.dto.SimilarArtistRequest;
-import com.jazzlogs.backend.editorial.AlbumEditorialRepository;
-import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.SimilarArtistEntry;
-import com.jazzlogs.backend.review.ReviewRepository;
 import com.jazzlogs.backend.spotify.SpotifyArtistData;
 import com.jazzlogs.backend.spotify.SpotifyCatalogService;
 import com.jazzlogs.backend.track.dto.InstrumentTagRequest;
@@ -45,11 +41,8 @@ public class ArtistService {
 
     private final ArtistRepository artistRepository;
     private final GraphService graphService;
-    private final EditorialService editorialService;
     private final SpotifyCatalogService spotifyCatalogService;
     private final AlbumRepository albumRepository;
-    private final ReviewRepository reviewRepository;
-    private final AlbumEditorialRepository albumEditorialRepository;
 
     // Upsert on spotifyArtistId when given: re-posting an artist that's
     // already in the catalog updates it in place (fresh Spotify data)
@@ -153,17 +146,16 @@ public class ArtistService {
     }
 
     /**
-     * The artist editorial page's header — the artist's own fields plus its
-     * editorial. Nothing from Neo4j (instruments/styles/contexts/similar
-     * artists/appearances) — those live on a separate, more expensive endpoint.
+     * The artist page's header — the artist's own fields only. Nothing from
+     * Neo4j (instruments/styles/contexts/similar artists/appearances) —
+     * those live on a separate, more expensive endpoint.
      *
-     * @param artistId      the artist to load
-     * @param currentUserId whose like state to include for the artist's own editorial
+     * @param artistId the artist to load
      * @return the artist header
      * @throws ResponseStatusException 404 if the artist doesn't exist
      */
     @Transactional(readOnly = true)
-    public ArtistHeaderDto getArtistHeader(UUID artistId, UUID currentUserId) {
+    public ArtistHeaderDto getArtistHeader(UUID artistId) {
         Artist artist = getArtistOrThrow(artistId);
 
         return new ArtistHeaderDto(
@@ -171,8 +163,7 @@ public class ArtistService {
             artist.getName(),
             artist.getSpotifyArtistId(),
             artist.getSpotifyUrl(),
-            artist.getImageUrl(),
-            editorialService.getArtistEditorialDto(artistId, currentUserId)
+            artist.getImageUrl()
         );
     }
 
@@ -213,20 +204,13 @@ public class ArtistService {
 
     // Shared by getEssentialListening/getSidemanAlbums: both paginate the
     // same way over a Neo4j-sourced, unpaged album id candidate set — real
-    // pagination (and Page's total count) happens here in Postgres, plus the
-    // avgRating/dek batch enrichment, identically either way.
+    // pagination (and Page's total count) happens here in Postgres.
     private Page<AlbumSummaryDto> resolveAlbumPage(List<UUID> albumIds, Pageable pageable) {
         if (albumIds.isEmpty()) {
             return Page.empty(pageable);
         }
 
         Page<Album> page = albumRepository.findByIdInOrderByReleaseYearAsc(albumIds, pageable);
-        List<UUID> pageAlbumIds = page.getContent().stream().map(Album::getId).toList();
-
-        Map<UUID, BigDecimal> avgRatingsByAlbumId = reviewRepository.findAvgRatingsByAlbumIds(pageAlbumIds).stream()
-            .collect(Collectors.toMap(ReviewRepository.AlbumRatingRow::getAlbumId, ReviewRepository.AlbumRatingRow::getAvgRating));
-        Map<UUID, String> deksByAlbumId = albumEditorialRepository.findDeksByAlbumIds(pageAlbumIds).stream()
-            .collect(Collectors.toMap(AlbumEditorialRepository.AlbumEditorialDekRow::getAlbumId, AlbumEditorialRepository.AlbumEditorialDekRow::getDek));
 
         return page.map(album -> new AlbumSummaryDto(
             album.getId(),
@@ -236,8 +220,6 @@ public class ArtistService {
             album.getLabel(),
             album.getTotalTracks(),
             album.getLogNumber(),
-            avgRatingsByAlbumId.get(album.getId()),
-            deksByAlbumId.get(album.getId()),
             album.getArtist().getId(),
             album.getArtist().getName()
         ));

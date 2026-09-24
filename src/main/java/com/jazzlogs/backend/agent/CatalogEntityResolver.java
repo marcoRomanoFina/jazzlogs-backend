@@ -39,10 +39,9 @@ public interface CatalogEntityResolver {
         String getMatchType();
 
         /**
-         * What EDITORIAL_CONTENT/EDITORIAL_SEARCH take directly as input, so
-         * they never have to re-resolve which editorial subclass table owns
-         * this entity. Nullable only as a data-integrity safety net — every
-         * entity has an editorial in practice.
+         * What EDITORIAL_CONTENT/EDITORIAL_SEARCH take directly as input.
+         * Always {@code null} for ALBUM/ARTIST rows — only tracks have an
+         * editorial — and nullable for TRACK rows too, if that track has none yet.
          */
         UUID getEditorialId();
     }

@@ -102,31 +102,6 @@ public class NoteService {
     }
 
     /**
-     * For ReviewService — every note any of `authorUserIds` left on this
-     * album's tracks, grouped by author, as full NoteDtos (not a lean
-     * summary) so the frontend can render and open them exactly like the
-     * per-track note feed. likedByCurrentUser is computed against the
-     * viewer (currentUserId) — deliberately NOT the note's author, since
-     * whoever is looking at these reviews is the one whose like state
-     * matters, same as every other likedByCurrentUser in this service.
-     */
-    @Transactional(readOnly = true)
-    public Map<UUID, List<NoteDto>> getNotesByAuthorsForAlbum(UUID albumId, List<UUID> authorUserIds, UUID currentUserId) {
-        if (authorUserIds.isEmpty()) {
-            return Map.of();
-        }
-        List<Note> notes = noteRepository.findByAlbumIdAndUserIdIn(albumId, authorUserIds);
-        Set<UUID> liked = likedIds(notes, currentUserId);
-        Map<UUID, String> names = namesByUserId(notes);
-
-        return notes.stream()
-            .collect(Collectors.groupingBy(
-                Note::getUserId,
-                Collectors.mapping(note -> toDto(note, liked.contains(note.getId()), names.get(note.getUserId())), Collectors.toList())
-            ));
-    }
-
-    /**
      * One user's own notes across a whole set of tracks, grouped by track —
      * for PlaylistService.getPlaylistDetail, so each playlist track can show
      * "your note on this track" without a query per track.

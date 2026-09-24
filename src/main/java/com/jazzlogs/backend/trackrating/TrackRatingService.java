@@ -101,10 +101,9 @@ public class TrackRatingService {
     }
 
     /**
-     * Fire-and-forget via Neo4jAsyncSyncExecutor, same contract as
-     * ReviewService.syncRatingToGraph: Postgres is already committed by the
-     * time this runs, so a graph failure here is logged and swallowed, never
-     * rolled back or surfaced to the caller.
+     * Fire-and-forget via Neo4jAsyncSyncExecutor: Postgres is already
+     * committed by the time this runs, so a graph failure here is logged and
+     * swallowed, never rolled back or surfaced to the caller.
      */
     private void syncRatingToGraph(UUID userId, UUID trackId, BigDecimal rating, Instant ratedAt) {
         syncExecutor.sync(

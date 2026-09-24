@@ -96,7 +96,7 @@ public interface TrackRepository extends JpaRepository<Track, UUID>, SavedItemRe
                 WHEN t.normalized_name LIKE '%' || :normalizedQuery || '%' THEN 'CONTAINS'
                 ELSE 'FUZZY'
             END AS matchType,
-            ted.editorial_id AS editorialId
+            ted.id AS editorialId
         FROM tracks t
         JOIN albums al ON al.id = t.album_id
         JOIN artists ar ON ar.id = al.artist_id

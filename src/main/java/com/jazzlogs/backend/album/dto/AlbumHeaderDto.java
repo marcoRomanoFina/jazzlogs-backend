@@ -1,13 +1,11 @@
 package com.jazzlogs.backend.album.dto;
 
-import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
 import com.jazzlogs.backend.album.Level;
 import com.jazzlogs.backend.album.VocalProfile;
-import com.jazzlogs.backend.editorial.dto.AlbumEditorialDto;
 import com.jazzlogs.backend.graph.AlbumPersonnelEntry;
 
 /**
@@ -41,13 +39,10 @@ import com.jazzlogs.backend.graph.AlbumPersonnelEntry;
  *                           back to its own automatic sampling in that case
  * @param letterColor        admin-curated text color, hex, {@code null} until explicitly
  *                           set — the frontend falls back to its own default in that case
- * @param editorial          the album's own editorial, {@code null} if none written yet
  * @param styles             style tag labels, from Neo4j
  * @param moods              mood tag labels, from Neo4j
  * @param contexts           context tag labels, from Neo4j
  * @param personnel          sidemen/personnel credited on the album, from Neo4j
- * @param avgRating          average review rating, {@code null} if unrated
- * @param reviewCount        how many reviews the album has
  * @param hasListened        derived, live, from every track being listened —
  *                           not a flag the user sets directly (see {@code AlbumService#getAlbumHeader})
  * @param listenedTrackCount how many of the album's tracks the current user has listened to
@@ -74,13 +69,10 @@ public record AlbumHeaderDto(
     String instagramPermalink,
     String coverColor,
     String letterColor,
-    AlbumEditorialDto editorial,
     List<String> styles,
     List<String> moods,
     List<String> contexts,
     List<AlbumPersonnelEntry> personnel,
-    BigDecimal avgRating,
-    long reviewCount,
     boolean hasListened,
     int listenedTrackCount,
     long listenCount,

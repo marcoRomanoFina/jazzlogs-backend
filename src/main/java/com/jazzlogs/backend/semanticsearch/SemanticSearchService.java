@@ -1,11 +1,11 @@
 package com.jazzlogs.backend.semanticsearch;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
-import java.util.function.Supplier;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.pgvector.PGvector;
 
@@ -55,8 +55,18 @@ public class SemanticSearchService {
             : new SemanticSearchResult(searchNonEmpty(request));
     }
 
-    /** Embeds {@code queryText} once, then ranks {@code request.entityType()}'s candidates by cosine similarity to it. */
+    /**
+     * Embeds {@code queryText} once, then ranks {@code request.entityType()}'s
+     * candidates by cosine similarity to it. Only TRACK is backed by an
+     * editorial today — {@code CatalogItemType} still carries ALBUM/ARTIST
+     * for the graph-filter/resolve pipelines, but neither has editorial
+     * content to search anymore.
+     */
     private List<ScoredBlock> searchNonEmpty(SemanticSearchRequest request) {
+        if (request.entityType() != CatalogItemType.TRACK) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Semantic search only supports TRACK candidates");
+        }
+
         List<UUID> candidateIds = request.candidateIds();
         String queryEmbedding = new PGvector(embeddingService.embed(request.queryText())).getValue();
         String category = request.category().name();
@@ -64,25 +74,13 @@ public class SemanticSearchService {
         String accessibility = nameOrNull(request.accessibility());
         String moodIntensity = nameOrNull(request.moodIntensity());
 
-        // Which repository query to run, keyed by entityType instead of an
-        // if/switch chain — same shape as
-        // ResolveJazzlogsEntityTool.resolversByType and
-        // GraphFilterService.finders. Each branch's query already does its
-        // own ORDER BY <=> in SQL, so whichever one gets picked IS the
+        // The query already does its own ORDER BY <=> in SQL, so this IS the
         // final, ranked result — no merge/re-sort needed here.
-        Map<CatalogItemType, Supplier<List<SemanticMatchRow>>> finders = Map.of(
-            CatalogItemType.ALBUM, () -> editorialBlockRepository.semanticSearchAlbums(
-                queryEmbedding, candidateIds, category, energy, accessibility, moodIntensity, MAX_MATCHES
-            ),
-            CatalogItemType.TRACK, () -> editorialBlockRepository.semanticSearchTracks(
-                queryEmbedding, candidateIds, category, energy, accessibility, moodIntensity, MAX_MATCHES
-            ),
-            CatalogItemType.ARTIST, () -> editorialBlockRepository.semanticSearchArtists(
-                queryEmbedding, candidateIds, category, MAX_MATCHES
-            )
+        List<SemanticMatchRow> rows = editorialBlockRepository.semanticSearchTracks(
+            queryEmbedding, candidateIds, category, energy, accessibility, moodIntensity, MAX_MATCHES
         );
 
-        return toScoredBlocks(request.entityType(), request.category(), finders.get(request.entityType()).get());
+        return toScoredBlocks(request.entityType(), request.category(), rows);
     }
 
     private static List<ScoredBlock> toScoredBlocks(CatalogItemType entityType, BlockContentCategory category, List<SemanticMatchRow> rows) {

@@ -16,7 +16,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
-import jakarta.persistence.OneToOne;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
@@ -27,7 +26,6 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import com.jazzlogs.backend.artist.Artist;
-import com.jazzlogs.backend.editorial.AlbumEditorial;
 import com.jazzlogs.backend.track.Track;
 
 @Entity
@@ -114,8 +112,7 @@ public class Album {
     @Column(name = "letter_color", length = 7)
     private String letterColor;
 
-    // THE archive hero's source album (see EditorialService.getFeatured) —
-    // at most one true at a time, enforced by idx_albums_only_one_featured
+    // At most one true at a time, enforced by idx_albums_only_one_featured
     // (see V24), not a raw setter: only ever mutated via AlbumRepository's
     // atomic clearFeatured/markFeatured/unmarkFeatured, same pattern as
     // Track#featured.
@@ -127,9 +124,6 @@ public class Album {
     @OneToMany(mappedBy = "album", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("createdAt ASC")
     private List<Track> tracks = new ArrayList<>();
-
-    @OneToOne(mappedBy = "album", fetch = FetchType.LAZY)
-    private AlbumEditorial editorial;
 
     @Column(nullable = false, updatable = false)
     private Instant createdAt;

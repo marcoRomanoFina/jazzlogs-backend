@@ -29,9 +29,9 @@ import lombok.AllArgsConstructor;
 /**
  * One polymorphic table (listens: user_id, entity_type, entity_id) backs
  * every listenable type — same shape as Like/SavedItem, not a dedicated table
- * per type. Postgres is the primary source of truth — the Review creation
- * gate and any chronological feed read from here, always, so they work even
- * with Neo4j down. Neo4j gets a best-effort mirror (:User)-[:LISTENED]->
+ * per type. Postgres is the primary source of truth — any chronological feed
+ * reads from here, always, so it works even with Neo4j down. Neo4j gets a
+ * best-effort mirror (:User)-[:LISTENED]->
  * (:Album|:Track|:Playlist) for the recommendation agent to traverse,
  * dispatched through Neo4jAsyncSyncExecutor so a slow/down Neo4j never adds
  * latency to this request thread; a failure there is logged and swallowed,

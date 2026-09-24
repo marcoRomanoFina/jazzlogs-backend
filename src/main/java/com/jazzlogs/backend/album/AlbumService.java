@@ -26,7 +26,6 @@ import com.jazzlogs.backend.album.dto.StyleTagRequest;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
 import com.jazzlogs.backend.editorial.EditorialService;
-import com.jazzlogs.backend.editorial.dto.AlbumEditorialDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialDto;
 import com.jazzlogs.backend.graph.AlbumHeaderGraphData;
 import com.jazzlogs.backend.graph.GraphService;
@@ -34,8 +33,6 @@ import com.jazzlogs.backend.graph.TrackPerformerEntry;
 import com.jazzlogs.backend.graph.TrackPlacement;
 import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.listen.ListenService;
-import com.jazzlogs.backend.review.ReviewService;
-import com.jazzlogs.backend.review.dto.AlbumRatingStats;
 import com.jazzlogs.backend.saveditem.SavedItemService;
 import com.jazzlogs.backend.saveditem.SaveableEntityType;
 import com.jazzlogs.backend.spotify.SpotifyAlbumData;
@@ -64,7 +61,6 @@ public class AlbumService {
     private final SpotifyCatalogService spotifyCatalogService;
     private final TrackService trackService;
     private final EditorialService editorialService;
-    private final ReviewService reviewService;
     private final ListenService listenService;
     private final SavedItemService savedItemService;
     private final TrackRatingRepository trackRatingRepository;
@@ -266,30 +262,22 @@ public class AlbumService {
     }
 
     /**
-     * Marks this album as THE featured album — the archive hero's source
-     * (see {@code EditorialService#getFeatured}), unfeaturing whichever one
-     * (if any) held that spot before. {@code idx_albums_only_one_featured}
-     * (see V24) is what actually guarantees at most one stays featured
-     * under concurrent calls — clearFeatured()+markFeatured() alone can't:
-     * two overlapping calls can each see nothing featured, clear nothing,
-     * then both mark a different row true. The unique index turns that
-     * into a thrown exception here instead of silently leaving two albums
-     * featured.
+     * Marks this album as THE featured album, unfeaturing whichever one (if
+     * any) held that spot before. {@code idx_albums_only_one_featured} (see
+     * V24) is what actually guarantees at most one stays featured under
+     * concurrent calls — clearFeatured()+markFeatured() alone can't: two
+     * overlapping calls can each see nothing featured, clear nothing, then
+     * both mark a different row true. The unique index turns that into a
+     * thrown exception here instead of silently leaving two albums featured.
      *
      * @param albumId the album
      * @throws ResponseStatusException 404 if the album doesn't exist, 409 if
-     *                                  it has no {@code AlbumEditorial} yet
-     *                                  (a featured album with no editorial
-     *                                  wouldn't show up in the hero at all)
-     *                                  or if a concurrent call already
-     *                                  featured a different album
+     *                                  a concurrent call already featured a
+     *                                  different album
      */
     @Transactional
     public void setFeatured(UUID albumId) {
         getAlbumOrThrow(albumId);
-        if (!editorialService.hasAlbumEditorial(albumId)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Album has no editorial yet, can't be featured");
-        }
         albumRepository.clearFeatured();
         try {
             albumRepository.markFeatured(albumId);
@@ -321,9 +309,6 @@ public class AlbumService {
     public AlbumHeaderDto getAlbumHeader(UUID albumId, UUID currentUserId) {
         Album album = getAlbumOrThrow(albumId);
 
-        AlbumEditorialDto editorialDto = editorialService.getAlbumEditorialDto(albumId, currentUserId);
-        AlbumRatingStats ratingStats = reviewService.getAlbumRatingStats(albumId);
-
         // One round trip for styles+moods+contexts+personnel together,
         // instead of four separate ones.
         AlbumHeaderGraphData graphData = graphService.getAlbumHeaderGraphData(albumId);
@@ -354,13 +339,10 @@ public class AlbumService {
             album.getInstagramPermalink(),
             album.getCoverColor(),
             album.getLetterColor(),
-            editorialDto,
             graphData.styles(),
             graphData.moods(),
             graphData.contexts(),
             graphData.personnel(),
-            ratingStats.avgRating(),
-            ratingStats.count(),
             // Derived live from the same listenedTrackIds computed above, not
             // a separately-set flag.
             !trackIds.isEmpty() && listenedTrackIds.size() == trackIds.size(),

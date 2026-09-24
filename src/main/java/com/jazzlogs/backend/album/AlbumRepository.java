@@ -57,7 +57,7 @@ public interface AlbumRepository extends JpaRepository<Album, UUID>, SavedItemRe
      * pagination (and {@code Page}'s total count) done here instead.
      * {@code artist} is a to-one association, not a collection — combining
      * a fetch join with {@code Pageable} is safe here, unlike fetch-joining
-     * a collection (see {@code ReviewRepository}'s comment on that).
+     * a collection would be.
      */
     @Query(
         value = "SELECT a FROM Album a JOIN FETCH a.artist WHERE a.id IN :ids ORDER BY a.releaseYear ASC",
@@ -85,10 +85,9 @@ public interface AlbumRepository extends JpaRepository<Album, UUID>, SavedItemRe
                 WHEN al.normalized_name LIKE '%' || :normalizedQuery || '%' THEN 'CONTAINS'
                 ELSE 'FUZZY'
             END AS matchType,
-            aled.editorial_id AS editorialId
+            NULL::uuid AS editorialId
         FROM albums al
         JOIN artists ar ON ar.id = al.artist_id
-        LEFT JOIN album_editorials aled ON aled.album_id = al.id
         WHERE al.normalized_name = :normalizedQuery
            OR al.normalized_name LIKE :normalizedQuery || '%'
            OR al.normalized_name LIKE '%' || :normalizedQuery || '%'
