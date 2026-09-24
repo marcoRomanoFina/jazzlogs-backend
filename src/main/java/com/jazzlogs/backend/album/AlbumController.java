@@ -8,6 +8,7 @@ import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.jazzlogs.backend.album.dto.AlbumHeaderDto;
 import com.jazzlogs.backend.album.dto.ContextTagRequest;
@@ -100,6 +102,58 @@ public class AlbumController {
     public AlbumEditorialDto upsertEditorial(@PathVariable UUID id, @Valid @RequestBody AlbumEditorialRequest request, @AuthenticationPrincipal Jwt jwt) {
         AlbumEditorial editorial = editorialService.upsertAlbumEditorial(id, request);
         return editorialService.toAlbumEditorialDto(editorial, currentUserId(jwt));
+    }
+
+    /**
+     * Uploads this album's editorial's principal/hero image — see {@link EditorialService#setAlbumEditorialPrincipalImage}.
+     *
+     * @param id   the album
+     * @param file the image file (jpeg/png/webp only, see {@code ImageStorageService})
+     */
+    @PutMapping(value = "/{id}/editorial/principal-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> setEditorialPrincipalImage(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
+        editorialService.setAlbumEditorialPrincipalImage(id, file);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Uploads this album's editorial's secondary image — see {@link EditorialService#setAlbumEditorialSecondaryImage}.
+     *
+     * @param id   the album
+     * @param file the image file (jpeg/png/webp only, see {@code ImageStorageService})
+     */
+    @PutMapping(value = "/{id}/editorial/secondary-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> setEditorialSecondaryImage(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
+        editorialService.setAlbumEditorialSecondaryImage(id, file);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Uploads this album's editorial's banner image — see {@link EditorialService#setAlbumEditorialBannerImage}.
+     *
+     * @param id   the album
+     * @param file the image file (jpeg/png/webp only, see {@code ImageStorageService})
+     */
+    @PutMapping(value = "/{id}/editorial/banner-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> setEditorialBannerImage(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
+        editorialService.setAlbumEditorialBannerImage(id, file);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Uploads this album's editorial's footer image — see {@link EditorialService#setAlbumEditorialFooterImage}.
+     *
+     * @param id   the album
+     * @param file the image file (jpeg/png/webp only, see {@code ImageStorageService})
+     */
+    @PutMapping(value = "/{id}/editorial/footer-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> setEditorialFooterImage(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
+        editorialService.setAlbumEditorialFooterImage(id, file);
+        return ResponseEntity.noContent().build();
     }
 
     /**

@@ -29,6 +29,7 @@ import com.jazzlogs.backend.artist.dto.ArtistTagsDto;
 import com.jazzlogs.backend.artist.dto.ArtistHeaderDto;
 import com.jazzlogs.backend.artist.dto.AlbumSummaryDto;
 import com.jazzlogs.backend.artist.dto.SimilarArtistDto;
+import com.jazzlogs.backend.editorial.EditorialByline;
 import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.editorial.dto.AlbumEditorialRequest;
 import com.jazzlogs.backend.editorial.dto.ArtistEditorialRequest;
@@ -101,7 +102,7 @@ class ArtistServiceTest {
     @Test
     void getArtistHeader_includesEditorialAndLikeState() {
         Artist artist = persistArtist("Editorial Test Artist");
-        editorialService.upsertArtistEditorial(artist.getId(), new ArtistEditorialRequest("A Life in Jazz", "dek", "byline", List.of()));
+        editorialService.upsertArtistEditorial(artist.getId(), new ArtistEditorialRequest("A Life in Jazz", "dek", EditorialByline.JAZZLOGS, List.of()));
         UUID viewer = UUID.randomUUID();
 
         ArtistHeaderDto before = artistService.getArtistHeader(artist.getId(), viewer);

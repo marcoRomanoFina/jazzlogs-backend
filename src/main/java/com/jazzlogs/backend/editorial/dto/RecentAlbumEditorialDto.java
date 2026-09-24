@@ -2,6 +2,8 @@ package com.jazzlogs.backend.editorial.dto;
 
 import java.util.UUID;
 
+import com.jazzlogs.backend.editorial.EditorialByline;
+
 /**
  * "Recently filed"'s own shape — always an album editorial, so unlike
  * {@link CatalogueEditorialDto} this names things directly ({@code
@@ -31,7 +33,7 @@ public record RecentAlbumEditorialDto(
     String albumName,
     String artistName,
     String dek,
-    String byline,
+    EditorialByline byline,
     String logNumber,
     int likeCount,
     boolean likedByCurrentUser

@@ -16,7 +16,7 @@ public record LastLogEditorialRow(
     String title,
     String artistName,
     String dek,
-    String byline,
+    EditorialByline byline,
     Integer releaseYear,
     Instant postedAt,
     String imageUrl,

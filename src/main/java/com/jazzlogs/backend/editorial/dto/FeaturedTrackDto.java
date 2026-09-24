@@ -3,6 +3,8 @@ package com.jazzlogs.backend.editorial.dto;
 import java.time.Instant;
 import java.util.UUID;
 
+import com.jazzlogs.backend.editorial.EditorialByline;
+
 /**
  * One track in the archive's curated "Featured Tracks" — see {@code
  * Track#featured} for the flag and {@code TrackService.MAX_FEATURED_TRACKS}
@@ -25,7 +27,7 @@ public record FeaturedTrackDto(
     UUID id,
     String title,
     String dek,
-    String byline,
+    EditorialByline byline,
     String logNumber,
     String trackName,
     String imageUrl,

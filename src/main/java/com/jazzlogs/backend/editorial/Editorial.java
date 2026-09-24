@@ -8,6 +8,8 @@ import java.util.UUID;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.Inheritance;
@@ -43,7 +45,9 @@ public abstract class Editorial {
     @Column(columnDefinition = "TEXT")
     private String dek;
 
-    private String byline;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private EditorialByline byline;
 
     @OneToMany(mappedBy = "editorial", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("position ASC")
@@ -61,7 +65,7 @@ public abstract class Editorial {
     @Column(nullable = false)
     private Instant updatedAt;
 
-    public void update(String title, String dek, String byline) {
+    public void update(String title, String dek, EditorialByline byline) {
         this.title = title;
         this.dek = dek;
         this.byline = byline;

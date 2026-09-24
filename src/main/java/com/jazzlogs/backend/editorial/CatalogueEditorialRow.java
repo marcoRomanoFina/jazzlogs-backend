@@ -20,7 +20,7 @@ public record CatalogueEditorialRow(
     UUID contextId,
     String title,
     String dek,
-    String byline,
+    EditorialByline byline,
     Instant createdAt,
     String logNumber,
     int likeCount

@@ -22,6 +22,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.album.Album;
@@ -47,6 +48,7 @@ import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.TrackPlacement;
 import com.jazzlogs.backend.like.LikeService;
 import com.jazzlogs.backend.like.LikeableEntityType;
+import com.jazzlogs.backend.storage.ImageStorageService;
 import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackRepository;
 
@@ -71,6 +73,7 @@ public class EditorialService {
     private final EmbeddingService embeddingService;
     private final LikeService likeService;
     private final GraphService graphService;
+    private final ImageStorageService imageStorageService;
     private final EntityManager entityManager;
 
 
@@ -279,6 +282,11 @@ public class EditorialService {
         );
     }
 
+    /** Unsigned pieces default to the outlet itself rather than requiring an explicit choice. */
+    private EditorialByline bylineOrDefault(EditorialByline byline) {
+        return byline == null ? EditorialByline.JAZZLOGS : byline;
+    }
+
     @Transactional
     public AlbumEditorial upsertAlbumEditorial(UUID albumId, AlbumEditorialRequest request) {
         Album album = getAlbumOrThrow(albumId);
@@ -286,7 +294,7 @@ public class EditorialService {
         AlbumEditorial editorial = albumEditorialRepository.findByAlbumId(albumId)
             .orElseGet(() -> new AlbumEditorial(album));
 
-        editorial.update(request.title(), request.dek(), request.byline());
+        editorial.update(request.title(), request.dek(), bylineOrDefault(request.byline()));
         AlbumEditorial saved = saveWithUniqueTitle(() -> albumEditorialRepository.save(editorial));
 
         upsertBlocks(saved, request.blocks());
@@ -300,12 +308,98 @@ public class EditorialService {
 
         TrackEditorial editorial = trackEditorialRepository.findByTrackId(trackId)
             .orElseGet(() -> new TrackEditorial(track));
-        editorial.update(request.title(), request.dek(), request.byline());
+        editorial.update(request.title(), request.dek(), bylineOrDefault(request.byline()));
         TrackEditorial saved = saveWithUniqueTitle(() -> trackEditorialRepository.save(editorial));
 
         upsertBlocks(saved, request.blocks());
 
         return saved;
+    }
+
+    /**
+     * Uploads this track editorial's own image — one object per editorial
+     * ({@code track-editorials/{trackId}/image.<ext>}), so re-uploading
+     * overwrites the old one instead of leaving it orphaned in storage.
+     *
+     * @param trackId the track whose editorial to update
+     * @param file    the image file (jpeg/png/webp only)
+     * @throws ResponseStatusException 404 if the track has no editorial written yet
+     */
+    @Transactional
+    public void setTrackEditorialImage(UUID trackId, MultipartFile file) {
+        TrackEditorial editorial = trackEditorialRepository.findByTrackId(trackId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No editorial for track: " + trackId));
+        String url = imageStorageService.upload("track-editorials/" + trackId + "/image", file);
+        editorial.updateImageUrl(url);
+    }
+
+    /**
+     * Uploads this album editorial's principal/hero image — one object per
+     * editorial ({@code album-editorials/{albumId}/principal.<ext>}), so
+     * re-uploading overwrites the old one instead of leaving it orphaned in storage.
+     *
+     * @param albumId the album whose editorial to update
+     * @param file    the image file (jpeg/png/webp only)
+     * @throws ResponseStatusException 404 if the album has no editorial written yet
+     */
+    @Transactional
+    public void setAlbumEditorialPrincipalImage(UUID albumId, MultipartFile file) {
+        AlbumEditorial editorial = albumEditorialOrThrow(albumId);
+        String url = imageStorageService.upload("album-editorials/" + albumId + "/principal", file);
+        editorial.updatePrincipalImageUrl(url);
+    }
+
+    /**
+     * Uploads this album editorial's secondary image — see {@link
+     * #setAlbumEditorialPrincipalImage}. One object per editorial ({@code
+     * album-editorials/{albumId}/secondary.<ext>}).
+     *
+     * @param albumId the album whose editorial to update
+     * @param file    the image file (jpeg/png/webp only)
+     * @throws ResponseStatusException 404 if the album has no editorial written yet
+     */
+    @Transactional
+    public void setAlbumEditorialSecondaryImage(UUID albumId, MultipartFile file) {
+        AlbumEditorial editorial = albumEditorialOrThrow(albumId);
+        String url = imageStorageService.upload("album-editorials/" + albumId + "/secondary", file);
+        editorial.updateSecondaryImageUrl(url);
+    }
+
+    /**
+     * Uploads this album editorial's banner image — see {@link
+     * #setAlbumEditorialPrincipalImage}. One object per editorial ({@code
+     * album-editorials/{albumId}/banner.<ext>}).
+     *
+     * @param albumId the album whose editorial to update
+     * @param file    the image file (jpeg/png/webp only)
+     * @throws ResponseStatusException 404 if the album has no editorial written yet
+     */
+    @Transactional
+    public void setAlbumEditorialBannerImage(UUID albumId, MultipartFile file) {
+        AlbumEditorial editorial = albumEditorialOrThrow(albumId);
+        String url = imageStorageService.upload("album-editorials/" + albumId + "/banner", file);
+        editorial.updateBannerImageUrl(url);
+    }
+
+    /**
+     * Uploads this album editorial's footer image — see {@link
+     * #setAlbumEditorialPrincipalImage}. One object per editorial ({@code
+     * album-editorials/{albumId}/footer.<ext>}).
+     *
+     * @param albumId the album whose editorial to update
+     * @param file    the image file (jpeg/png/webp only)
+     * @throws ResponseStatusException 404 if the album has no editorial written yet
+     */
+    @Transactional
+    public void setAlbumEditorialFooterImage(UUID albumId, MultipartFile file) {
+        AlbumEditorial editorial = albumEditorialOrThrow(albumId);
+        String url = imageStorageService.upload("album-editorials/" + albumId + "/footer", file);
+        editorial.updateFooterImageUrl(url);
+    }
+
+    private AlbumEditorial albumEditorialOrThrow(UUID albumId) {
+        return albumEditorialRepository.findByAlbumId(albumId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No editorial for album: " + albumId));
     }
 
     @Transactional
@@ -315,7 +409,7 @@ public class EditorialService {
         ArtistEditorial editorial = artistEditorialRepository.findByArtistId(artistId)
             .orElseGet(() -> new ArtistEditorial(artist));
 
-        editorial.update(request.title(), request.dek(), request.byline());
+        editorial.update(request.title(), request.dek(), bylineOrDefault(request.byline()));
         ArtistEditorial saved = saveWithUniqueTitle(() -> artistEditorialRepository.save(editorial));
 
         upsertBlocks(saved, request.blocks());
@@ -434,6 +528,10 @@ public class EditorialService {
             editorial.getTitle(),
             editorial.getDek(),
             editorial.getByline(),
+            editorial.getPrincipalImageUrl(),
+            editorial.getSecondaryImageUrl(),
+            editorial.getBannerImageUrl(),
+            editorial.getFooterImageUrl(),
             blocksOf(editorial),
             editorial.getLikeCount(),
             likeService.hasUserLiked(currentUserId, LikeableEntityType.EDITORIAL, editorialId)
@@ -442,7 +540,7 @@ public class EditorialService {
 
     public TrackEditorialDto toTrackEditorialDto(TrackEditorial editorial) {
         return new TrackEditorialDto(
-            editorial.getTitle(), editorial.getDek(), editorial.getByline(), blocksOf(editorial)
+            editorial.getTitle(), editorial.getDek(), editorial.getByline(), editorial.getImageUrl(), blocksOf(editorial)
         );
     }
 
