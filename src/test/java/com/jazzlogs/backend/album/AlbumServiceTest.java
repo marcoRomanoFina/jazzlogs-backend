@@ -19,24 +19,20 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.album.dto.AlbumHeaderDto;
-import com.jazzlogs.backend.album.dto.CoverColorRequest;
-import com.jazzlogs.backend.album.dto.LetterColorRequest;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
-import com.jazzlogs.backend.graph.AlbumHeaderGraphData;
-import com.jazzlogs.backend.graph.AlbumPersonnelEntry;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.TrackPlacement;
-import com.jazzlogs.backend.listen.ListenService;
 import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackRepository;
 import com.jazzlogs.backend.track.dto.TrackDto;
 
 // GraphService is mocked here (not the real Neo4jClient-backed bean) — same
 // reasoning as PlaylistServiceTest: these tests cover AlbumService's own
-// Postgres batching/assembly logic (the split between getAlbumHeader and
-// getAlbumTracks), not Neo4j's actual Cypher — see GraphFilterServiceTest
-// for why that's never exercised directly in this codebase.
+// Postgres logic (getAlbumHeader is pure metadata now, no Neo4j involved;
+// getAlbumTracks still batches per-track Neo4j lookups) — see
+// GraphFilterServiceTest for why real Cypher is never exercised directly in
+// this codebase.
 @SpringBootTest
 @Transactional
 class AlbumServiceTest {
@@ -54,86 +50,33 @@ class AlbumServiceTest {
     private TrackRepository trackRepository;
 
     @Autowired
-    private ListenService listenService;
-
-    @Autowired
     private EntityManager entityManager;
 
     @MockitoBean
     private GraphService graphService;
 
     @Test
-    void getAlbumHeader_returnsAlbumFieldsAndGraphData() {
+    void getAlbumHeader_returnsMinimalMetadata() {
         Artist artist = artistRepository.save(new Artist("Header Test Artist", null, null, null));
         Album album = persistAlbum(artist, "Header Test Album", 2021);
 
-        AlbumHeaderGraphData graphData = new AlbumHeaderGraphData(
-            List.of("Hard Bop"),
-            List.of("Warm"),
-            List.of("Morning Coffee"),
-            List.of(new AlbumPersonnelEntry(UUID.randomUUID(), "Some Artist", "LEADER", List.of("PIANO")))
-        );
-        when(graphService.getAlbumHeaderGraphData(album.getId())).thenReturn(graphData);
-
-        AlbumHeaderDto dto = albumService.getAlbumHeader(album.getId(), UUID.randomUUID());
+        AlbumHeaderDto dto = albumService.getAlbumHeader(album.getId());
 
         assertThat(dto.id()).isEqualTo(album.getId());
         assertThat(dto.artistId()).isEqualTo(artist.getId());
         assertThat(dto.artistName()).isEqualTo("Header Test Artist");
         assertThat(dto.name()).isEqualTo("Header Test Album");
         assertThat(dto.releaseYear()).isEqualTo(2021);
-        assertThat(dto.styles()).containsExactly("Hard Bop");
-        assertThat(dto.moods()).containsExactly("Warm");
-        assertThat(dto.contexts()).containsExactly("Morning Coffee");
-        assertThat(dto.personnel()).hasSize(1);
+        assertThat(dto.totalTracks()).isEqualTo(1);
     }
 
     @Test
     void getAlbumHeader_rejectsUnknownAlbum() {
         ResponseStatusException ex = catchThrowableOfType(
-            ResponseStatusException.class, () -> albumService.getAlbumHeader(UUID.randomUUID(), UUID.randomUUID())
+            ResponseStatusException.class, () -> albumService.getAlbumHeader(UUID.randomUUID())
         );
 
         assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-    }
-
-    @Test
-    void getAlbumHeader_hasListenedTrue_whenEveryTrackIsListened() {
-        Artist artist = artistRepository.save(new Artist("Listened Test Artist", null, null, null));
-        Album album = persistAlbum(artist, "Listened Test Album", 2020);
-        Track track = persistTrack(album, "Only Track");
-        // album.getTracks() is a lazy collection on the same managed Album
-        // instance getAlbumHeader will re-fetch (same persistence context,
-        // same identity) — without flushing, it lazy-loads before the new
-        // Track row actually exists in Postgres and comes back empty.
-        entityManager.flush();
-        entityManager.clear();
-        when(graphService.getAlbumHeaderGraphData(album.getId()))
-            .thenReturn(new AlbumHeaderGraphData(List.of(), List.of(), List.of(), List.of()));
-
-        UUID userId = UUID.randomUUID();
-        listenService.markTrackListened(userId, track.getId());
-
-        AlbumHeaderDto dto = albumService.getAlbumHeader(album.getId(), userId);
-
-        assertThat(dto.hasListened()).isTrue();
-        assertThat(dto.listenedTrackCount()).isEqualTo(1);
-    }
-
-    @Test
-    void getAlbumHeader_hasListenedFalse_whenNoTracksListened() {
-        Artist artist = artistRepository.save(new Artist("Unlistened Test Artist", null, null, null));
-        Album album = persistAlbum(artist, "Unlistened Test Album", 2020);
-        persistTrack(album, "Track A");
-        entityManager.flush();
-        entityManager.clear();
-        when(graphService.getAlbumHeaderGraphData(album.getId()))
-            .thenReturn(new AlbumHeaderGraphData(List.of(), List.of(), List.of(), List.of()));
-
-        AlbumHeaderDto dto = albumService.getAlbumHeader(album.getId(), UUID.randomUUID());
-
-        assertThat(dto.hasListened()).isFalse();
-        assertThat(dto.listenedTrackCount()).isZero();
     }
 
     @Test
@@ -156,103 +99,6 @@ class AlbumServiceTest {
 
         assertThat(tracks).extracting(TrackDto::name).containsExactly("Track B", "Track A");
         assertThat(tracks).extracting(TrackDto::trackNumber).containsExactly(1, 2);
-    }
-
-    @Test
-    void setCoverColor_setsItAndSurfacesItOnTheHeader() {
-        Artist artist = artistRepository.save(new Artist("Cover Color Test Artist", null, null, null));
-        Album album = persistAlbum(artist, "Cover Color Test Album", 2022);
-        when(graphService.getAlbumHeaderGraphData(album.getId()))
-            .thenReturn(new AlbumHeaderGraphData(List.of(), List.of(), List.of(), List.of()));
-
-        albumService.setCoverColor(album.getId(), new CoverColorRequest("#a86b32"));
-
-        AlbumHeaderDto dto = albumService.getAlbumHeader(album.getId(), UUID.randomUUID());
-        assertThat(dto.coverColor()).isEqualTo("#a86b32");
-    }
-
-    @Test
-    void clearCoverColor_resetsItToNull() {
-        Artist artist = artistRepository.save(new Artist("Clear Cover Color Test Artist", null, null, null));
-        Album album = persistAlbum(artist, "Clear Cover Color Test Album", 2022);
-        when(graphService.getAlbumHeaderGraphData(album.getId()))
-            .thenReturn(new AlbumHeaderGraphData(List.of(), List.of(), List.of(), List.of()));
-        albumService.setCoverColor(album.getId(), new CoverColorRequest("#a86b32"));
-
-        albumService.clearCoverColor(album.getId());
-
-        AlbumHeaderDto dto = albumService.getAlbumHeader(album.getId(), UUID.randomUUID());
-        assertThat(dto.coverColor()).isNull();
-    }
-
-    @Test
-    void setLetterColor_setsItAndSurfacesItOnTheHeader() {
-        Artist artist = artistRepository.save(new Artist("Letter Color Test Artist", null, null, null));
-        Album album = persistAlbum(artist, "Letter Color Test Album", 2022);
-        when(graphService.getAlbumHeaderGraphData(album.getId()))
-            .thenReturn(new AlbumHeaderGraphData(List.of(), List.of(), List.of(), List.of()));
-
-        albumService.setLetterColor(album.getId(), new LetterColorRequest("#a86b32"));
-
-        AlbumHeaderDto dto = albumService.getAlbumHeader(album.getId(), UUID.randomUUID());
-        assertThat(dto.letterColor()).isEqualTo("#a86b32");
-    }
-
-    @Test
-    void clearLetterColor_resetsItToNull() {
-        Artist artist = artistRepository.save(new Artist("Clear Letter Color Test Artist", null, null, null));
-        Album album = persistAlbum(artist, "Clear Letter Color Test Album", 2022);
-        when(graphService.getAlbumHeaderGraphData(album.getId()))
-            .thenReturn(new AlbumHeaderGraphData(List.of(), List.of(), List.of(), List.of()));
-        albumService.setLetterColor(album.getId(), new LetterColorRequest("#a86b32"));
-
-        albumService.clearLetterColor(album.getId());
-
-        AlbumHeaderDto dto = albumService.getAlbumHeader(album.getId(), UUID.randomUUID());
-        assertThat(dto.letterColor()).isNull();
-    }
-
-    @Test
-    void setFeatured_marksExactlyOneAlbum_clearingWhicheverWasFeaturedBefore() {
-        Artist artist = artistRepository.save(new Artist("Featured Test Artist", null, null, null));
-        Album albumA = persistAlbum(artist, "Featured Album A", 2020);
-        Album albumB = persistAlbum(artist, "Featured Album B", 2021);
-
-        albumService.setFeatured(albumA.getId());
-        assertThat(albumRepository.findByFeaturedTrue().map(Album::getId)).contains(albumA.getId());
-
-        albumService.setFeatured(albumB.getId());
-        assertThat(albumRepository.findByFeaturedTrue().map(Album::getId)).contains(albumB.getId());
-    }
-
-    @Test
-    void setFeatured_rejectsUnknownAlbum() {
-        ResponseStatusException ex = catchThrowableOfType(
-            ResponseStatusException.class, () -> albumService.setFeatured(UUID.randomUUID())
-        );
-
-        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-    }
-
-    @Test
-    void unsetFeatured_isNoOpWhenTheAlbumWasNeverFeatured() {
-        Artist artist = artistRepository.save(new Artist("Unset Featured Test Artist", null, null, null));
-        Album album = persistAlbum(artist, "Unset Featured Album", 2020);
-
-        albumService.unsetFeatured(album.getId());
-
-        assertThat(albumRepository.findById(album.getId()).orElseThrow().isFeatured()).isFalse();
-    }
-
-    @Test
-    void unsetFeatured_removesTheFeaturedFlag() {
-        Artist artist = artistRepository.save(new Artist("Remove Featured Test Artist", null, null, null));
-        Album album = persistAlbum(artist, "Remove Featured Album", 2020);
-        albumService.setFeatured(album.getId());
-
-        albumService.unsetFeatured(album.getId());
-
-        assertThat(albumRepository.findById(album.getId()).orElseThrow().isFeatured()).isFalse();
     }
 
     @Test
@@ -289,7 +135,7 @@ class AlbumServiceTest {
 
     private Album persistAlbum(Artist artist, String name, Integer releaseYear) {
         return albumRepository.save(new Album(
-            artist, name, null, null, null, releaseYear, 1, null, null
+            artist, name, null, null, null, releaseYear, 1
         ));
     }
 

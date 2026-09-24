@@ -235,7 +235,7 @@ class ArtistServiceTest {
 
     private Album persistAlbum(Artist artist, String name, Integer releaseYear) {
         return albumRepository.save(new Album(
-            artist, name, null, null, null, releaseYear, 1, null, null
+            artist, name, null, null, null, releaseYear, 1
         ));
     }
 }

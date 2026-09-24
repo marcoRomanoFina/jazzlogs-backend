@@ -250,63 +250,6 @@ public class GraphService {
         replaceTags("Album", albumId, "PERFECT_FOR", "Context", contextCodes);
     }
 
-    /**
-     * Styles/moods/contexts/personnel for the album header, in a single
-     * round trip — these used to be four separate {@code getStyles}/{@code
-     * getMoods}/{@code getContexts}/{@code getPersonnel} calls (four
-     * queries) before {@code AlbumService#getAlbumHeader} became its own
-     * fast endpoint, at which point four round trips for one header
-     * response was worth collapsing into one.
-     *
-     * @param albumId the album to read
-     * @return empty lists (not null) for anything the album has none of, including
-     *         when the album node itself isn't in Neo4j at all
-     */
-    @SuppressWarnings("unchecked")
-    public AlbumHeaderGraphData getAlbumHeaderGraphData(UUID albumId) {
-        return read("read header graph data for album=" + albumId, () ->
-            neo4jClient.query("""
-                    MATCH (al:Album {id: $albumId})
-                    OPTIONAL MATCH (al)-[:BELONGS_TO]->(style:Style)
-                    WITH al, collect(DISTINCT style.label) AS styleLabels
-                    OPTIONAL MATCH (al)-[:EVOKES_MOOD]->(mood:Mood)
-                    WITH al, styleLabels, collect(DISTINCT mood.label) AS moodLabels
-                    OPTIONAL MATCH (al)-[:PERFECT_FOR]->(context:Context)
-                    WITH al, styleLabels, moodLabels, collect(DISTINCT context.label) AS contextLabels
-                    OPTIONAL MATCH (ar:Artist)-[r:LEADER_OF|SIDEMAN_ON]->(al)
-                    WITH styleLabels, moodLabels, contextLabels,
-                         collect(DISTINCT CASE WHEN ar IS NULL THEN NULL
-                             ELSE {artistId: ar.id, artistName: ar.name, relType: type(r), instruments: r.instruments} END) AS personnelRaw
-                    RETURN
-                        [x IN styleLabels WHERE x IS NOT NULL] AS styles,
-                        [x IN moodLabels WHERE x IS NOT NULL] AS moods,
-                        [x IN contextLabels WHERE x IS NOT NULL] AS contexts,
-                        [p IN personnelRaw WHERE p IS NOT NULL] AS personnel
-                    """)
-                .bind(albumId.toString()).to("albumId")
-                .fetch()
-                .one()
-                .map(row -> new AlbumHeaderGraphData(
-                    (List<String>) row.get("styles"),
-                    (List<String>) row.get("moods"),
-                    (List<String>) row.get("contexts"),
-                    toPersonnelEntries((List<Map<String, Object>>) row.get("personnel"))
-                ))
-                .orElse(new AlbumHeaderGraphData(List.of(), List.of(), List.of(), List.of())));
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<AlbumPersonnelEntry> toPersonnelEntries(List<Map<String, Object>> maps) {
-        return maps.stream()
-            .map(m -> new AlbumPersonnelEntry(
-                UUID.fromString((String) m.get("artistId")),
-                (String) m.get("artistName"),
-                "LEADER_OF".equals(m.get("relType")) ? "LEADER" : "SIDEMAN",
-                m.get("instruments") == null ? List.of() : (List<String>) m.get("instruments")
-            ))
-            .toList();
-    }
-
     // --- Track relationships ---
 
     public void addPerformance(UUID artistId, UUID trackId, String role, String instrumentCode, boolean primaryCredit) {

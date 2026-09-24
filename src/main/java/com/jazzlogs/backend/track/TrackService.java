@@ -1,6 +1,5 @@
 package com.jazzlogs.backend.track;
 
-import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -127,7 +126,7 @@ public class TrackService {
             .orElseGet(() -> {
                 Album album = new Album(
                     artist, data.name(), data.spotifyAlbumId(), data.spotifyUrl(), data.imageUrl(),
-                    data.releaseYear(), 0, Instant.now(), null
+                    data.releaseYear(), 0
                 );
                 Album saved = albumRepository.save(album);
                 graphService.syncAlbumNode(saved.getId(), saved.getName());

@@ -177,7 +177,7 @@ class EditorialServiceTest {
     private Album persistAlbum(String name) {
         Artist artist = artistRepository.save(new Artist(name + " Artist", null, null, null));
         return albumRepository.save(new Album(
-            artist, name, null, null, null, 2024, 1, null, null
+            artist, name, null, null, null, 2024, 1
         ));
     }
 

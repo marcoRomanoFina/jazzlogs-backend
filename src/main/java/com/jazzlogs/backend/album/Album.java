@@ -26,6 +26,9 @@ import lombok.Setter;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.track.Track;
 
+// Minimal support metadata only — no editorial, no own page, no admin
+// curation. Resolved/created automatically from a track's own Spotify data
+// (see TrackService.resolveOrCreateAlbum), never uploaded by hand.
 @Entity
 @Table(name = "albums")
 @Getter
@@ -63,32 +66,6 @@ public class Album {
     @Setter
     private Integer totalTracks;
 
-    @Setter
-    private Instant postedAt;
-
-    @Setter
-    private String instagramPermalink;
-
-    // Admin-curated, hex ("#a86b32"), null until explicitly set — see the
-    // migration's comment. Set/cleared via their own endpoints
-    // (PUT/DELETE /albums/{id}/cover-color), not the main upsert.
-    @Setter
-    @Column(name = "cover_color", length = 7)
-    private String coverColor;
-
-    // Same reasoning as coverColor, just for the page's text — its own
-    // endpoints (PUT/DELETE /albums/{id}/letter-color), not the main upsert.
-    @Setter
-    @Column(name = "letter_color", length = 7)
-    private String letterColor;
-
-    // At most one true at a time, enforced by idx_albums_only_one_featured
-    // (see V24), not a raw setter: only ever mutated via AlbumRepository's
-    // atomic clearFeatured/markFeatured/unmarkFeatured, same pattern as
-    // Track#featured.
-    @Column(nullable = false)
-    private boolean featured;
-
     // Ordered by createdAt only as a stable fallback — the real, editorial track
     // order (trackNumber) lives on the CONTAINS relationship in Neo4j, not here.
     @OneToMany(mappedBy = "album", cascade = CascadeType.ALL, orphanRemoval = true)
@@ -108,9 +85,7 @@ public class Album {
         String spotifyUrl,
         String imageUrl,
         Integer releaseYear,
-        Integer totalTracks,
-        Instant postedAt,
-        String instagramPermalink
+        Integer totalTracks
     ) {
         this.artist = artist;
         this.name = name;
@@ -120,8 +95,6 @@ public class Album {
         this.imageUrl = imageUrl;
         this.releaseYear = releaseYear;
         this.totalTracks = totalTracks;
-        this.postedAt = postedAt;
-        this.instagramPermalink = instagramPermalink;
     }
 
     public static String normalize(String name) {

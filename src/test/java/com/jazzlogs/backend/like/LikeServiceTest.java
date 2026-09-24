@@ -97,7 +97,7 @@ class LikeServiceTest {
     private Note persistNote() {
         Artist artist = artistRepository.save(new Artist("Like Test Artist " + UUID.randomUUID(), null, null, null));
         Album album = albumRepository.save(new Album(
-            artist, "Like Test Album " + UUID.randomUUID(), null, null, null, 2024, 1, null, null
+            artist, "Like Test Album " + UUID.randomUUID(), null, null, null, 2024, 1
         ));
         Track track = trackRepository.save(new Track(
             album, null, "Like Test Track", null, null, null, false, null, null, null, null, null, null

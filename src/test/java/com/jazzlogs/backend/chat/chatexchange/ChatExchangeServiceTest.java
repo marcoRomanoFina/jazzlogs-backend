@@ -101,7 +101,7 @@ class ChatExchangeServiceTest {
     void resolvesRealAlbumId_andDropsHallucinatedOne() {
         stubSaveAssignsIdAndCreatedAt();
         Artist artist = new Artist("Miles Davis", null, null, null);
-        Album album = new Album(artist, "Kind of Blue", null, null, null, 1959, 5, null, null);
+        Album album = new Album(artist, "Kind of Blue", null, null, null, 1959, 5);
         UUID albumId = UUID.randomUUID();
         ReflectionTestUtils.setField(album, "id", albumId);
 
@@ -128,7 +128,7 @@ class ChatExchangeServiceTest {
     void resolvesRealTrackId_primaryArtistComesFromItsAlbum() {
         stubSaveAssignsIdAndCreatedAt();
         Artist artist = new Artist("John Coltrane", null, null, null);
-        Album album = new Album(artist, "A Love Supreme", null, null, null, 1965, 4, null, null);
+        Album album = new Album(artist, "A Love Supreme", null, null, null, 1965, 4);
         Track track = new Track(album, null, "Acknowledgement", null, null, null, false, null, null, null, null, null, null);
         UUID trackId = UUID.randomUUID();
         ReflectionTestUtils.setField(track, "id", trackId);
@@ -187,7 +187,7 @@ class ChatExchangeServiceTest {
         Pageable pageable = PageRequest.of(0, 10);
 
         Artist artist = new Artist("Miles Davis", null, null, null);
-        Album album = new Album(artist, "Kind of Blue (Remastered)", null, null, null, 1959, 5, null, null);
+        Album album = new Album(artist, "Kind of Blue (Remastered)", null, null, null, 1959, 5);
         UUID albumId = UUID.randomUUID();
         ReflectionTestUtils.setField(album, "id", albumId);
 
@@ -220,8 +220,8 @@ class ChatExchangeServiceTest {
         ReflectionTestUtils.setField(chat, "id", chatId);
 
         Artist artist = new Artist("Bill Evans", null, null, null);
-        Album firstAlbum = new Album(artist, "Waltz for Debby", null, null, null, 1961, 5, null, null);
-        Album secondAlbum = new Album(artist, "Sunday at the Village Vanguard", null, null, null, 1961, 6, null, null);
+        Album firstAlbum = new Album(artist, "Waltz for Debby", null, null, null, 1961, 5);
+        Album secondAlbum = new Album(artist, "Sunday at the Village Vanguard", null, null, null, 1961, 6);
         UUID firstAlbumId = UUID.randomUUID();
         UUID secondAlbumId = UUID.randomUUID();
         ReflectionTestUtils.setField(firstAlbum, "id", firstAlbumId);

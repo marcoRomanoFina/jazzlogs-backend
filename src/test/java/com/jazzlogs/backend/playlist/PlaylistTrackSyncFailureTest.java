@@ -137,7 +137,7 @@ class PlaylistTrackSyncFailureTest {
 
     private Album persistAlbum(Artist artist) {
         return albumRepository.save(new Album(
-            artist, "Test Album", null, null, null, 2024, 1, null, null
+            artist, "Test Album", null, null, null, 2024, 1
         ));
     }
 

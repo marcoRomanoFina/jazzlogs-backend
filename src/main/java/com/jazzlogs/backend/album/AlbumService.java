@@ -8,7 +8,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,15 +15,12 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.album.dto.AlbumHeaderDto;
 import com.jazzlogs.backend.album.dto.ContextTagRequest;
-import com.jazzlogs.backend.album.dto.CoverColorRequest;
-import com.jazzlogs.backend.album.dto.LetterColorRequest;
 import com.jazzlogs.backend.album.dto.MoodTagRequest;
 import com.jazzlogs.backend.album.dto.StyleTagRequest;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
 import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialDto;
-import com.jazzlogs.backend.graph.AlbumHeaderGraphData;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.TrackPerformerEntry;
 import com.jazzlogs.backend.graph.TrackPlacement;
@@ -107,106 +103,15 @@ public class AlbumService {
     }
 
     /**
-     * Sets an album's curated cover color.
+     * The album's minimal support metadata — no editorial, no own page.
      *
-     * @param albumId the album
-     * @param request the color to set
-     */
-    @Transactional
-    public void setCoverColor(UUID albumId, CoverColorRequest request) {
-        getAlbumOrThrow(albumId).setCoverColor(request.coverColor());
-    }
-
-    /**
-     * Clears an album's curated cover color, back to {@code null} — the
-     * frontend falls back to its own automatic sampling.
-     *
-     * @param albumId the album
-     */
-    @Transactional
-    public void clearCoverColor(UUID albumId) {
-        getAlbumOrThrow(albumId).setCoverColor(null);
-    }
-
-    /**
-     * Sets an album's curated letter (text) color.
-     *
-     * @param albumId the album
-     * @param request the color to set
-     */
-    @Transactional
-    public void setLetterColor(UUID albumId, LetterColorRequest request) {
-        getAlbumOrThrow(albumId).setLetterColor(request.letterColor());
-    }
-
-    /**
-     * Clears an album's curated letter color, back to {@code null} — the
-     * frontend falls back to its own default.
-     *
-     * @param albumId the album
-     */
-    @Transactional
-    public void clearLetterColor(UUID albumId) {
-        getAlbumOrThrow(albumId).setLetterColor(null);
-    }
-
-    /**
-     * Marks this album as THE featured album, unfeaturing whichever one (if
-     * any) held that spot before. {@code idx_albums_only_one_featured} (see
-     * V24) is what actually guarantees at most one stays featured under
-     * concurrent calls — clearFeatured()+markFeatured() alone can't: two
-     * overlapping calls can each see nothing featured, clear nothing, then
-     * both mark a different row true. The unique index turns that into a
-     * thrown exception here instead of silently leaving two albums featured.
-     *
-     * @param albumId the album
-     * @throws ResponseStatusException 404 if the album doesn't exist, 409 if
-     *                                  a concurrent call already featured a
-     *                                  different album
-     */
-    @Transactional
-    public void setFeatured(UUID albumId) {
-        getAlbumOrThrow(albumId);
-        albumRepository.clearFeatured();
-        try {
-            albumRepository.markFeatured(albumId);
-        } catch (DataIntegrityViolationException e) {
-            throw new ResponseStatusException(
-                HttpStatus.CONFLICT, "Another album was just featured concurrently — try again", e
-            );
-        }
-    }
-
-    /** Removes this album from being THE featured one — a no-op if it wasn't. */
-    @Transactional
-    public void unsetFeatured(UUID albumId) {
-        getAlbumOrThrow(albumId);
-        albumRepository.unmarkFeatured(albumId);
-    }
-
-    /**
-     * The album page's fast, above-the-fold load — everything about the
-     * album except its track list (see {@link #getAlbumTracks}, fetched
-     * separately since it's the expensive part).
-     *
-     * @param albumId       the album to load
-     * @param currentUserId whose listen/save state to include
+     * @param albumId the album to load
      * @return the album header
      * @throws ResponseStatusException 404 if the album doesn't exist
      */
     @Transactional(readOnly = true)
-    public AlbumHeaderDto getAlbumHeader(UUID albumId, UUID currentUserId) {
+    public AlbumHeaderDto getAlbumHeader(UUID albumId) {
         Album album = getAlbumOrThrow(albumId);
-
-        // One round trip for styles+moods+contexts+personnel together,
-        // instead of four separate ones.
-        AlbumHeaderGraphData graphData = graphService.getAlbumHeaderGraphData(albumId);
-
-        // hasListened/listenedTrackCount are derived from per-track listen
-        // state, so this still needs trackIds + one batched listen query —
-        // cheap compared to what getAlbumTracks does with the same ids.
-        List<UUID> trackIds = album.getTracks().stream().map(Track::getId).toList();
-        Set<UUID> listenedTrackIds = listenService.getListenedTrackIds(currentUserId, trackIds);
 
         return new AlbumHeaderDto(
             album.getId(),
@@ -217,21 +122,7 @@ public class AlbumService {
             album.getSpotifyUrl(),
             album.getImageUrl(),
             album.getReleaseYear(),
-            album.getTotalTracks(),
-            album.getPostedAt(),
-            album.getInstagramPermalink(),
-            album.getCoverColor(),
-            album.getLetterColor(),
-            graphData.styles(),
-            graphData.moods(),
-            graphData.contexts(),
-            graphData.personnel(),
-            // Derived live from the same listenedTrackIds computed above, not
-            // a separately-set flag.
-            !trackIds.isEmpty() && listenedTrackIds.size() == trackIds.size(),
-            listenedTrackIds.size(),
-            listenService.countAlbumListens(albumId),
-            savedItemService.isSaved(currentUserId, SaveableEntityType.ALBUM, albumId)
+            album.getTotalTracks()
         );
     }
 

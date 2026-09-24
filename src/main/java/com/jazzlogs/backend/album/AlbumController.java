@@ -3,8 +3,6 @@ package com.jazzlogs.backend.album;
 import java.util.List;
 import java.util.UUID;
 
-import jakarta.validation.Valid;
-
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -20,8 +18,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.jazzlogs.backend.album.dto.AlbumHeaderDto;
 import com.jazzlogs.backend.album.dto.ContextTagRequest;
-import com.jazzlogs.backend.album.dto.CoverColorRequest;
-import com.jazzlogs.backend.album.dto.LetterColorRequest;
 import com.jazzlogs.backend.album.dto.MoodTagRequest;
 import com.jazzlogs.backend.album.dto.StyleTagRequest;
 import com.jazzlogs.backend.track.dto.TrackDto;
@@ -38,15 +34,14 @@ public class AlbumController {
     private final UserService userService;
 
     /**
-     * The album page's fast, above-the-fold load — see {@link AlbumService#getAlbumHeader}.
+     * The album's minimal support metadata — see {@link AlbumService#getAlbumHeader}.
      *
-     * @param id  the album to load
-     * @param jwt the caller, resolved to a user id only to compute listen/save state
+     * @param id the album to load
      * @return the album header
      */
     @GetMapping("/{id}")
-    public AlbumHeaderDto getAlbum(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
-        return albumService.getAlbumHeader(id, currentUserId(jwt));
+    public AlbumHeaderDto getAlbum(@PathVariable UUID id) {
+        return albumService.getAlbumHeader(id);
     }
 
     /** The album page's track list, fetched separately from the header — see {@link AlbumService#getAlbumTracks}. */
@@ -100,72 +95,6 @@ public class AlbumController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> replaceContexts(@PathVariable UUID id, @RequestBody ContextTagRequest request) {
         albumService.replaceContexts(id, request);
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * Sets the album's curated cover color — see {@link AlbumService#setCoverColor}.
-     *
-     * @param id      the album
-     * @param request the color to set
-     */
-    @PutMapping("/{id}/cover-color")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> setCoverColor(@PathVariable UUID id, @Valid @RequestBody CoverColorRequest request) {
-        albumService.setCoverColor(id, request);
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * Clears the album's curated cover color — see {@link AlbumService#clearCoverColor}.
-     *
-     * @param id the album
-     */
-    @DeleteMapping("/{id}/cover-color")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> clearCoverColor(@PathVariable UUID id) {
-        albumService.clearCoverColor(id);
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * Sets the album's curated letter (text) color — see {@link AlbumService#setLetterColor}.
-     *
-     * @param id      the album
-     * @param request the color to set
-     */
-    @PutMapping("/{id}/letter-color")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> setLetterColor(@PathVariable UUID id, @Valid @RequestBody LetterColorRequest request) {
-        albumService.setLetterColor(id, request);
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * Clears the album's curated letter color — see {@link AlbumService#clearLetterColor}.
-     *
-     * @param id the album
-     */
-    @DeleteMapping("/{id}/letter-color")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> clearLetterColor(@PathVariable UUID id) {
-        albumService.clearLetterColor(id);
-        return ResponseEntity.noContent().build();
-    }
-
-    /** Marks this album as THE featured album — see {@link AlbumService#setFeatured}. */
-    @PostMapping("/{id}/featured")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> setFeatured(@PathVariable UUID id) {
-        albumService.setFeatured(id);
-        return ResponseEntity.noContent().build();
-    }
-
-    /** Removes this album from being featured — see {@link AlbumService#unsetFeatured}. */
-    @DeleteMapping("/{id}/featured")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> unsetFeatured(@PathVariable UUID id) {
-        albumService.unsetFeatured(id);
         return ResponseEntity.noContent().build();
     }
 

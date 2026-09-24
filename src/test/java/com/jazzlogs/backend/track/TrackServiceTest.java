@@ -178,7 +178,7 @@ class TrackServiceTest {
     void createOrUpdateTrack_assignsSequentialTrackNumberByUploadOrder_andBumpsTotalTracks() {
         Artist artist = artistRepository.save(new Artist("Upload Order Test Artist", "spotify-artist-upload-order", null, null));
         Album album = albumRepository.save(new Album(
-            artist, "Upload Order Test Album", "spotify-album-upload-order", null, null, 2024, 0, null, null
+            artist, "Upload Order Test Album", "spotify-album-upload-order", null, null, 2024, 0
         ));
         SpotifyTrackAlbumData albumData = new SpotifyTrackAlbumData("spotify-album-upload-order", "Upload Order Test Album", null, null, 2024);
         SpotifyTrackArtistData artistData = new SpotifyTrackArtistData("spotify-artist-upload-order", "Upload Order Test Artist", null);
@@ -202,7 +202,7 @@ class TrackServiceTest {
     void createOrUpdateTrack_onUpdate_doesNotReassignTrackNumberOrTotalTracks() {
         Artist artist = artistRepository.save(new Artist("Update Test Artist", "spotify-artist-update", null, null));
         Album album = albumRepository.save(new Album(
-            artist, "Update Test Album", "spotify-album-update", null, null, 2024, 0, null, null
+            artist, "Update Test Album", "spotify-album-update", null, null, 2024, 0
         ));
         SpotifyTrackAlbumData albumData = new SpotifyTrackAlbumData("spotify-album-update", "Update Test Album", null, null, 2024);
         SpotifyTrackArtistData artistData = new SpotifyTrackArtistData("spotify-artist-update", "Update Test Artist", null);
@@ -263,7 +263,7 @@ class TrackServiceTest {
 
     private Track persistTrackFor(Artist artist, String name) {
         Album album = albumRepository.save(new Album(
-            artist, "Album for " + name, null, null, null, 2024, 1, null, null
+            artist, "Album for " + name, null, null, null, 2024, 1
         ));
         return trackRepository.save(new Track(
             album, null, name, null, null, null, false, null, null, null, null, null, null
@@ -281,7 +281,7 @@ class TrackServiceTest {
     private Track persistTrackWithoutEditorial(String name) {
         Artist artist = artistRepository.save(new Artist("Featured Test Artist " + UUID.randomUUID(), null, null, null));
         Album album = albumRepository.save(new Album(
-            artist, "Featured Test Album " + UUID.randomUUID(), null, null, null, 2024, 1, null, null
+            artist, "Featured Test Album " + UUID.randomUUID(), null, null, null, 2024, 1
         ));
         return trackRepository.save(new Track(
             album, null, name, null, null, null, false, null, null, null, null, null, null
