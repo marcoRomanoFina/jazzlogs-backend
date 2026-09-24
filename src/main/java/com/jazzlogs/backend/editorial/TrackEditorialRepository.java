@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -42,24 +44,31 @@ public interface TrackEditorialRepository extends LikeableRepository<TrackEditor
         """)
     List<TrackEditorial> findByTrackAlbumId(@Param("albumId") UUID albumId);
 
-    // For "The Last Log" — title/dek/likeCount only, keyed by trackId, no
-    // blocks/embeddings. editorialId is needed to look up likedByCurrentUser
-    // via LikeService (it's a different id than trackId — the editorial's
-    // own PK).
-    @Query("SELECT te.id AS editorialId, t.id AS trackId, te.title AS title, te.dek AS dek, te.likeCount AS likeCount FROM TrackEditorial te JOIN te.track t WHERE t.album.id = :albumId")
-    List<TrackTeaserRow> findTeasersByAlbumId(@Param("albumId") UUID albumId);
-
-    interface TrackTeaserRow {
-        UUID getEditorialId();
-
-        UUID getTrackId();
-
-        String getTitle();
-
-        String getDek();
-
-        int getLikeCount();
-    }
+    /**
+     * The archive's free-form search/browse listing — {@code pattern} is a
+     * lowercased {@code "%...%"} substring, matched against either the
+     * editorial's own title or its track's name; {@code null} means no
+     * filter. No {@code type} filter anymore — track is the only kind of
+     * editorial left.
+     */
+    @Query(
+        value = """
+            SELECT new com.jazzlogs.backend.editorial.TrackEditorialCatalogueRow(
+                te.id, t.id, t.name, t.imageUrl, alb.name, alb.id, te.title, te.dek, te.byline, te.createdAt, te.likeCount
+            )
+            FROM TrackEditorial te
+            JOIN te.track t
+            JOIN t.album alb
+            WHERE :pattern IS NULL OR LOWER(te.title) LIKE :pattern OR LOWER(t.name) LIKE :pattern
+            """,
+        countQuery = """
+            SELECT COUNT(te)
+            FROM TrackEditorial te
+            JOIN te.track t
+            WHERE :pattern IS NULL OR LOWER(te.title) LIKE :pattern OR LOWER(t.name) LIKE :pattern
+            """
+    )
+    Page<TrackEditorialCatalogueRow> searchCatalogue(@Param("pattern") String pattern, Pageable pageable);
 
     /**
      * Backs "Featured Tracks" — {@code Track#featured}, not {@code

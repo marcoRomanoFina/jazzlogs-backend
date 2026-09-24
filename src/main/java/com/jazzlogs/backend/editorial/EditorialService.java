@@ -14,6 +14,8 @@ import jakarta.persistence.EntityManager;
 import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.ai.document.Document;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +26,7 @@ import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.editorial.dto.BlockRequest;
 import com.jazzlogs.backend.editorial.dto.EditorialBlockDto;
 import com.jazzlogs.backend.editorial.dto.FeaturedTrackDto;
+import com.jazzlogs.backend.editorial.dto.TrackEditorialCatalogueDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialRequest;
 import com.jazzlogs.backend.embedding.EmbeddingService;
@@ -147,6 +150,39 @@ public class EditorialService {
         }
 
         return editorial.getBlocks();
+    }
+
+    /**
+     * The archive's free-form search/browse listing.
+     *
+     * @param q             free-text search, matched case-insensitively as a
+     *                      substring against the editorial's title or its
+     *                      track's name; {@code null}/blank means no filter
+     * @param currentUserId used only to compute each result's {@code likedByCurrentUser}
+     * @return the matching page
+     */
+    @Transactional(readOnly = true)
+    public Page<TrackEditorialCatalogueDto> listEditorials(String q, Pageable pageable, UUID currentUserId) {
+        String pattern = (q == null || q.isBlank()) ? null : "%" + q.trim().toLowerCase() + "%";
+        Page<TrackEditorialCatalogueRow> page = trackEditorialRepository.searchCatalogue(pattern, pageable);
+
+        List<UUID> ids = page.getContent().stream().map(TrackEditorialCatalogueRow::id).toList();
+        Set<UUID> liked = likeService.hasUserLikedBatch(currentUserId, LikeableEntityType.EDITORIAL, ids);
+
+        return page.map(row -> toTrackEditorialCatalogueDto(row, liked.contains(row.id())));
+    }
+
+    private TrackEditorialCatalogueDto toTrackEditorialCatalogueDto(TrackEditorialCatalogueRow row, boolean likedByCurrentUser) {
+        return new TrackEditorialCatalogueDto(
+            row.id(), row.trackId(), row.trackName(), row.trackImageUrl(), row.albumName(), row.albumId(),
+            row.title(), row.dek(), row.byline(), row.createdAt(), row.likeCount(), likedByCurrentUser
+        );
+    }
+
+    /** {@code COUNT(*)} only — no content, no joins, no like-status lookup. See {@link #listEditorials} for the filtered/paginated version. */
+    @Transactional(readOnly = true)
+    public long countEditorials() {
+        return trackEditorialRepository.count();
     }
 
     public TrackEditorialDto getTrackEditorialDto(UUID trackId) {

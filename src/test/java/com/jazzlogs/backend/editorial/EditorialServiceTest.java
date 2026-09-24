@@ -11,6 +11,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -25,6 +27,7 @@ import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.album.AlbumRepository;
 import com.jazzlogs.backend.editorial.dto.BlockRequest;
 import com.jazzlogs.backend.editorial.dto.FeaturedTrackDto;
+import com.jazzlogs.backend.editorial.dto.TrackEditorialCatalogueDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialRequest;
 import com.jazzlogs.backend.embedding.EmbeddingService;
 import com.jazzlogs.backend.graph.GraphService;
@@ -139,6 +142,62 @@ class EditorialServiceTest {
             .containsEntry("trackName", "Metadata Test Track")
             .containsEntry("albumName", "Metadata Test Album")
             .containsEntry("artistName", "Metadata Test Album Artist");
+    }
+
+    @Test
+    void countEditorials_reflectsTrackEditorialRowCount() {
+        long before = editorialService.countEditorials();
+
+        editorialService.upsertTrackEditorial(
+            persistTrack("Count Test Track").getId(),
+            new TrackEditorialRequest("Count Test Editorial", "dek", EditorialByline.JAZZLOGS, List.of())
+        );
+
+        assertThat(editorialService.countEditorials()).isEqualTo(before + 1);
+    }
+
+    @Test
+    void listEditorials_matchesByEditorialTitleOrTrackName() {
+        Track track = persistTrack("Searchable Track Name");
+        editorialService.upsertTrackEditorial(
+            track.getId(), new TrackEditorialRequest("A Wholly Different Title", "dek", EditorialByline.JAZZLOGS, List.of())
+        );
+
+        Page<TrackEditorialCatalogueDto> byTitle = editorialService.listEditorials(
+            "wholly different", PageRequest.of(0, 10), UUID.randomUUID()
+        );
+        Page<TrackEditorialCatalogueDto> byTrackName = editorialService.listEditorials(
+            "searchable track", PageRequest.of(0, 10), UUID.randomUUID()
+        );
+
+        assertThat(byTitle.getContent()).extracting(TrackEditorialCatalogueDto::trackId).contains(track.getId());
+        assertThat(byTrackName.getContent()).extracting(TrackEditorialCatalogueDto::trackId).contains(track.getId());
+    }
+
+    @Test
+    void listEditorials_returnsTrackAlbumFieldsAndLikeState() {
+        Album album = persistAlbum("Catalogue Test Album");
+        Track track = trackRepository.save(new Track(
+            album, null, "Catalogue Test Track", null, null, "http://img.example/track.jpg", false,
+            null, null, null, null, null, null
+        ));
+        editorialService.upsertTrackEditorial(
+            track.getId(), new TrackEditorialRequest("Catalogue Test Editorial", "A dek", EditorialByline.JAZZLOGS, List.of())
+        );
+
+        Page<TrackEditorialCatalogueDto> page = editorialService.listEditorials(
+            "Catalogue Test Editorial", PageRequest.of(0, 10), UUID.randomUUID()
+        );
+
+        assertThat(page.getContent()).hasSize(1);
+        TrackEditorialCatalogueDto dto = page.getContent().get(0);
+        assertThat(dto.trackId()).isEqualTo(track.getId());
+        assertThat(dto.trackName()).isEqualTo("Catalogue Test Track");
+        assertThat(dto.trackImageUrl()).isEqualTo("http://img.example/track.jpg");
+        assertThat(dto.albumName()).isEqualTo("Catalogue Test Album");
+        assertThat(dto.albumId()).isEqualTo(album.getId());
+        assertThat(dto.dek()).isEqualTo("A dek");
+        assertThat(dto.likedByCurrentUser()).isFalse();
     }
 
     @Test
