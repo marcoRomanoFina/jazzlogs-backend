@@ -118,14 +118,16 @@ public class TrackService {
      * Artist} row, or creates a minimal one — upsert by spotifyArtistId. An
      * already-existing artist is returned as-is, never overwritten: this
      * runs on every new-track ingestion, so re-fetching wouldn't add
-     * anything (no image comes from a track lookup anyway, see {@link
-     * SpotifyTrackArtistData}) and could clobber curated data (e.g. an
-     * admin-set image) added some other way later.
+     * anything and could clobber curated data (e.g. an admin-set image)
+     * added some other way later. A brand-new artist gets one extra
+     * {@code fetchArtist} call for its image — the track's own embedded
+     * artist data (see {@link SpotifyTrackArtistData}) never carries one.
      */
     private Artist resolveOrCreateArtist(SpotifyTrackArtistData data) {
         return artistRepository.findBySpotifyArtistId(data.spotifyArtistId())
             .orElseGet(() -> {
-                Artist artist = new Artist(data.name(), data.spotifyArtistId(), data.spotifyUrl(), null);
+                String imageUrl = spotifyCatalogService.fetchArtist(data.spotifyArtistId()).imageUrl();
+                Artist artist = new Artist(data.name(), data.spotifyArtistId(), data.spotifyUrl(), imageUrl);
                 Artist saved = artistRepository.save(artist);
                 graphService.syncArtistNode(saved.getId(), saved.getName());
                 return saved;

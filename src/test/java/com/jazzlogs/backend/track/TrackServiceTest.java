@@ -33,6 +33,7 @@ import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.TrackPlacement;
 import com.jazzlogs.backend.like.LikeService;
 import com.jazzlogs.backend.like.LikeableEntityType;
+import com.jazzlogs.backend.spotify.SpotifyArtistData;
 import com.jazzlogs.backend.spotify.SpotifyCatalogService;
 import com.jazzlogs.backend.spotify.SpotifyTrackAlbumData;
 import com.jazzlogs.backend.spotify.SpotifyTrackArtistData;
@@ -217,6 +218,8 @@ class TrackServiceTest {
         );
         when(spotifyCatalogService.fetchTrack("spotify-track-new"))
             .thenReturn(new SpotifyTrackData("spotify-track-new", "Brand New Track", 200000, null, 1, "http://img.example/album.jpg", albumData, artistData));
+        when(spotifyCatalogService.fetchArtist("spotify-artist-new"))
+            .thenReturn(new SpotifyArtistData("spotify-artist-new", "Brand New Artist", "http://open.spotify.com/artist/new", "http://img.example/artist.jpg"));
         when(graphService.getTrackPlacements(any())).thenReturn(List.of());
 
         Track track = trackService.createOrUpdateTrack(new CreateTrackRequest("spotify-track-new", null, null, null, null, null, null));
@@ -228,7 +231,7 @@ class TrackServiceTest {
         Artist artist = album.getArtist();
         assertThat(artist.getSpotifyArtistId()).isEqualTo("spotify-artist-new");
         assertThat(artist.getName()).isEqualTo("Brand New Artist");
-        assertThat(artist.getImageUrl()).isNull();
+        assertThat(artist.getImageUrl()).isEqualTo("http://img.example/artist.jpg");
     }
 
     @Test
@@ -239,6 +242,8 @@ class TrackServiceTest {
             .thenReturn(new SpotifyTrackData("spotify-track-shared-1", "Track One", 200000, null, 1, null, albumData, artistData));
         when(spotifyCatalogService.fetchTrack("spotify-track-shared-2"))
             .thenReturn(new SpotifyTrackData("spotify-track-shared-2", "Track Two", 200000, null, 2, null, albumData, artistData));
+        when(spotifyCatalogService.fetchArtist("spotify-artist-shared"))
+            .thenReturn(new SpotifyArtistData("spotify-artist-shared", "Shared Artist", null, null));
         when(graphService.getTrackPlacements(any())).thenReturn(List.of(), List.of(new TrackPlacement(UUID.randomUUID(), 1)));
 
         Track first = trackService.createOrUpdateTrack(new CreateTrackRequest("spotify-track-shared-1", null, null, null, null, null, null));
