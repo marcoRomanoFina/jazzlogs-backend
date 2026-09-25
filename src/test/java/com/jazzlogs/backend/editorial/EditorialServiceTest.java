@@ -234,31 +234,58 @@ class EditorialServiceTest {
     }
 
     @Test
-    void setTrackEditorialImage_uploadsUnderItsOwnKeyAndPersistsTheReturnedUrl() {
+    void setTrackEditorialCoverImage_uploadsUnderItsOwnKeyAndPersistsTheReturnedUrl() {
         Track track = persistTrack("Track Image Track");
         editorialService.upsertTrackEditorial(
             track.getId(), new TrackEditorialRequest("Track Image Editorial", "dek", EditorialByline.JAZZLOGS, List.of())
         );
         MockMultipartFile file = new MockMultipartFile("file", "image.jpg", "image/jpeg", "fake-bytes".getBytes());
-        when(imageStorageService.upload("track-editorials/" + track.getId() + "/image", file))
-            .thenReturn("http://localhost:9000/jazzlogs-images/track-editorials/" + track.getId() + "/image.jpg");
+        when(imageStorageService.upload("track-editorials/" + track.getId() + "/cover", file))
+            .thenReturn("http://localhost:9000/jazzlogs-images/track-editorials/" + track.getId() + "/cover.jpg");
 
-        editorialService.setTrackEditorialImage(track.getId(), file);
+        editorialService.setTrackEditorialCoverImage(track.getId(), file);
 
         TrackEditorial reloaded = trackEditorialRepository.findByTrackId(track.getId()).orElseThrow();
-        assertThat(reloaded.getImageUrl()).isEqualTo("http://localhost:9000/jazzlogs-images/track-editorials/" + track.getId() + "/image.jpg");
+        assertThat(reloaded.getCoverImageUrl()).isEqualTo("http://localhost:9000/jazzlogs-images/track-editorials/" + track.getId() + "/cover.jpg");
     }
 
     @Test
-    void setTrackEditorialImage_rejectsATrackWithNoEditorialYet() {
+    void setTrackEditorialCoverImage_rejectsATrackWithNoEditorialYet() {
         Track track = persistTrack("No Editorial Track");
         MockMultipartFile file = new MockMultipartFile("file", "image.jpg", "image/jpeg", "fake-bytes".getBytes());
 
         ResponseStatusException ex = catchThrowableOfType(
-            ResponseStatusException.class, () -> editorialService.setTrackEditorialImage(track.getId(), file)
+            ResponseStatusException.class, () -> editorialService.setTrackEditorialCoverImage(track.getId(), file)
         );
 
         assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    void setTrackEditorialPrincipalSecondaryBannerFooterImages_eachUploadUnderTheirOwnKey() {
+        Track track = persistTrack("Track Layout Images Track");
+        editorialService.upsertTrackEditorial(
+            track.getId(), new TrackEditorialRequest("Track Layout Images Editorial", "dek", EditorialByline.JAZZLOGS, List.of())
+        );
+        MockMultipartFile principal = new MockMultipartFile("file", "principal.jpg", "image/jpeg", "principal-bytes".getBytes());
+        MockMultipartFile secondary = new MockMultipartFile("file", "secondary.jpg", "image/jpeg", "secondary-bytes".getBytes());
+        MockMultipartFile banner = new MockMultipartFile("file", "banner.jpg", "image/jpeg", "banner-bytes".getBytes());
+        MockMultipartFile footer = new MockMultipartFile("file", "footer.jpg", "image/jpeg", "footer-bytes".getBytes());
+        when(imageStorageService.upload("track-editorials/" + track.getId() + "/principal", principal)).thenReturn("http://img/principal.jpg");
+        when(imageStorageService.upload("track-editorials/" + track.getId() + "/secondary", secondary)).thenReturn("http://img/secondary.jpg");
+        when(imageStorageService.upload("track-editorials/" + track.getId() + "/banner", banner)).thenReturn("http://img/banner.jpg");
+        when(imageStorageService.upload("track-editorials/" + track.getId() + "/footer", footer)).thenReturn("http://img/footer.jpg");
+
+        editorialService.setTrackEditorialPrincipalImage(track.getId(), principal);
+        editorialService.setTrackEditorialSecondaryImage(track.getId(), secondary);
+        editorialService.setTrackEditorialBannerImage(track.getId(), banner);
+        editorialService.setTrackEditorialFooterImage(track.getId(), footer);
+
+        TrackEditorial reloaded = trackEditorialRepository.findByTrackId(track.getId()).orElseThrow();
+        assertThat(reloaded.getPrincipalImageUrl()).isEqualTo("http://img/principal.jpg");
+        assertThat(reloaded.getSecondaryImageUrl()).isEqualTo("http://img/secondary.jpg");
+        assertThat(reloaded.getBannerImageUrl()).isEqualTo("http://img/banner.jpg");
+        assertThat(reloaded.getFooterImageUrl()).isEqualTo("http://img/footer.jpg");
     }
 
     private Album persistAlbum(String name) {

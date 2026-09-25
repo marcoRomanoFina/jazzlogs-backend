@@ -70,8 +70,8 @@ public class EditorialService {
     }
 
     /**
-     * Uploads this track editorial's own image — one object per editorial
-     * ({@code track-editorials/{trackId}/image.<ext>}), so re-uploading
+     * Uploads this track editorial's cover image — one object per editorial
+     * ({@code track-editorials/{trackId}/cover.<ext>}), so re-uploading
      * overwrites the old one instead of leaving it orphaned in storage.
      *
      * @param trackId the track whose editorial to update
@@ -79,11 +79,79 @@ public class EditorialService {
      * @throws ResponseStatusException 404 if the track has no editorial written yet
      */
     @Transactional
-    public void setTrackEditorialImage(UUID trackId, MultipartFile file) {
-        TrackEditorial editorial = trackEditorialRepository.findByTrackId(trackId)
+    public void setTrackEditorialCoverImage(UUID trackId, MultipartFile file) {
+        TrackEditorial editorial = trackEditorialOrThrow(trackId);
+        String url = imageStorageService.upload("track-editorials/" + trackId + "/cover", file);
+        editorial.updateCoverImageUrl(url);
+    }
+
+    /**
+     * Uploads this track editorial's principal image — see {@link
+     * #setTrackEditorialCoverImage}. One object per editorial ({@code
+     * track-editorials/{trackId}/principal.<ext>}).
+     *
+     * @param trackId the track whose editorial to update
+     * @param file    the image file (jpeg/png/webp only)
+     * @throws ResponseStatusException 404 if the track has no editorial written yet
+     */
+    @Transactional
+    public void setTrackEditorialPrincipalImage(UUID trackId, MultipartFile file) {
+        TrackEditorial editorial = trackEditorialOrThrow(trackId);
+        String url = imageStorageService.upload("track-editorials/" + trackId + "/principal", file);
+        editorial.updatePrincipalImageUrl(url);
+    }
+
+    /**
+     * Uploads this track editorial's secondary image — see {@link
+     * #setTrackEditorialCoverImage}. One object per editorial ({@code
+     * track-editorials/{trackId}/secondary.<ext>}).
+     *
+     * @param trackId the track whose editorial to update
+     * @param file    the image file (jpeg/png/webp only)
+     * @throws ResponseStatusException 404 if the track has no editorial written yet
+     */
+    @Transactional
+    public void setTrackEditorialSecondaryImage(UUID trackId, MultipartFile file) {
+        TrackEditorial editorial = trackEditorialOrThrow(trackId);
+        String url = imageStorageService.upload("track-editorials/" + trackId + "/secondary", file);
+        editorial.updateSecondaryImageUrl(url);
+    }
+
+    /**
+     * Uploads this track editorial's banner image — see {@link
+     * #setTrackEditorialCoverImage}. One object per editorial ({@code
+     * track-editorials/{trackId}/banner.<ext>}).
+     *
+     * @param trackId the track whose editorial to update
+     * @param file    the image file (jpeg/png/webp only)
+     * @throws ResponseStatusException 404 if the track has no editorial written yet
+     */
+    @Transactional
+    public void setTrackEditorialBannerImage(UUID trackId, MultipartFile file) {
+        TrackEditorial editorial = trackEditorialOrThrow(trackId);
+        String url = imageStorageService.upload("track-editorials/" + trackId + "/banner", file);
+        editorial.updateBannerImageUrl(url);
+    }
+
+    /**
+     * Uploads this track editorial's footer image — see {@link
+     * #setTrackEditorialCoverImage}. One object per editorial ({@code
+     * track-editorials/{trackId}/footer.<ext>}).
+     *
+     * @param trackId the track whose editorial to update
+     * @param file    the image file (jpeg/png/webp only)
+     * @throws ResponseStatusException 404 if the track has no editorial written yet
+     */
+    @Transactional
+    public void setTrackEditorialFooterImage(UUID trackId, MultipartFile file) {
+        TrackEditorial editorial = trackEditorialOrThrow(trackId);
+        String url = imageStorageService.upload("track-editorials/" + trackId + "/footer", file);
+        editorial.updateFooterImageUrl(url);
+    }
+
+    private TrackEditorial trackEditorialOrThrow(UUID trackId) {
+        return trackEditorialRepository.findByTrackId(trackId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No editorial for track: " + trackId));
-        String url = imageStorageService.upload("track-editorials/" + trackId + "/image", file);
-        editorial.updateImageUrl(url);
     }
 
     /**
@@ -227,7 +295,10 @@ public class EditorialService {
 
     public TrackEditorialDto toTrackEditorialDto(TrackEditorial editorial) {
         return new TrackEditorialDto(
-            editorial.getTitle(), editorial.getDek(), editorial.getByline(), editorial.getImageUrl(), blocksOf(editorial)
+            editorial.getTitle(), editorial.getDek(), editorial.getByline(),
+            editorial.getCoverImageUrl(), editorial.getPrincipalImageUrl(), editorial.getSecondaryImageUrl(),
+            editorial.getBannerImageUrl(), editorial.getFooterImageUrl(),
+            blocksOf(editorial)
         );
     }
 

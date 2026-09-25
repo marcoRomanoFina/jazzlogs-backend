@@ -11,11 +11,25 @@ import com.jazzlogs.backend.editorial.EditorialByline;
  * and the album detail page doesn't currently surface a per-track-editorial
  * like action.
  *
- * @param title    the editorial's headline
- * @param dek      short standfirst text
- * @param byline   who wrote it
- * @param imageUrl this editorial's own image, {@code null} until uploaded
- * @param blocks   the editorial's body, in order
+ * @param title             the editorial's headline
+ * @param dek               short standfirst text
+ * @param byline            who wrote it
+ * @param coverImageUrl     this editorial's cover image, {@code null} until uploaded
+ * @param principalImageUrl this editorial's principal image, {@code null} until uploaded
+ * @param secondaryImageUrl this editorial's secondary image, {@code null} until uploaded
+ * @param bannerImageUrl    this editorial's banner image, {@code null} until uploaded
+ * @param footerImageUrl    this editorial's footer image, {@code null} until uploaded
+ * @param blocks            the editorial's body, in order
  */
-public record TrackEditorialDto(String title, String dek, EditorialByline byline, String imageUrl, List<EditorialBlockDto> blocks) {
+public record TrackEditorialDto(
+    String title,
+    String dek,
+    EditorialByline byline,
+    String coverImageUrl,
+    String principalImageUrl,
+    String secondaryImageUrl,
+    String bannerImageUrl,
+    String footerImageUrl,
+    List<EditorialBlockDto> blocks
+) {
 }
