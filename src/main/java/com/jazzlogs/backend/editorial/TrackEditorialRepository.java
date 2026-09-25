@@ -31,22 +31,6 @@ public interface TrackEditorialRepository extends LikeableRepository<TrackEditor
     @Query("SELECT te.likeCount FROM TrackEditorial te WHERE te.id = :id")
     Optional<Integer> findLikeCount(@Param("id") UUID entityId);
 
-    // One query for every track editorial on this album (title/dek/byline +
-    // blocks), instead of one per track — see AlbumService.getAlbumTracks,
-    // which used to call getTrackEditorialDto(trackId) once per track.
-    // DISTINCT is needed because the blocks fetch join otherwise duplicates
-    // each TrackEditorial row once per block.
-    @Query("""
-        SELECT DISTINCT te FROM TrackEditorial te
-        JOIN FETCH te.track t
-        LEFT JOIN FETCH te.blocks
-        WHERE t.album.id = :albumId
-        """)
-    List<TrackEditorial> findByTrackAlbumId(@Param("albumId") UUID albumId);
-
-    /** How many of this album's tracks have a written editorial — see {@code AlbumService#getAlbumHeader}. Cheap: {@code COUNT(*)}, no fetch join. */
-    long countByTrackAlbumId(UUID albumId);
-
     /**
      * The archive's free-form search/browse listing — {@code pattern} is a
      * lowercased {@code "%...%"} substring, matched against either the

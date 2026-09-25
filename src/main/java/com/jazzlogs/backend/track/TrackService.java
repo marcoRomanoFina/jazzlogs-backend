@@ -254,7 +254,7 @@ public class TrackService {
         return toTrackDto(track, placement, editorialService.getTrackEditorialDto(track.getId()));
     }
 
-    /** editorialDto comes pre-fetched too (see AlbumService.getAlbumTracks) — everything else is still one query per track. */
+    /** editorialDto comes pre-fetched too — everything else is still one query per track. */
     public TrackDto toTrackDto(Track track, TrackPlacement placement, TrackEditorialDto editorialDto) {
         UUID trackId = track.getId();
         return toTrackDto(track, new TrackBatchContext(
@@ -274,11 +274,7 @@ public class TrackService {
         ));
     }
 
-    /**
-     * Everything pre-fetched in bulk for a whole album (see
-     * AlbumService.getAlbumTracks) — no queries of any kind in here, unlike
-     * the overloads above.
-     */
+    /** Everything already pre-fetched by the caller — no queries of any kind in here, unlike the overloads above. */
     public TrackDto toTrackDto(Track track, TrackBatchContext ctx) {
         UUID trackId = track.getId();
         TrackPlacement placement = ctx.placement();

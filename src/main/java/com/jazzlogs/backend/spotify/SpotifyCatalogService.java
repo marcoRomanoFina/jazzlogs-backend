@@ -20,7 +20,7 @@ import lombok.extern.slf4j.Slf4j;
  * All three fetch methods fail hard: any failure (not found, rate-limited twice,
  * network error) surfaces as a SpotifyLookupException — a bad/unreachable
  * spotifyAlbumId/spotifyTrackId/spotifyArtistId must fail the whole
- * album/track/artist creation (see AlbumService, TrackService, ArtistService)
+ * album/track/artist creation (see TrackService, ArtistService)
  * rather than leave a half-populated row behind.
  */
 @Slf4j

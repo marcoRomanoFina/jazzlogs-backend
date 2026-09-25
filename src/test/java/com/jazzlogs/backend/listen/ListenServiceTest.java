@@ -129,11 +129,9 @@ class ListenServiceTest {
     }
 
     private Track persistTrack(Album album) {
-        Track track = trackRepository.save(new Track(
+        return trackRepository.save(new Track(
             album, null, "Test Track", null, null, null,
             null, null, null, null, null, null
         ));
-        album.getTracks().add(track);
-        return track;
     }
 }

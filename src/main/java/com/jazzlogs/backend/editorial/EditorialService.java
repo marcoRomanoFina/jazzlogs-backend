@@ -7,7 +7,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 import jakarta.persistence.EntityManager;
 
@@ -262,11 +261,6 @@ public class EditorialService {
     /** For {@code TrackService.setFeatured} — a track needs a {@link TrackEditorial} before it can be featured. */
     public boolean hasTrackEditorial(UUID trackId) {
         return trackEditorialRepository.existsByTrackId(trackId);
-    }
-
-    public Map<UUID, TrackEditorialDto> getTrackEditorialDtosByAlbumId(UUID albumId) {
-        return trackEditorialRepository.findByTrackAlbumId(albumId).stream()
-            .collect(Collectors.toMap(te -> te.getTrack().getId(), this::toTrackEditorialDto));
     }
 
     /**

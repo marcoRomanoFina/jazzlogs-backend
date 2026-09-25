@@ -13,10 +13,10 @@ import com.jazzlogs.backend.track.CompositionType;
 import com.jazzlogs.backend.track.TempoFeel;
 
 /**
- * One track within the list {@code AlbumService#getAlbumTracks} returns —
- * the album page's per-track card, current user's own state included
- * (rating/listened/saved). Notes are NOT here — see {@code
- * TrackController#getTrackNotes}, its own paginated per-track endpoint.
+ * A track's full own data, nested inside {@code TrackDetailDto} — the
+ * current user's own state included (rating/listened/saved). Notes are NOT
+ * here — see {@code TrackController#getTrackNotes}, its own paginated
+ * per-track endpoint.
  *
  * @param id                  the track's own id
  * @param trackNumber         position on the album; {@code null} if Neo4j has no placement recorded for it
