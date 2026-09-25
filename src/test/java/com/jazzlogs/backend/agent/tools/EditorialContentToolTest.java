@@ -70,7 +70,7 @@ class EditorialContentToolTest {
     @Test
     void noCategories_fetchesAllBlocksOrderedByPosition() throws Exception {
         UUID editorialId = UUID.randomUUID();
-        EditorialBlock block = block(0, "text 1", BlockContentCategory.HISTORICAL_CONTEXT);
+        EditorialBlock block = block(0, "text 1", BlockContentCategory.CONTEXT);
         when(editorialBlockRepository.findByTrackEditorialIdOrderByPositionAsc(editorialId)).thenReturn(List.of(block));
 
         ToolExecutionResult result = tool.execute(callWith("{\"editorialId\":\"" + editorialId + "\"}"), USER_ID);
@@ -78,23 +78,23 @@ class EditorialContentToolTest {
         JsonNode metadata = JSON.readTree(result.payload()).get("metadata");
         assertThat(metadata.get("editorialId").asText()).isEqualTo(editorialId.toString());
         assertThat(metadata.get("blocks")).hasSize(1);
-        assertThat(metadata.get("blocks").get(0).get("contentCategory").asText()).isEqualTo("HISTORICAL_CONTEXT");
+        assertThat(metadata.get("blocks").get(0).get("contentCategory").asText()).isEqualTo("CONTEXT");
     }
 
     @Test
     void withCategories_filtersByContentCategory() throws Exception {
         UUID editorialId = UUID.randomUUID();
-        EditorialBlock block = block(0, "a story", BlockContentCategory.ANECDOTE);
-        when(editorialBlockRepository.findByTrackEditorialIdAndContentCategoryInOrderByPositionAsc(editorialId, List.of(BlockContentCategory.ANECDOTE)))
+        EditorialBlock block = block(0, "a story", BlockContentCategory.QUOTE);
+        when(editorialBlockRepository.findByTrackEditorialIdAndContentCategoryInOrderByPositionAsc(editorialId, List.of(BlockContentCategory.QUOTE)))
             .thenReturn(List.of(block));
 
         ToolExecutionResult result = tool.execute(callWith(
-            "{\"editorialId\":\"" + editorialId + "\",\"categories\":[\"ANECDOTE\"]}"
+            "{\"editorialId\":\"" + editorialId + "\",\"categories\":[\"QUOTE\"]}"
         ), USER_ID);
 
         JsonNode metadata = JSON.readTree(result.payload()).get("metadata");
         assertThat(metadata.get("blocks")).hasSize(1);
-        verify(editorialBlockRepository).findByTrackEditorialIdAndContentCategoryInOrderByPositionAsc(editorialId, List.of(BlockContentCategory.ANECDOTE));
+        verify(editorialBlockRepository).findByTrackEditorialIdAndContentCategoryInOrderByPositionAsc(editorialId, List.of(BlockContentCategory.QUOTE));
     }
 
     @Test

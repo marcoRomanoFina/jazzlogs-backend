@@ -54,7 +54,7 @@ class SemanticSearchToolTest {
 
     @Test
     void missingEntityType_throws() {
-        ToolCallRequest call = callWith("{\"candidateIds\":[],\"category\":\"ANECDOTE\",\"queryText\":\"a story\"}");
+        ToolCallRequest call = callWith("{\"candidateIds\":[],\"category\":\"QUOTE\",\"queryText\":\"a story\"}");
 
         assertThatThrownBy(() -> tool.execute(call, USER_ID)).isInstanceOf(IllegalArgumentException.class);
     }
@@ -62,7 +62,7 @@ class SemanticSearchToolTest {
     @Test
     void unknownEntityType_throws() {
         ToolCallRequest call = callWith(
-            "{\"entityType\":\"PLAYLIST\",\"candidateIds\":[],\"category\":\"ANECDOTE\",\"queryText\":\"a story\"}"
+            "{\"entityType\":\"PLAYLIST\",\"candidateIds\":[],\"category\":\"QUOTE\",\"queryText\":\"a story\"}"
         );
 
         assertThatThrownBy(() -> tool.execute(call, USER_ID)).isInstanceOf(IllegalArgumentException.class);
@@ -70,7 +70,7 @@ class SemanticSearchToolTest {
 
     @Test
     void missingCandidateIds_throws() {
-        ToolCallRequest call = callWith("{\"entityType\":\"TRACK\",\"category\":\"ANECDOTE\",\"queryText\":\"a story\"}");
+        ToolCallRequest call = callWith("{\"entityType\":\"TRACK\",\"category\":\"QUOTE\",\"queryText\":\"a story\"}");
 
         assertThatThrownBy(() -> tool.execute(call, USER_ID)).isInstanceOf(IllegalArgumentException.class);
     }
@@ -78,7 +78,7 @@ class SemanticSearchToolTest {
     @Test
     void malformedCandidateId_throws() {
         ToolCallRequest call = callWith(
-            "{\"entityType\":\"TRACK\",\"candidateIds\":[\"not-a-uuid\"],\"category\":\"ANECDOTE\",\"queryText\":\"a story\"}"
+            "{\"entityType\":\"TRACK\",\"candidateIds\":[\"not-a-uuid\"],\"category\":\"QUOTE\",\"queryText\":\"a story\"}"
         );
 
         assertThatThrownBy(() -> tool.execute(call, USER_ID)).isInstanceOf(IllegalArgumentException.class);
@@ -102,7 +102,7 @@ class SemanticSearchToolTest {
 
     @Test
     void blankQueryText_throws() {
-        ToolCallRequest call = callWith("{\"entityType\":\"TRACK\",\"candidateIds\":[],\"category\":\"ANECDOTE\",\"queryText\":\"\"}");
+        ToolCallRequest call = callWith("{\"entityType\":\"TRACK\",\"candidateIds\":[],\"category\":\"QUOTE\",\"queryText\":\"\"}");
 
         assertThatThrownBy(() -> tool.execute(call, USER_ID)).isInstanceOf(IllegalArgumentException.class);
     }
@@ -110,7 +110,7 @@ class SemanticSearchToolTest {
     @Test
     void unknownLevelValue_throws() {
         ToolCallRequest call = callWith(
-            "{\"entityType\":\"TRACK\",\"candidateIds\":[],\"category\":\"ANECDOTE\",\"queryText\":\"q\",\"energy\":\"EXTREME\"}"
+            "{\"entityType\":\"TRACK\",\"candidateIds\":[],\"category\":\"QUOTE\",\"queryText\":\"q\",\"energy\":\"EXTREME\"}"
         );
 
         assertThatThrownBy(() -> tool.execute(call, USER_ID)).isInstanceOf(IllegalArgumentException.class);
@@ -122,7 +122,7 @@ class SemanticSearchToolTest {
         UUID trackId = UUID.randomUUID();
         ToolCallRequest call = callWith(
             "{\"entityType\":\"TRACK\",\"candidateIds\":[\"" + trackId + "\"],"
-                + "\"category\":\"ANECDOTE\",\"energy\":\"HIGH\",\"accessibility\":\"LOW\",\"moodIntensity\":\"MEDIUM\","
+                + "\"category\":\"QUOTE\",\"energy\":\"HIGH\",\"accessibility\":\"LOW\",\"moodIntensity\":\"MEDIUM\","
                 + "\"queryText\":\"a mellow late-night session\"}"
         );
 
@@ -133,7 +133,7 @@ class SemanticSearchToolTest {
         SemanticSearchRequest request = captor.getValue();
         assertThat(request.entityType()).isEqualTo(CatalogItemType.TRACK);
         assertThat(request.candidateIds()).containsExactly(trackId);
-        assertThat(request.category()).isEqualTo(BlockContentCategory.ANECDOTE);
+        assertThat(request.category()).isEqualTo(BlockContentCategory.QUOTE);
         assertThat(request.energy()).isEqualTo(Level.HIGH);
         assertThat(request.accessibility()).isEqualTo(Level.LOW);
         assertThat(request.moodIntensity()).isEqualTo(Level.MEDIUM);
@@ -143,7 +143,7 @@ class SemanticSearchToolTest {
     @Test
     void emptyCandidateIdsList_isValid_notRejected() {
         when(semanticSearchService.search(any())).thenReturn(new SemanticSearchResult(List.of()));
-        ToolCallRequest call = callWith("{\"entityType\":\"TRACK\",\"candidateIds\":[],\"category\":\"ANECDOTE\",\"queryText\":\"q\"}");
+        ToolCallRequest call = callWith("{\"entityType\":\"TRACK\",\"candidateIds\":[],\"category\":\"QUOTE\",\"queryText\":\"q\"}");
 
         ToolExecutionResult result = tool.execute(call, USER_ID);
 
@@ -156,7 +156,7 @@ class SemanticSearchToolTest {
     @Test
     void omittedOptionalFilters_areParsedAsNull() {
         when(semanticSearchService.search(any())).thenReturn(new SemanticSearchResult(List.of()));
-        ToolCallRequest call = callWith("{\"entityType\":\"TRACK\",\"candidateIds\":[],\"category\":\"ANECDOTE\",\"queryText\":\"q\"}");
+        ToolCallRequest call = callWith("{\"entityType\":\"TRACK\",\"candidateIds\":[],\"category\":\"QUOTE\",\"queryText\":\"q\"}");
 
         tool.execute(call, USER_ID);
 
@@ -171,10 +171,10 @@ class SemanticSearchToolTest {
     void resultMatches_areSerializedIntoMetadata() throws Exception {
         UUID trackId = UUID.randomUUID();
         ScoredBlock match = new ScoredBlock(
-            CatalogItemType.TRACK, trackId, BlockContentCategory.ANECDOTE, 0.87, "a story", "So What"
+            CatalogItemType.TRACK, trackId, BlockContentCategory.QUOTE, 0.87, "a story", "So What"
         );
         when(semanticSearchService.search(any())).thenReturn(new SemanticSearchResult(List.of(match)));
-        ToolCallRequest call = callWith("{\"entityType\":\"TRACK\",\"candidateIds\":[],\"category\":\"ANECDOTE\",\"queryText\":\"q\"}");
+        ToolCallRequest call = callWith("{\"entityType\":\"TRACK\",\"candidateIds\":[],\"category\":\"QUOTE\",\"queryText\":\"q\"}");
 
         ToolExecutionResult result = tool.execute(call, USER_ID);
 
@@ -189,7 +189,7 @@ class SemanticSearchToolTest {
     @Test
     void noMatches_hasPlainTextContent() throws Exception {
         when(semanticSearchService.search(any())).thenReturn(new SemanticSearchResult(List.of()));
-        ToolCallRequest call = callWith("{\"entityType\":\"TRACK\",\"candidateIds\":[],\"category\":\"ANECDOTE\",\"queryText\":\"q\"}");
+        ToolCallRequest call = callWith("{\"entityType\":\"TRACK\",\"candidateIds\":[],\"category\":\"QUOTE\",\"queryText\":\"q\"}");
 
         ToolExecutionResult result = tool.execute(call, USER_ID);
 
