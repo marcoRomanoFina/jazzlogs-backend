@@ -80,7 +80,6 @@ public class TrackService {
                     data.durationMs(),
                     data.spotifyUrl(),
                     data.imageUrl(),
-                    request.standout(),
                     request.vocalProfile(),
                     request.energy(),
                     request.accessibility(),
@@ -141,7 +140,6 @@ public class TrackService {
         track.setDurationMs(data.durationMs());
         track.setSpotifyUrl(data.spotifyUrl());
         track.setImageUrl(data.imageUrl());
-        track.setStandout(request.standout());
         track.setVocalProfile(request.vocalProfile());
         track.setEnergy(request.energy());
         track.setAccessibility(request.accessibility());
@@ -293,7 +291,6 @@ public class TrackService {
             track.getDurationMs(),
             track.getSpotifyUrl(),
             track.getImageUrl(),
-            track.isStandout(),
             track.getVocalProfile(),
             track.getEnergy(),
             track.getAccessibility(),

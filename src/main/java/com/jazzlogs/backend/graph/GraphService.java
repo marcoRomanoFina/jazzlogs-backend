@@ -177,18 +177,6 @@ public class GraphService {
                 .run());
     }
 
-    public void replaceStyles(UUID albumId, List<String> styleCodes) {
-        replaceTags("Album", albumId, "BELONGS_TO", "Style", styleCodes);
-    }
-
-    public void replaceMoods(UUID albumId, List<String> moodCodes) {
-        replaceTags("Album", albumId, "EVOKES_MOOD", "Mood", moodCodes);
-    }
-
-    public void replaceContexts(UUID albumId, List<String> contextCodes) {
-        replaceTags("Album", albumId, "PERFECT_FOR", "Context", contextCodes);
-    }
-
     // --- Track relationships ---
 
     public void addPerformance(UUID artistId, UUID trackId, String role, String instrumentCode, boolean primaryCredit) {

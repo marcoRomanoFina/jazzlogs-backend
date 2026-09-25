@@ -66,10 +66,6 @@ public class Track {
     @Setter
     private String imageUrl;
 
-    @Setter
-    @Column(name = "is_standout", nullable = false)
-    private boolean standout;
-
     @Column(nullable = false)
     private boolean featured;
 
@@ -116,7 +112,6 @@ public class Track {
         Integer durationMs,
         String spotifyUrl,
         String imageUrl,
-        boolean standout,
         VocalProfile vocalProfile,
         Level energy,
         Level accessibility,
@@ -131,7 +126,6 @@ public class Track {
         this.durationMs = durationMs;
         this.spotifyUrl = spotifyUrl;
         this.imageUrl = imageUrl;
-        this.standout = standout;
         this.vocalProfile = vocalProfile;
         this.energy = energy;
         this.accessibility = accessibility;

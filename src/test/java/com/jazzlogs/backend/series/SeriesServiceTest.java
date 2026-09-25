@@ -843,7 +843,7 @@ class SeriesServiceTest {
 
     private Track persistTrack(Album album) {
         return trackRepository.save(new Track(
-            album, null, "Test Track", null, null, null, false,
+            album, null, "Test Track", null, null, null,
             null, null, null, null, null, null
         ));
     }

@@ -100,7 +100,7 @@ class LikeServiceTest {
             artist, "Like Test Album " + UUID.randomUUID(), null, null, null, 2024, 1
         ));
         Track track = trackRepository.save(new Track(
-            album, null, "Like Test Track", null, null, null, false, null, null, null, null, null, null
+            album, null, "Like Test Track", null, null, null, null, null, null, null, null, null
         ));
         return noteRepository.save(new Note(persistUser(), track, "Title", "Text", null));
     }
