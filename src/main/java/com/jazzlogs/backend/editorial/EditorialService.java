@@ -60,7 +60,7 @@ public class EditorialService {
 
         TrackEditorial editorial = trackEditorialRepository.findByTrackId(trackId)
             .orElseGet(() -> new TrackEditorial(track));
-        editorial.update(request.title(), request.dek(), bylineOrDefault(request.byline()));
+        editorial.update(request.title(), request.dek(), bylineOrDefault(request.byline()), request.logNumber());
         TrackEditorial saved = saveWithUniqueTitle(() -> trackEditorialRepository.save(editorial));
 
         upsertBlocks(saved, request.blocks());
@@ -258,6 +258,18 @@ public class EditorialService {
             .orElse(null);
     }
 
+    /**
+     * Same as {@link #getTrackEditorialDto(UUID)}, but resolves {@code
+     * likedByCurrentUser} against a real user instead of defaulting it to
+     * {@code false} — see {@code TrackService#getTrackDetail}, the only
+     * caller with a real user in scope.
+     */
+    public TrackEditorialDto getTrackEditorialDto(UUID trackId, UUID currentUserId) {
+        return trackEditorialRepository.findByTrackId(trackId)
+            .map(editorial -> toTrackEditorialDto(editorial, currentUserId))
+            .orElse(null);
+    }
+
     /** For {@code TrackService.setFeatured} — a track needs a {@link TrackEditorial} before it can be featured. */
     public boolean hasTrackEditorial(UUID trackId) {
         return trackEditorialRepository.existsByTrackId(trackId);
@@ -288,24 +300,33 @@ public class EditorialService {
     }
 
     public TrackEditorialDto toTrackEditorialDto(TrackEditorial editorial) {
+        return toTrackEditorialDto(editorial, null);
+    }
+
+    /** currentUserId is optional — {@code null} skips the like check entirely instead of querying for a user that was never given. */
+    private TrackEditorialDto toTrackEditorialDto(TrackEditorial editorial, UUID currentUserId) {
+        boolean likedByCurrentUser = currentUserId != null
+            && likeService.hasUserLiked(currentUserId, LikeableEntityType.EDITORIAL, editorial.getId());
+
         return new TrackEditorialDto(
-            editorial.getTitle(), editorial.getDek(), editorial.getByline(),
+            editorial.getTitle(), editorial.getLogNumber(), editorial.getDek(), editorial.getByline(),
             editorial.getCoverImageUrl(), editorial.getPrincipalImageUrl(), editorial.getSecondaryImageUrl(),
             editorial.getBannerImageUrl(), editorial.getFooterImageUrl(),
+            editorial.getLikeCount(), likedByCurrentUser, editorial.getCreatedAt(),
             blocksOf(editorial)
         );
     }
 
     private List<EditorialBlockDto> blocksOf(TrackEditorial editorial) {
         return editorial.getBlocks().stream()
-            .map(block -> new EditorialBlockDto(
-                block.getPosition(),
-                block.getType(),
-                block.getSubhead(),
-                block.getText(),
-                block.getContentCategory()
-            ))
+            .map(this::toEditorialBlockDto)
             .toList();
+    }
+
+    private EditorialBlockDto toEditorialBlockDto(EditorialBlock block) {
+        return new EditorialBlockDto(
+            block.getPosition(), block.getType(), block.getSubhead(), block.getText(), block.getContentCategory()
+        );
     }
 
     private Map<String, Object> buildBaseMetadata(TrackEditorial editorial) {

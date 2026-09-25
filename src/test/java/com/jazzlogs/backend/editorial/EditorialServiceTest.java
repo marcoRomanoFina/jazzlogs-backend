@@ -70,7 +70,7 @@ class EditorialServiceTest {
     void upsertTrackEditorial_persists() {
         Track track = persistTrack("Test Track");
 
-        TrackEditorialRequest request = new TrackEditorialRequest("A Title", "A dek", EditorialByline.JAZZLOGS, List.of());
+        TrackEditorialRequest request = new TrackEditorialRequest("A Title", "1", "A dek", EditorialByline.JAZZLOGS, List.of());
 
         TrackEditorial saved = editorialService.upsertTrackEditorial(track.getId(), request);
 
@@ -84,7 +84,7 @@ class EditorialServiceTest {
         Track track = persistTrack("Byline Default Track");
 
         TrackEditorial saved = editorialService.upsertTrackEditorial(
-            track.getId(), new TrackEditorialRequest("No Byline Title", "dek", null, List.of())
+            track.getId(), new TrackEditorialRequest("No Byline Title", "1", "dek", null, List.of())
         );
 
         assertThat(saved.getByline()).isEqualTo(EditorialByline.JAZZLOGS);
@@ -95,13 +95,13 @@ class EditorialServiceTest {
         Track trackA = persistTrack("Unique Title Track A");
         Track trackB = persistTrack("Unique Title Track B");
         editorialService.upsertTrackEditorial(
-            trackA.getId(), new TrackEditorialRequest("Duplicate Title Test", "dek", EditorialByline.JAZZLOGS, List.of())
+            trackA.getId(), new TrackEditorialRequest("Duplicate Title Test", "1", "dek", EditorialByline.JAZZLOGS, List.of())
         );
 
         ResponseStatusException ex = catchThrowableOfType(
             ResponseStatusException.class,
             () -> editorialService.upsertTrackEditorial(
-                trackB.getId(), new TrackEditorialRequest("Duplicate Title Test", "dek", EditorialByline.JAZZLOGS, List.of())
+                trackB.getId(), new TrackEditorialRequest("Duplicate Title Test", "1", "dek", EditorialByline.JAZZLOGS, List.of())
             )
         );
 
@@ -112,11 +112,11 @@ class EditorialServiceTest {
     void upsertTrackEditorial_allowsReSavingWithItsOwnUnchangedTitle() {
         Track track = persistTrack("Resave Title Track");
         editorialService.upsertTrackEditorial(
-            track.getId(), new TrackEditorialRequest("Resave Same Title", "dek", EditorialByline.JAZZLOGS, List.of())
+            track.getId(), new TrackEditorialRequest("Resave Same Title", "1", "dek", EditorialByline.JAZZLOGS, List.of())
         );
 
         TrackEditorial resaved = editorialService.upsertTrackEditorial(
-            track.getId(), new TrackEditorialRequest("Resave Same Title", "new dek", EditorialByline.JAZZLOGS, List.of())
+            track.getId(), new TrackEditorialRequest("Resave Same Title", "1", "new dek", EditorialByline.JAZZLOGS, List.of())
         );
 
         assertThat(resaved.getDek()).isEqualTo("new dek");
@@ -132,7 +132,7 @@ class EditorialServiceTest {
 
         BlockRequest block = new BlockRequest(EditorialBlockType.PARA, null, "Some editorial prose.", BlockContentCategory.CONTEXT);
         TrackEditorial saved = editorialService.upsertTrackEditorial(
-            track.getId(), new TrackEditorialRequest("Metadata Test Editorial", "dek", EditorialByline.JAZZLOGS, List.of(block))
+            track.getId(), new TrackEditorialRequest("Metadata Test Editorial", "1", "dek", EditorialByline.JAZZLOGS, List.of(block))
         );
 
         Map<String, Object> metadata = saved.getBlocks().get(0).getEmbeddingMetadata();
@@ -150,7 +150,7 @@ class EditorialServiceTest {
 
         editorialService.upsertTrackEditorial(
             persistTrack("Count Test Track").getId(),
-            new TrackEditorialRequest("Count Test Editorial", "dek", EditorialByline.JAZZLOGS, List.of())
+            new TrackEditorialRequest("Count Test Editorial", "1", "dek", EditorialByline.JAZZLOGS, List.of())
         );
 
         assertThat(editorialService.countEditorials()).isEqualTo(before + 1);
@@ -160,7 +160,7 @@ class EditorialServiceTest {
     void listEditorials_matchesByEditorialTitleOrTrackName() {
         Track track = persistTrack("Searchable Track Name");
         editorialService.upsertTrackEditorial(
-            track.getId(), new TrackEditorialRequest("A Wholly Different Title", "dek", EditorialByline.JAZZLOGS, List.of())
+            track.getId(), new TrackEditorialRequest("A Wholly Different Title", "1", "dek", EditorialByline.JAZZLOGS, List.of())
         );
 
         Page<TrackEditorialCatalogueDto> byTitle = editorialService.listEditorials(
@@ -182,7 +182,7 @@ class EditorialServiceTest {
             null, null, null, null, null, null
         ));
         editorialService.upsertTrackEditorial(
-            track.getId(), new TrackEditorialRequest("Catalogue Test Editorial", "A dek", EditorialByline.JAZZLOGS, List.of())
+            track.getId(), new TrackEditorialRequest("Catalogue Test Editorial", "1", "A dek", EditorialByline.JAZZLOGS, List.of())
         );
 
         Page<TrackEditorialCatalogueDto> page = editorialService.listEditorials(
@@ -215,10 +215,10 @@ class EditorialServiceTest {
             album, null, "Not Featured Track", null, null, null, null, null, null, null, null, null
         ));
         editorialService.upsertTrackEditorial(
-            featuredTrack.getId(), new TrackEditorialRequest("Featured Track Editorial", "dek", EditorialByline.JAZZLOGS, List.of())
+            featuredTrack.getId(), new TrackEditorialRequest("Featured Track Editorial", "1", "dek", EditorialByline.JAZZLOGS, List.of())
         );
         editorialService.upsertTrackEditorial(
-            otherTrack.getId(), new TrackEditorialRequest("Not Featured Track Editorial", "dek", EditorialByline.JAZZLOGS, List.of())
+            otherTrack.getId(), new TrackEditorialRequest("Not Featured Track Editorial", "1", "dek", EditorialByline.JAZZLOGS, List.of())
         );
 
         trackRepository.markFeatured(featuredTrack.getId());
@@ -237,7 +237,7 @@ class EditorialServiceTest {
     void setTrackEditorialCoverImage_uploadsUnderItsOwnKeyAndPersistsTheReturnedUrl() {
         Track track = persistTrack("Track Image Track");
         editorialService.upsertTrackEditorial(
-            track.getId(), new TrackEditorialRequest("Track Image Editorial", "dek", EditorialByline.JAZZLOGS, List.of())
+            track.getId(), new TrackEditorialRequest("Track Image Editorial", "1", "dek", EditorialByline.JAZZLOGS, List.of())
         );
         MockMultipartFile file = new MockMultipartFile("file", "image.jpg", "image/jpeg", "fake-bytes".getBytes());
         when(imageStorageService.upload("track-editorials/" + track.getId() + "/cover", file))
@@ -265,7 +265,7 @@ class EditorialServiceTest {
     void setTrackEditorialPrincipalSecondaryBannerFooterImages_eachUploadUnderTheirOwnKey() {
         Track track = persistTrack("Track Layout Images Track");
         editorialService.upsertTrackEditorial(
-            track.getId(), new TrackEditorialRequest("Track Layout Images Editorial", "dek", EditorialByline.JAZZLOGS, List.of())
+            track.getId(), new TrackEditorialRequest("Track Layout Images Editorial", "1", "dek", EditorialByline.JAZZLOGS, List.of())
         );
         MockMultipartFile principal = new MockMultipartFile("file", "principal.jpg", "image/jpeg", "principal-bytes".getBytes());
         MockMultipartFile secondary = new MockMultipartFile("file", "secondary.jpg", "image/jpeg", "secondary-bytes".getBytes());

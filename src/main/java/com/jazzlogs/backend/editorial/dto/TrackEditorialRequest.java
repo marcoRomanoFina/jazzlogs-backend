@@ -10,6 +10,7 @@ import com.jazzlogs.backend.editorial.EditorialByline;
 // EditorialService's upsert methods.
 public record TrackEditorialRequest(
     @NotBlank String title,
+    @NotBlank String logNumber,
     @NotBlank String dek,
     EditorialByline byline,
     List<BlockRequest> blocks

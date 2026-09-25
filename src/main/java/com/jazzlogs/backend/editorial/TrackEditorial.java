@@ -48,6 +48,11 @@ public class TrackEditorial {
     @Column(nullable = false)
     private String title;
 
+    // Admin-set — the number JazzLogs itself refers to this log by, updated
+    // alongside title/dek/byline via the same upsert.
+    @Column(name = "log_number", nullable = false)
+    private String logNumber;
+
     @Column(columnDefinition = "TEXT")
     private String dek;
 
@@ -93,10 +98,11 @@ public class TrackEditorial {
         this.track = track;
     }
 
-    public void update(String title, String dek, EditorialByline byline) {
+    public void update(String title, String dek, EditorialByline byline, String logNumber) {
         this.title = title;
         this.dek = dek;
         this.byline = byline;
+        this.logNumber = logNumber;
     }
 
     public void updateCoverImageUrl(String coverImageUrl) {

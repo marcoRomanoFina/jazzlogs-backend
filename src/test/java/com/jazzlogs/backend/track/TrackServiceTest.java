@@ -242,7 +242,7 @@ class TrackServiceTest {
     // here needs one except the dedicated "rejects with no editorial" test.
     private Track persistTrack(String name) {
         Track track = persistTrackWithoutEditorial(name);
-        editorialService.upsertTrackEditorial(track.getId(), new TrackEditorialRequest(name + " Editorial", "dek", EditorialByline.JAZZLOGS, List.of()));
+        editorialService.upsertTrackEditorial(track.getId(), new TrackEditorialRequest(name + " Editorial", "1", "dek", EditorialByline.JAZZLOGS, List.of()));
         return track;
     }
 
