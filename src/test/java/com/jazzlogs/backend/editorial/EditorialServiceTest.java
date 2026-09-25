@@ -126,7 +126,7 @@ class EditorialServiceTest {
     void upsertTrackEditorial_embedsBlocksWithTrackAlbumArtistMetadata() {
         Album album = persistAlbum("Metadata Test Album");
         Track track = trackRepository.save(new Track(
-            album, null, "Metadata Test Track", null, null, null, false, null, null, null, null, null, null
+            album, null, "Metadata Test Track", null, null, null, null, null, null, null, null, null
         ));
         when(embeddingService.embedBatch(List.of("Some editorial prose."))).thenReturn(List.of(new float[] {0.1f}));
 
@@ -178,7 +178,7 @@ class EditorialServiceTest {
     void listEditorials_returnsTrackAlbumFieldsAndLikeState() {
         Album album = persistAlbum("Catalogue Test Album");
         Track track = trackRepository.save(new Track(
-            album, null, "Catalogue Test Track", null, null, "http://img.example/track.jpg", false,
+            album, null, "Catalogue Test Track", null, null, "http://img.example/track.jpg",
             null, null, null, null, null, null
         ));
         editorialService.upsertTrackEditorial(
@@ -208,11 +208,11 @@ class EditorialServiceTest {
 
         Album album = persistAlbum("Featured Track Album");
         Track featuredTrack = trackRepository.save(new Track(
-            album, null, "Featured Track", null, null, "http://img.example/featured-track.jpg", false,
+            album, null, "Featured Track", null, null, "http://img.example/featured-track.jpg",
             null, null, null, null, null, null
         ));
         Track otherTrack = trackRepository.save(new Track(
-            album, null, "Not Featured Track", null, null, null, false, null, null, null, null, null, null
+            album, null, "Not Featured Track", null, null, null, null, null, null, null, null, null
         ));
         editorialService.upsertTrackEditorial(
             featuredTrack.getId(), new TrackEditorialRequest("Featured Track Editorial", "dek", EditorialByline.JAZZLOGS, List.of())
@@ -271,7 +271,7 @@ class EditorialServiceTest {
     private Track persistTrack(String name) {
         Album album = persistAlbum(name + " Album");
         return trackRepository.save(new Track(
-            album, null, name, null, null, null, false, null, null, null, null, null, null
+            album, null, name, null, null, null, null, null, null, null, null, null
         ));
     }
 }

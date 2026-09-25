@@ -140,7 +140,7 @@ class AlbumServiceTest {
 
     private Track persistTrack(Album album, String name) {
         return trackRepository.save(new Track(
-            album, null, name, null, null, null, false, null, null, null, null, null, null
+            album, null, name, null, null, null, null, null, null, null, null, null
         ));
     }
 }

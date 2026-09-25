@@ -95,7 +95,7 @@ class ChatExchangeServiceTest {
         stubSaveAssignsIdAndCreatedAt();
         Artist artist = new Artist("John Coltrane", null, null, null);
         Album album = new Album(artist, "A Love Supreme", null, null, null, 1965, 4);
-        Track track = new Track(album, null, "Acknowledgement", null, null, null, false, null, null, null, null, null, null);
+        Track track = new Track(album, null, "Acknowledgement", null, null, null, null, null, null, null, null, null);
         UUID trackId = UUID.randomUUID();
         ReflectionTestUtils.setField(track, "id", trackId);
 
@@ -124,7 +124,7 @@ class ChatExchangeServiceTest {
         stubSaveAssignsIdAndCreatedAt();
         Artist artist = new Artist("Miles Davis", null, null, null);
         Album album = new Album(artist, "Kind of Blue", null, null, null, 1959, 5);
-        Track track = new Track(album, null, "So What", null, null, null, false, null, null, null, null, null, null);
+        Track track = new Track(album, null, "So What", null, null, null, null, null, null, null, null, null);
         UUID trackId = UUID.randomUUID();
         UUID albumId = UUID.randomUUID();
         ReflectionTestUtils.setField(track, "id", trackId);
@@ -184,7 +184,7 @@ class ChatExchangeServiceTest {
 
         Artist artist = new Artist("Miles Davis", null, null, null);
         Album album = new Album(artist, "Kind of Blue (Remastered)", null, null, null, 1959, 5);
-        Track track = new Track(album, null, "So What (Remastered)", null, null, null, false, null, null, null, null, null, null);
+        Track track = new Track(album, null, "So What (Remastered)", null, null, null, null, null, null, null, null, null);
         UUID trackId = UUID.randomUUID();
         ReflectionTestUtils.setField(track, "id", trackId);
 
@@ -218,8 +218,8 @@ class ChatExchangeServiceTest {
 
         Artist artist = new Artist("Bill Evans", null, null, null);
         Album album = new Album(artist, "Waltz for Debby", null, null, null, 1961, 5);
-        Track firstTrack = new Track(album, null, "My Foolish Heart", null, null, null, false, null, null, null, null, null, null);
-        Track secondTrack = new Track(album, null, "Waltz for Debby", null, null, null, false, null, null, null, null, null, null);
+        Track firstTrack = new Track(album, null, "My Foolish Heart", null, null, null, null, null, null, null, null, null);
+        Track secondTrack = new Track(album, null, "Waltz for Debby", null, null, null, null, null, null, null, null, null);
         UUID firstTrackId = UUID.randomUUID();
         UUID secondTrackId = UUID.randomUUID();
         ReflectionTestUtils.setField(firstTrack, "id", firstTrackId);

@@ -752,7 +752,7 @@ class PlaylistServiceTest {
 
     private Track persistTrack(Album album, String name, Integer durationMs) {
         return trackRepository.save(new Track(
-            album, null, name, durationMs, null, null, false,
+            album, null, name, durationMs, null, null,
             null, null, null, null, null, null
         ));
     }

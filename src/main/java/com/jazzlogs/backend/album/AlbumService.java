@@ -14,9 +14,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.album.dto.AlbumHeaderDto;
-import com.jazzlogs.backend.album.dto.ContextTagRequest;
-import com.jazzlogs.backend.album.dto.MoodTagRequest;
-import com.jazzlogs.backend.album.dto.StyleTagRequest;
 import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.editorial.TrackEditorialRepository;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialDto;
@@ -33,10 +30,6 @@ import com.jazzlogs.backend.track.TrackService;
 import com.jazzlogs.backend.track.dto.TrackDto;
 import com.jazzlogs.backend.trackrating.TrackRating;
 import com.jazzlogs.backend.trackrating.TrackRatingRepository;
-import com.jazzlogs.backend.vocabulary.ContextVocabulary;
-import com.jazzlogs.backend.vocabulary.MoodVocabulary;
-import com.jazzlogs.backend.vocabulary.StyleVocabulary;
-import com.jazzlogs.backend.vocabulary.VocabularyCodes;
 
 import lombok.AllArgsConstructor;
 
@@ -52,24 +45,6 @@ public class AlbumService {
     private final ListenService listenService;
     private final SavedItemService savedItemService;
     private final TrackRatingRepository trackRatingRepository;
-
-    public void replaceStyles(UUID albumId, StyleTagRequest request) {
-        getAlbumOrThrow(albumId);
-        request.styleCodes().forEach(code -> VocabularyCodes.validate(StyleVocabulary.class, code, "style"));
-        graphService.replaceStyles(albumId, request.styleCodes());
-    }
-
-    public void replaceMoods(UUID albumId, MoodTagRequest request) {
-        getAlbumOrThrow(albumId);
-        request.moodCodes().forEach(code -> VocabularyCodes.validate(MoodVocabulary.class, code, "mood"));
-        graphService.replaceMoods(albumId, request.moodCodes());
-    }
-
-    public void replaceContexts(UUID albumId, ContextTagRequest request) {
-        getAlbumOrThrow(albumId);
-        request.contextCodes().forEach(code -> VocabularyCodes.validate(ContextVocabulary.class, code, "context"));
-        graphService.replaceContexts(albumId, request.contextCodes());
-    }
 
     /**
      * The album's minimal support metadata — no editorial, no own page.

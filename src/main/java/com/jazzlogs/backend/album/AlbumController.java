@@ -3,21 +3,14 @@ package com.jazzlogs.backend.album;
 import java.util.List;
 import java.util.UUID;
 
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.jazzlogs.backend.album.dto.AlbumHeaderDto;
-import com.jazzlogs.backend.album.dto.ContextTagRequest;
-import com.jazzlogs.backend.album.dto.MoodTagRequest;
-import com.jazzlogs.backend.album.dto.StyleTagRequest;
 import com.jazzlogs.backend.track.dto.TrackDto;
 import com.jazzlogs.backend.user.UserService;
 
@@ -46,28 +39,6 @@ public class AlbumController {
     @GetMapping("/{id}/tracks")
     public List<TrackDto> getAlbumTracks(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
         return albumService.getAlbumTracks(id, currentUserId(jwt));
-    }
-
-    // Full replace, not add-one — see StyleTagRequest's comment.
-    @PutMapping("/{id}/tags/style")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> replaceStyles(@PathVariable UUID id, @RequestBody StyleTagRequest request) {
-        albumService.replaceStyles(id, request);
-        return ResponseEntity.noContent().build();
-    }
-
-    @PutMapping("/{id}/tags/mood")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> replaceMoods(@PathVariable UUID id, @RequestBody MoodTagRequest request) {
-        albumService.replaceMoods(id, request);
-        return ResponseEntity.noContent().build();
-    }
-
-    @PutMapping("/{id}/tags/context")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> replaceContexts(@PathVariable UUID id, @RequestBody ContextTagRequest request) {
-        albumService.replaceContexts(id, request);
-        return ResponseEntity.noContent().build();
     }
 
     // No POST/DELETE /{id}/listen anymore — an album's "listened" state

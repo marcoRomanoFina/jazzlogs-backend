@@ -25,7 +25,6 @@ import com.jazzlogs.backend.track.TempoFeel;
  * @param durationMs          length in milliseconds
  * @param spotifyUrl          link to play it on Spotify
  * @param imageUrl            borrowed from the album's cover art — a track has no artwork of its own on Spotify
- * @param standout            admin-set at creation — "notable within its own album", distinct from {@code Track#featured}
  * @param vocalProfile        instrumental/vocal classification
  * @param energy              tag: how energetic the track is
  * @param accessibility       tag: how approachable/accessible the track is
@@ -53,7 +52,6 @@ public record TrackDto(
     Integer durationMs,
     String spotifyUrl,
     String imageUrl,
-    boolean standout,
     VocalProfile vocalProfile,
     Level energy,
     Level accessibility,
