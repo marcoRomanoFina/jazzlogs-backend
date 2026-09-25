@@ -14,6 +14,7 @@ import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.ai.document.Document;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -24,7 +25,9 @@ import org.springframework.web.server.ResponseStatusException;
 import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.editorial.dto.BlockRequest;
 import com.jazzlogs.backend.editorial.dto.EditorialBlockDto;
+import com.jazzlogs.backend.editorial.dto.EditorialTrackSummaryDto;
 import com.jazzlogs.backend.editorial.dto.FeaturedTrackDto;
+import com.jazzlogs.backend.editorial.dto.LatestEditorialDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialCatalogueDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialRequest;
@@ -44,6 +47,7 @@ public class EditorialService {
 
     private final TrackRepository trackRepository;
     private final TrackEditorialRepository trackEditorialRepository;
+    private final EditorialBlockRepository editorialBlockRepository;
     private final EmbeddingService embeddingService;
     private final LikeService likeService;
     private final ImageStorageService imageStorageService;
@@ -229,9 +233,14 @@ public class EditorialService {
      * @return the matching page
      */
     @Transactional(readOnly = true)
-    public Page<TrackEditorialCatalogueDto> listEditorials(String q, Pageable pageable, UUID currentUserId) {
+    public Page<TrackEditorialCatalogueDto> listEditorials(
+        String q,
+        EditorialByline byline,
+        Pageable pageable,
+        UUID currentUserId
+    ) {
         String pattern = (q == null || q.isBlank()) ? null : "%" + q.trim().toLowerCase() + "%";
-        Page<TrackEditorialCatalogueRow> page = trackEditorialRepository.searchCatalogue(pattern, pageable);
+        Page<TrackEditorialCatalogueRow> page = trackEditorialRepository.searchCatalogue(pattern, byline, pageable);
 
         List<UUID> ids = page.getContent().stream().map(TrackEditorialCatalogueRow::id).toList();
         Set<UUID> liked = likeService.hasUserLikedBatch(currentUserId, LikeableEntityType.EDITORIAL, ids);
@@ -239,9 +248,14 @@ public class EditorialService {
         return page.map(row -> toTrackEditorialCatalogueDto(row, liked.contains(row.id())));
     }
 
+    /** Backward-compatible catalogue listing without an author filter. */
+    public Page<TrackEditorialCatalogueDto> listEditorials(String q, Pageable pageable, UUID currentUserId) {
+        return listEditorials(q, null, pageable, currentUserId);
+    }
+
     private TrackEditorialCatalogueDto toTrackEditorialCatalogueDto(TrackEditorialCatalogueRow row, boolean likedByCurrentUser) {
         return new TrackEditorialCatalogueDto(
-            row.id(), row.trackId(), row.trackName(), row.trackImageUrl(), row.albumName(), row.albumId(),
+            row.id(), row.trackId(), row.trackName(), row.editorialCoverUrl(), row.albumName(), row.albumId(), row.artistName(),
             row.title(), row.dek(), row.byline(), row.createdAt(), row.likeCount(), likedByCurrentUser
         );
     }
@@ -250,6 +264,77 @@ public class EditorialService {
     @Transactional(readOnly = true)
     public long countEditorials() {
         return trackEditorialRepository.count();
+    }
+
+    /** Never exposes more than this many rows, however large {@code n} is asked for — the server has the final word, same as everywhere else this pattern shows up (e.g. GraphFilterTool's topK). */
+    private static final int MAX_RECENT_BY_BYLINE = 10;
+    private static final int MAX_RECENT_EDITORIALS = 15;
+
+    /**
+     * The newest editorials across all bylines, newest first.
+     *
+     * @param n             how many to return; clamped to {@code [1, MAX_RECENT_EDITORIALS]}
+     * @param currentUserId used only to compute each result's {@code likedByCurrentUser}
+     */
+    @Transactional(readOnly = true)
+    public List<EditorialTrackSummaryDto> getRecentEditorials(int n, UUID currentUserId) {
+        int limit = Math.min(Math.max(n, 1), MAX_RECENT_EDITORIALS);
+        List<EditorialTrackSummaryRow> rows = trackEditorialRepository.findRecent(PageRequest.of(0, limit));
+
+        List<UUID> ids = rows.stream().map(EditorialTrackSummaryRow::id).toList();
+        Set<UUID> liked = likeService.hasUserLikedBatch(currentUserId, LikeableEntityType.EDITORIAL, ids);
+
+        return rows.stream().map(row -> toEditorialTrackSummaryDto(row, liked.contains(row.id()))).toList();
+    }
+
+    /** The newest editorial, with its first {@link BlockContentCategory#HOOK} block for a preview. */
+    @Transactional(readOnly = true)
+    public LatestEditorialDto getLatestEditorial(UUID currentUserId) {
+        TrackEditorial editorial = trackEditorialRepository.findFirstByOrderByCreatedAtDesc()
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No editorials found"));
+        Track track = editorial.getTrack();
+        Album album = track.getAlbum();
+        boolean likedByCurrentUser = likeService.hasUserLiked(currentUserId, LikeableEntityType.EDITORIAL, editorial.getId());
+        String hook = editorialBlockRepository
+            .findByTrackEditorialIdAndContentCategoryInOrderByPositionAsc(editorial.getId(), List.of(BlockContentCategory.HOOK))
+            .stream()
+            .findFirst()
+            .map(EditorialBlock::getText)
+            .orElse(null);
+
+        return new LatestEditorialDto(
+            track.getId(), track.getName(), album.getName(),
+            editorial.getTitle(), editorial.getLogNumber(), editorial.getDek(), editorial.getByline(),
+            editorial.getCoverImageUrl(), editorial.getPrincipalImageUrl(), editorial.getCreatedAt(), editorial.getLikeCount(),
+            likedByCurrentUser, hook
+        );
+    }
+
+    /**
+     * A byline's most recent editorials, newest first.
+     *
+     * @param byline        the narrator to filter by
+     * @param n             how many to return; clamped to {@code [1, MAX_RECENT_BY_BYLINE]}, never rejected
+     * @param currentUserId used only to compute each result's {@code likedByCurrentUser}
+     * @return up to {@code n} editorials, newest first
+     */
+    @Transactional(readOnly = true)
+    public List<EditorialTrackSummaryDto> getRecentByByline(EditorialByline byline, int n, UUID currentUserId) {
+        int limit = Math.min(Math.max(n, 1), MAX_RECENT_BY_BYLINE);
+        List<EditorialTrackSummaryRow> rows = trackEditorialRepository.findRecentByByline(byline, PageRequest.of(0, limit));
+
+        List<UUID> ids = rows.stream().map(EditorialTrackSummaryRow::id).toList();
+        Set<UUID> liked = likeService.hasUserLikedBatch(currentUserId, LikeableEntityType.EDITORIAL, ids);
+
+        return rows.stream().map(row -> toEditorialTrackSummaryDto(row, liked.contains(row.id()))).toList();
+    }
+
+    private EditorialTrackSummaryDto toEditorialTrackSummaryDto(EditorialTrackSummaryRow row, boolean likedByCurrentUser) {
+        return new EditorialTrackSummaryDto(
+            row.id(), row.title(), row.dek(), row.byline(), row.trackId(),
+            row.trackName(), row.coverImageUrl(), row.albumName(), row.artistName(), row.createdAt(), row.likeCount(),
+            likedByCurrentUser
+        );
     }
 
     public TrackEditorialDto getTrackEditorialDto(UUID trackId) {
@@ -293,8 +378,8 @@ public class EditorialService {
 
     private FeaturedTrackDto toFeaturedTrackDto(FeaturedTrackRow row, boolean likedByCurrentUser) {
         return new FeaturedTrackDto(
-            row.id(), row.title(), row.dek(), row.byline(),
-            row.trackName(), row.imageUrl(), row.albumName(), row.albumId(), row.createdAt(), row.likeCount(),
+            row.id(), row.title(), row.dek(), row.byline(), row.trackId(),
+            row.trackName(), row.coverImageUrl(), row.albumName(), row.artistName(), row.createdAt(), row.likeCount(),
             likedByCurrentUser
         );
     }

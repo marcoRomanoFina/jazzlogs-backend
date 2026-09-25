@@ -14,10 +14,11 @@ import com.jazzlogs.backend.editorial.EditorialByline;
  * @param title              the track editorial's headline
  * @param dek                the editorial's short standfirst text
  * @param byline             who wrote it
+ * @param trackId            the track this editorial belongs to
  * @param trackName          the track's own name
- * @param imageUrl           the track's cover image (borrowed from its album — see {@code Track#imageUrl})
+ * @param imageUrl           the editorial's cover image
  * @param albumName          the track's album
- * @param albumId            the track's album id
+ * @param artistName         the track's artist
  * @param createdAt          when this editorial was created
  * @param likeCount          denormalized total, kept in sync via atomic increment/decrement
  * @param likedByCurrentUser computed separately via {@code LikeService}
@@ -27,10 +28,11 @@ public record FeaturedTrackDto(
     String title,
     String dek,
     EditorialByline byline,
+    UUID trackId,
     String trackName,
     String imageUrl,
     String albumName,
-    UUID albumId,
+    String artistName,
     Instant createdAt,
     int likeCount,
     boolean likedByCurrentUser

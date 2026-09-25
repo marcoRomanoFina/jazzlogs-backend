@@ -13,9 +13,10 @@ import com.jazzlogs.backend.editorial.EditorialByline;
  * @param id                 the track editorial's own id
  * @param trackId            the track this editorial belongs to
  * @param trackName          the track's own name
- * @param trackImageUrl      the track's cover image (borrowed from its album)
+ * @param editorialCoverUrl  the editorial's cover image
  * @param albumName          the track's album
  * @param albumId            the track's album id
+ * @param artistName         the track's artist
  * @param title              the editorial's headline
  * @param dek                short standfirst text
  * @param byline             who wrote it
@@ -27,9 +28,10 @@ public record TrackEditorialCatalogueDto(
     UUID id,
     UUID trackId,
     String trackName,
-    String trackImageUrl,
+    String editorialCoverUrl,
     String albumName,
     UUID albumId,
+    String artistName,
     String title,
     String dek,
     EditorialByline byline,

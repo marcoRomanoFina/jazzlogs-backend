@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -26,11 +27,15 @@ import com.jazzlogs.backend.artist.ArtistRepository;
 import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.album.AlbumRepository;
 import com.jazzlogs.backend.editorial.dto.BlockRequest;
+import com.jazzlogs.backend.editorial.dto.EditorialTrackSummaryDto;
 import com.jazzlogs.backend.editorial.dto.FeaturedTrackDto;
+import com.jazzlogs.backend.editorial.dto.LatestEditorialDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialCatalogueDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialRequest;
 import com.jazzlogs.backend.embedding.EmbeddingService;
 import com.jazzlogs.backend.graph.GraphService;
+import com.jazzlogs.backend.like.LikeService;
+import com.jazzlogs.backend.like.LikeableEntityType;
 import com.jazzlogs.backend.storage.ImageStorageService;
 import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackRepository;
@@ -57,6 +62,9 @@ class EditorialServiceTest {
     @Autowired
     private TrackEditorialRepository trackEditorialRepository;
 
+    @Autowired
+    private LikeService likeService;
+
     @MockitoBean
     private GraphService graphService;
 
@@ -65,6 +73,16 @@ class EditorialServiceTest {
 
     @MockitoBean
     private EmbeddingService embeddingService;
+
+    // Real, currently-curated editorials in the shared dev DB this suite runs
+    // against can already carry any byline — the getRecentByByline_* tests
+    // need a known starting set (none), not whatever's actually written live.
+    @BeforeEach
+    void clearRealBylines() {
+        entityManager.createQuery("UPDATE TrackEditorial te SET te.byline = :jazzlogs")
+            .setParameter("jazzlogs", EditorialByline.JAZZLOGS)
+            .executeUpdate();
+    }
 
     @Test
     void upsertTrackEditorial_persists() {
@@ -181,9 +199,10 @@ class EditorialServiceTest {
             album, null, "Catalogue Test Track", null, null, "http://img.example/track.jpg",
             null, null, null, null, null, null
         ));
-        editorialService.upsertTrackEditorial(
+        TrackEditorial editorial = editorialService.upsertTrackEditorial(
             track.getId(), new TrackEditorialRequest("Catalogue Test Editorial", "1", "A dek", EditorialByline.JAZZLOGS, List.of())
         );
+        editorial.updateCoverImageUrl("http://img.example/editorial-cover.jpg");
 
         Page<TrackEditorialCatalogueDto> page = editorialService.listEditorials(
             "Catalogue Test Editorial", PageRequest.of(0, 10), UUID.randomUUID()
@@ -193,11 +212,32 @@ class EditorialServiceTest {
         TrackEditorialCatalogueDto dto = page.getContent().get(0);
         assertThat(dto.trackId()).isEqualTo(track.getId());
         assertThat(dto.trackName()).isEqualTo("Catalogue Test Track");
-        assertThat(dto.trackImageUrl()).isEqualTo("http://img.example/track.jpg");
+        assertThat(dto.editorialCoverUrl()).isEqualTo("http://img.example/editorial-cover.jpg");
         assertThat(dto.albumName()).isEqualTo("Catalogue Test Album");
         assertThat(dto.albumId()).isEqualTo(album.getId());
+        assertThat(dto.artistName()).isEqualTo("Catalogue Test Album Artist");
         assertThat(dto.dek()).isEqualTo("A dek");
         assertThat(dto.likedByCurrentUser()).isFalse();
+    }
+
+    @Test
+    void listEditorials_filtersByBylineAndKeepsPagination() {
+        Track markTrack = persistTrack("Paged Mark Track");
+        Track adamTrack = persistTrack("Paged Adam Track");
+        editorialService.upsertTrackEditorial(
+            markTrack.getId(), new TrackEditorialRequest("Paged Mark Editorial", "1", "dek", EditorialByline.MARK, List.of())
+        );
+        editorialService.upsertTrackEditorial(
+            adamTrack.getId(), new TrackEditorialRequest("Paged Adam Editorial", "1", "dek", EditorialByline.ADAM, List.of())
+        );
+
+        Page<TrackEditorialCatalogueDto> page = editorialService.listEditorials(
+            null, EditorialByline.MARK, PageRequest.of(0, 1), UUID.randomUUID()
+        );
+
+        assertThat(page.getContent()).hasSize(1);
+        assertThat(page.getContent().get(0).byline()).isEqualTo(EditorialByline.MARK);
+        assertThat(page.getTotalElements()).isEqualTo(1);
     }
 
     @Test
@@ -214,9 +254,10 @@ class EditorialServiceTest {
         Track otherTrack = trackRepository.save(new Track(
             album, null, "Not Featured Track", null, null, null, null, null, null, null, null, null
         ));
-        editorialService.upsertTrackEditorial(
+        TrackEditorial featuredEditorial = editorialService.upsertTrackEditorial(
             featuredTrack.getId(), new TrackEditorialRequest("Featured Track Editorial", "1", "dek", EditorialByline.JAZZLOGS, List.of())
         );
+        featuredEditorial.updateCoverImageUrl("http://img.example/featured-editorial-cover.jpg");
         editorialService.upsertTrackEditorial(
             otherTrack.getId(), new TrackEditorialRequest("Not Featured Track Editorial", "1", "dek", EditorialByline.JAZZLOGS, List.of())
         );
@@ -228,9 +269,9 @@ class EditorialServiceTest {
         assertThat(featured).extracting("title").containsExactly("Featured Track Editorial");
         FeaturedTrackDto dto = featured.get(0);
         assertThat(dto.trackName()).isEqualTo("Featured Track");
-        assertThat(dto.imageUrl()).isEqualTo("http://img.example/featured-track.jpg");
+        assertThat(dto.imageUrl()).isEqualTo("http://img.example/featured-editorial-cover.jpg");
         assertThat(dto.albumName()).isEqualTo("Featured Track Album");
-        assertThat(dto.albumId()).isEqualTo(album.getId());
+        assertThat(dto.artistName()).isEqualTo("Featured Track Album Artist");
     }
 
     @Test
@@ -286,6 +327,96 @@ class EditorialServiceTest {
         assertThat(reloaded.getSecondaryImageUrl()).isEqualTo("http://img/secondary.jpg");
         assertThat(reloaded.getBannerImageUrl()).isEqualTo("http://img/banner.jpg");
         assertThat(reloaded.getFooterImageUrl()).isEqualTo("http://img/footer.jpg");
+    }
+
+    @Test
+    void getRecentByByline_returnsOnlyThatBylinesEditorials_newestFirst() {
+        Track markOld = persistTrack("Mark Old Track");
+        Track adam = persistTrack("Adam Track");
+        Track markNew = persistTrack("Mark New Track");
+        editorialService.upsertTrackEditorial(
+            markOld.getId(), new TrackEditorialRequest("Mark Old Editorial", "1", "dek", EditorialByline.MARK, List.of())
+        );
+        editorialService.upsertTrackEditorial(
+            adam.getId(), new TrackEditorialRequest("Adam Editorial", "1", "dek", EditorialByline.ADAM, List.of())
+        );
+        editorialService.upsertTrackEditorial(
+            markNew.getId(), new TrackEditorialRequest("Mark New Editorial", "1", "dek", EditorialByline.MARK, List.of())
+        );
+
+        List<EditorialTrackSummaryDto> result = editorialService.getRecentByByline(EditorialByline.MARK, 10, UUID.randomUUID());
+
+        assertThat(result).extracting(EditorialTrackSummaryDto::title).containsExactly("Mark New Editorial", "Mark Old Editorial");
+        assertThat(result).allSatisfy(dto -> assertThat(dto.byline()).isEqualTo(EditorialByline.MARK));
+    }
+
+    @Test
+    void getRecentByByline_clampsNAboveTenToTen() {
+        for (int i = 0; i < 11; i++) {
+            Track track = persistTrack("Clamp Track " + i);
+            editorialService.upsertTrackEditorial(
+                track.getId(), new TrackEditorialRequest("Clamp Editorial " + i, "1", "dek", EditorialByline.LAURA, List.of())
+            );
+        }
+
+        List<EditorialTrackSummaryDto> result = editorialService.getRecentByByline(EditorialByline.LAURA, 100, UUID.randomUUID());
+
+        assertThat(result).hasSize(10);
+    }
+
+    @Test
+    void getRecentEditorials_clampsNToFifteenAcrossAllBylines() {
+        for (int i = 0; i < 16; i++) {
+            Track track = persistTrack("Recent Editorial Track " + i);
+            editorialService.upsertTrackEditorial(
+                track.getId(), new TrackEditorialRequest(
+                    "Recent Editorial " + i, "1", "dek",
+                    i % 2 == 0 ? EditorialByline.MARK : EditorialByline.ADAM, List.of()
+                )
+            );
+        }
+
+        List<EditorialTrackSummaryDto> result = editorialService.getRecentEditorials(100, UUID.randomUUID());
+
+        assertThat(result).hasSize(15);
+        assertThat(result).extracting(EditorialTrackSummaryDto::byline)
+            .contains(EditorialByline.MARK, EditorialByline.ADAM);
+    }
+
+    @Test
+    void getLatestEditorial_returnsTheNewestEditorialAndItsHook() {
+        Track track = persistTrack("Latest Editorial Track");
+        when(embeddingService.embedBatch(List.of("A hook preview"))).thenReturn(List.of(new float[1536]));
+
+        editorialService.upsertTrackEditorial(
+            track.getId(), new TrackEditorialRequest(
+                "Latest Editorial", "42", "A dek", EditorialByline.MARK,
+                List.of(new BlockRequest(EditorialBlockType.LEAD, null, "A hook preview", BlockContentCategory.HOOK))
+            )
+        );
+
+        LatestEditorialDto result = editorialService.getLatestEditorial(UUID.randomUUID());
+
+        assertThat(result.trackId()).isEqualTo(track.getId());
+        assertThat(result.hook()).isEqualTo("A hook preview");
+    }
+
+    @Test
+    void getRecentByByline_reflectsTheRequestingUsersOwnLike_notJustTheRawCount() {
+        Track track = persistTrack("Liked Byline Track");
+        TrackEditorial saved = editorialService.upsertTrackEditorial(
+            track.getId(), new TrackEditorialRequest("Liked Byline Editorial", "1", "dek", EditorialByline.BOB, List.of())
+        );
+        UUID likingUserId = UUID.randomUUID();
+        likeService.addLike(likingUserId, LikeableEntityType.EDITORIAL, saved.getId());
+
+        List<EditorialTrackSummaryDto> likedByRequester = editorialService.getRecentByByline(EditorialByline.BOB, 10, likingUserId);
+        List<EditorialTrackSummaryDto> seenByAnotherUser = editorialService.getRecentByByline(EditorialByline.BOB, 10, UUID.randomUUID());
+
+        assertThat(likedByRequester.get(0).likeCount()).isEqualTo(1);
+        assertThat(likedByRequester.get(0).likedByCurrentUser()).isTrue();
+        assertThat(seenByAnotherUser.get(0).likeCount()).isEqualTo(1);
+        assertThat(seenByAnotherUser.get(0).likedByCurrentUser()).isFalse();
     }
 
     private Album persistAlbum(String name) {

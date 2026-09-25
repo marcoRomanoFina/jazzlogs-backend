@@ -16,6 +16,8 @@ public interface TrackEditorialRepository extends LikeableRepository<TrackEditor
 
     Optional<TrackEditorial> findByTrackId(UUID trackId);
 
+    Optional<TrackEditorial> findFirstByOrderByCreatedAtDesc();
+
     boolean existsByTrackId(UUID trackId);
 
     // Atomic UPDATE, not read-modify-save — two concurrent likes must not race
@@ -35,27 +37,33 @@ public interface TrackEditorialRepository extends LikeableRepository<TrackEditor
      * The archive's free-form search/browse listing — {@code pattern} is a
      * lowercased {@code "%...%"} substring, matched against either the
      * editorial's own title or its track's name; {@code null} means no
-     * filter. No {@code type} filter anymore — track is the only kind of
-     * editorial left.
+     * filter. {@code byline} is optional. No {@code type} filter anymore —
+     * track is the only kind of editorial left.
      */
     @Query(
         value = """
             SELECT new com.jazzlogs.backend.editorial.TrackEditorialCatalogueRow(
-                te.id, t.id, t.name, t.imageUrl, alb.name, alb.id, te.title, te.dek, te.byline, te.createdAt, te.likeCount
+                te.id, t.id, t.name, te.coverImageUrl, alb.name, alb.id, alb.artist.name, te.title, te.dek, te.byline, te.createdAt, te.likeCount
             )
             FROM TrackEditorial te
             JOIN te.track t
             JOIN t.album alb
-            WHERE :pattern IS NULL OR LOWER(te.title) LIKE :pattern OR LOWER(t.name) LIKE :pattern
+            WHERE (:pattern IS NULL OR LOWER(te.title) LIKE :pattern OR LOWER(t.name) LIKE :pattern)
+              AND (:byline IS NULL OR te.byline = :byline)
             """,
         countQuery = """
             SELECT COUNT(te)
             FROM TrackEditorial te
             JOIN te.track t
-            WHERE :pattern IS NULL OR LOWER(te.title) LIKE :pattern OR LOWER(t.name) LIKE :pattern
+            WHERE (:pattern IS NULL OR LOWER(te.title) LIKE :pattern OR LOWER(t.name) LIKE :pattern)
+              AND (:byline IS NULL OR te.byline = :byline)
             """
     )
-    Page<TrackEditorialCatalogueRow> searchCatalogue(@Param("pattern") String pattern, Pageable pageable);
+    Page<TrackEditorialCatalogueRow> searchCatalogue(
+        @Param("pattern") String pattern,
+        @Param("byline") EditorialByline byline,
+        Pageable pageable
+    );
 
     /**
      * Backs "Featured Tracks" — {@code Track#featured}, not {@code
@@ -67,7 +75,7 @@ public interface TrackEditorialRepository extends LikeableRepository<TrackEditor
     @Query("""
         SELECT new com.jazzlogs.backend.editorial.FeaturedTrackRow(
             te.id, te.title, te.dek, te.byline,
-            t.name, t.imageUrl, alb.name, alb.id, te.createdAt, te.likeCount
+            t.id, t.name, te.coverImageUrl, alb.name, alb.artist.name, te.createdAt, te.likeCount
         )
         FROM TrackEditorial te
         JOIN te.track t
@@ -76,4 +84,36 @@ public interface TrackEditorialRepository extends LikeableRepository<TrackEditor
         ORDER BY te.createdAt DESC
         """)
     List<FeaturedTrackRow> findFeatured();
+
+    /** The newest editorials across every byline, newest first. */
+    @Query("""
+        SELECT new com.jazzlogs.backend.editorial.EditorialTrackSummaryRow(
+            te.id, te.title, te.dek, te.byline,
+            t.id, t.name, te.coverImageUrl, alb.name, alb.artist.name, te.createdAt, te.likeCount
+        )
+        FROM TrackEditorial te
+        JOIN te.track t
+        JOIN t.album alb
+        ORDER BY te.createdAt DESC
+        """)
+    List<EditorialTrackSummaryRow> findRecent(Pageable pageable);
+
+    /**
+     * A byline's most recent editorials, newest first — {@code pageable}
+     * caps how many come back (the server clamps it, see {@code
+     * EditorialService#getRecentByByline}), not a real page (no count
+     * query, no total).
+     */
+    @Query("""
+        SELECT new com.jazzlogs.backend.editorial.EditorialTrackSummaryRow(
+            te.id, te.title, te.dek, te.byline,
+            t.id, t.name, te.coverImageUrl, alb.name, alb.artist.name, te.createdAt, te.likeCount
+        )
+        FROM TrackEditorial te
+        JOIN te.track t
+        JOIN t.album alb
+        WHERE te.byline = :byline
+        ORDER BY te.createdAt DESC
+        """)
+    List<EditorialTrackSummaryRow> findRecentByByline(@Param("byline") EditorialByline byline, Pageable pageable);
 }
