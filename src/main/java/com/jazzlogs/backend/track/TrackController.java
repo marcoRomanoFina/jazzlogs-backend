@@ -40,6 +40,7 @@ import com.jazzlogs.backend.track.dto.CreateTrackRequest;
 import com.jazzlogs.backend.track.dto.FeaturedInstrumentsRequest;
 import com.jazzlogs.backend.track.dto.PerformerRequest;
 import com.jazzlogs.backend.track.dto.RhythmTagRequest;
+import com.jazzlogs.backend.track.dto.TrackDetailDto;
 import com.jazzlogs.backend.track.dto.TrackDto;
 import com.jazzlogs.backend.track.dto.TrackTagsDto;
 import com.jazzlogs.backend.trackrating.TrackRatingService;
@@ -73,6 +74,12 @@ public class TrackController {
     public ResponseEntity<TrackDto> createOrUpdateTrack(@Valid @RequestBody CreateTrackRequest request) {
         Track track = trackService.createOrUpdateTrack(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(trackService.toTrackDto(track));
+    }
+
+    /** The track detail page's full payload — see {@link TrackService#getTrackDetail}. */
+    @GetMapping("/{id}")
+    public TrackDetailDto getTrack(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
+        return trackService.getTrackDetail(id, currentUserId(jwt));
     }
 
     @PostMapping("/{id}/editorial")

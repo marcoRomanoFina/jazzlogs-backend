@@ -1,5 +1,7 @@
 package com.jazzlogs.backend.track;
 
+import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -20,6 +22,9 @@ import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialDto;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.TrackPlacement;
+import com.jazzlogs.backend.listen.ListenService;
+import com.jazzlogs.backend.saveditem.SavedItemService;
+import com.jazzlogs.backend.saveditem.SaveableEntityType;
 import com.jazzlogs.backend.spotify.SpotifyCatalogService;
 import com.jazzlogs.backend.spotify.SpotifyTrackAlbumData;
 import com.jazzlogs.backend.spotify.SpotifyTrackArtistData;
@@ -28,8 +33,11 @@ import com.jazzlogs.backend.track.dto.CreateTrackRequest;
 import com.jazzlogs.backend.track.dto.FeaturedInstrumentsRequest;
 import com.jazzlogs.backend.track.dto.PerformerRequest;
 import com.jazzlogs.backend.track.dto.RhythmTagRequest;
+import com.jazzlogs.backend.track.dto.TrackDetailDto;
 import com.jazzlogs.backend.track.dto.TrackDto;
 import com.jazzlogs.backend.track.dto.TrackTagsDto;
+import com.jazzlogs.backend.trackrating.TrackRating;
+import com.jazzlogs.backend.trackrating.TrackRatingRepository;
 import com.jazzlogs.backend.vocabulary.ContextVocabulary;
 import com.jazzlogs.backend.vocabulary.InstrumentVocabulary;
 import com.jazzlogs.backend.vocabulary.MoodVocabulary;
@@ -49,6 +57,9 @@ public class TrackService {
     private final GraphService graphService;
     private final EditorialService editorialService;
     private final SpotifyCatalogService spotifyCatalogService;
+    private final TrackRatingRepository trackRatingRepository;
+    private final ListenService listenService;
+    private final SavedItemService savedItemService;
 
     // Upsert on spotifyTrackId: re-posting a track that's already in the
     // catalog updates it in place (fresh Spotify data + the editable fields
@@ -244,6 +255,51 @@ public class TrackService {
     public void unsetFeatured(UUID trackId) {
         getTrackOrThrow(trackId);
         trackRepository.unmarkFeatured(trackId);
+    }
+
+    /**
+     * The track detail page's full payload — the track's own everything plus
+     * its artist/album context, flattened so the frontend doesn't need a
+     * separate lookup (same idea as {@code AlbumSummaryDto}).
+     *
+     * @param trackId       the track to load
+     * @param currentUserId whose rating/listen/save state to include
+     * @throws ResponseStatusException 404 if the track doesn't exist
+     */
+    @Transactional(readOnly = true)
+    public TrackDetailDto getTrackDetail(UUID trackId, UUID currentUserId) {
+        Track track = getTrackOrThrow(trackId);
+        Album album = track.getAlbum();
+        Artist artist = album.getArtist();
+
+        TrackRatingRepository.TrackRatingStats stats = trackRatingRepository.getRatingStatsForTracks(List.of(trackId))
+            .stream().findFirst().orElse(null);
+        BigDecimal myRating = trackRatingRepository.findByUserIdAndTrackId(currentUserId, trackId)
+            .map(TrackRating::getRating).orElse(null);
+        boolean hasListened = listenService.getListenedTrackIds(currentUserId, List.of(trackId)).contains(trackId);
+        boolean isSaved = savedItemService.getSavedEntityIds(currentUserId, SaveableEntityType.TRACK, List.of(trackId)).contains(trackId);
+
+        TrackDto trackDto = toTrackDto(track, new TrackBatchContext(
+            graphService.getTrackPlacement(trackId),
+            editorialService.getTrackEditorialDto(trackId, currentUserId),
+            graphService.getTrackPerformers(trackId),
+            graphService.getTrackStyles(trackId),
+            graphService.getTrackMoods(trackId),
+            graphService.getTrackContexts(trackId),
+            graphService.getTrackRhythms(trackId),
+            graphService.getTrackFeaturedInstruments(trackId),
+            stats == null ? null : stats.getAvgRating(),
+            stats == null ? 0 : stats.getCount(),
+            myRating,
+            hasListened,
+            isSaved
+        ));
+
+        return new TrackDetailDto(
+            artist.getId(), artist.getName(), artist.getImageUrl(), artist.getSpotifyUrl(),
+            album.getId(), album.getName(), album.getImageUrl(), album.getSpotifyUrl(), album.getReleaseYear(),
+            trackDto
+        );
     }
 
     public TrackDto toTrackDto(Track track) {
