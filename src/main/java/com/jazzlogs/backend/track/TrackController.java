@@ -56,7 +56,7 @@ import lombok.AllArgsConstructor;
 public class TrackController {
 
     /** Fixed server-side, not a client-controlled ?size — see {@link #getTrackNotes}. */
-    private static final int NOTES_PAGE_SIZE = 6;
+    private static final int NOTES_PAGE_SIZE = 8;
 
     private final TrackService trackService;
     private final EditorialService editorialService;
