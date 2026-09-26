@@ -216,6 +216,7 @@ class EditorialServiceTest {
         assertThat(dto.albumName()).isEqualTo("Catalogue Test Album");
         assertThat(dto.albumId()).isEqualTo(album.getId());
         assertThat(dto.artistName()).isEqualTo("Catalogue Test Album Artist");
+        assertThat(dto.logNumber()).isEqualTo("1");
         assertThat(dto.dek()).isEqualTo("A dek");
         assertThat(dto.likedByCurrentUser()).isFalse();
     }
@@ -268,6 +269,7 @@ class EditorialServiceTest {
 
         assertThat(featured).extracting("title").containsExactly("Featured Track Editorial");
         FeaturedTrackDto dto = featured.get(0);
+        assertThat(dto.logNumber()).isEqualTo("1");
         assertThat(dto.trackName()).isEqualTo("Featured Track");
         assertThat(dto.imageUrl()).isEqualTo("http://img.example/featured-editorial-cover.jpg");
         assertThat(dto.albumName()).isEqualTo("Featured Track Album");

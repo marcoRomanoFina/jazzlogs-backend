@@ -12,6 +12,7 @@ import java.util.UUID;
 public record EditorialTrackSummaryRow(
     UUID id,
     String title,
+    String logNumber,
     String dek,
     EditorialByline byline,
     UUID trackId,

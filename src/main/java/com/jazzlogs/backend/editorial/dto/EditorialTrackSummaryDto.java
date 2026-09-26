@@ -11,6 +11,7 @@ import com.jazzlogs.backend.editorial.EditorialByline;
  *
  * @param id        the track editorial's own id
  * @param title     the editorial's headline
+ * @param logNumber the JazzLogs log number
  * @param dek       short standfirst text
  * @param byline    who wrote it — always the byline that was queried for
  * @param trackId    the track this editorial belongs to
@@ -25,6 +26,7 @@ import com.jazzlogs.backend.editorial.EditorialByline;
 public record EditorialTrackSummaryDto(
     UUID id,
     String title,
+    String logNumber,
     String dek,
     EditorialByline byline,
     UUID trackId,

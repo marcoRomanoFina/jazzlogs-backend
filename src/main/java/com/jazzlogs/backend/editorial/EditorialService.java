@@ -256,7 +256,7 @@ public class EditorialService {
     private TrackEditorialCatalogueDto toTrackEditorialCatalogueDto(TrackEditorialCatalogueRow row, boolean likedByCurrentUser) {
         return new TrackEditorialCatalogueDto(
             row.id(), row.trackId(), row.trackName(), row.editorialCoverUrl(), row.albumName(), row.albumId(), row.artistName(),
-            row.title(), row.dek(), row.byline(), row.createdAt(), row.likeCount(), likedByCurrentUser
+            row.title(), row.logNumber(), row.dek(), row.byline(), row.createdAt(), row.likeCount(), likedByCurrentUser
         );
     }
 
@@ -331,7 +331,7 @@ public class EditorialService {
 
     private EditorialTrackSummaryDto toEditorialTrackSummaryDto(EditorialTrackSummaryRow row, boolean likedByCurrentUser) {
         return new EditorialTrackSummaryDto(
-            row.id(), row.title(), row.dek(), row.byline(), row.trackId(),
+            row.id(), row.title(), row.logNumber(), row.dek(), row.byline(), row.trackId(),
             row.trackName(), row.coverImageUrl(), row.albumName(), row.artistName(), row.createdAt(), row.likeCount(),
             likedByCurrentUser
         );
@@ -378,7 +378,7 @@ public class EditorialService {
 
     private FeaturedTrackDto toFeaturedTrackDto(FeaturedTrackRow row, boolean likedByCurrentUser) {
         return new FeaturedTrackDto(
-            row.id(), row.title(), row.dek(), row.byline(), row.trackId(),
+            row.id(), row.title(), row.logNumber(), row.dek(), row.byline(), row.trackId(),
             row.trackName(), row.coverImageUrl(), row.albumName(), row.artistName(), row.createdAt(), row.likeCount(),
             likedByCurrentUser
         );

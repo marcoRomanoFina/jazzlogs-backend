@@ -13,6 +13,7 @@ public record TrackEditorialCatalogueRow(
     UUID albumId,
     String artistName,
     String title,
+    String logNumber,
     String dek,
     EditorialByline byline,
     Instant createdAt,

@@ -18,6 +18,7 @@ import com.jazzlogs.backend.editorial.EditorialByline;
  * @param albumId            the track's album id
  * @param artistName         the track's artist
  * @param title              the editorial's headline
+ * @param logNumber          the JazzLogs log number
  * @param dek                short standfirst text
  * @param byline             who wrote it
  * @param createdAt          when this editorial was created
@@ -33,6 +34,7 @@ public record TrackEditorialCatalogueDto(
     UUID albumId,
     String artistName,
     String title,
+    String logNumber,
     String dek,
     EditorialByline byline,
     Instant createdAt,

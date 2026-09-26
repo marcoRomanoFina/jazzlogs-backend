@@ -43,7 +43,7 @@ public interface TrackEditorialRepository extends LikeableRepository<TrackEditor
     @Query(
         value = """
             SELECT new com.jazzlogs.backend.editorial.TrackEditorialCatalogueRow(
-                te.id, t.id, t.name, te.coverImageUrl, alb.name, alb.id, alb.artist.name, te.title, te.dek, te.byline, te.createdAt, te.likeCount
+                te.id, t.id, t.name, te.coverImageUrl, alb.name, alb.id, alb.artist.name, te.title, te.logNumber, te.dek, te.byline, te.createdAt, te.likeCount
             )
             FROM TrackEditorial te
             JOIN te.track t
@@ -74,7 +74,7 @@ public interface TrackEditorialRepository extends LikeableRepository<TrackEditor
      */
     @Query("""
         SELECT new com.jazzlogs.backend.editorial.FeaturedTrackRow(
-            te.id, te.title, te.dek, te.byline,
+            te.id, te.title, te.logNumber, te.dek, te.byline,
             t.id, t.name, te.coverImageUrl, alb.name, alb.artist.name, te.createdAt, te.likeCount
         )
         FROM TrackEditorial te
@@ -88,7 +88,7 @@ public interface TrackEditorialRepository extends LikeableRepository<TrackEditor
     /** The newest editorials across every byline, newest first. */
     @Query("""
         SELECT new com.jazzlogs.backend.editorial.EditorialTrackSummaryRow(
-            te.id, te.title, te.dek, te.byline,
+            te.id, te.title, te.logNumber, te.dek, te.byline,
             t.id, t.name, te.coverImageUrl, alb.name, alb.artist.name, te.createdAt, te.likeCount
         )
         FROM TrackEditorial te
@@ -106,7 +106,7 @@ public interface TrackEditorialRepository extends LikeableRepository<TrackEditor
      */
     @Query("""
         SELECT new com.jazzlogs.backend.editorial.EditorialTrackSummaryRow(
-            te.id, te.title, te.dek, te.byline,
+            te.id, te.title, te.logNumber, te.dek, te.byline,
             t.id, t.name, te.coverImageUrl, alb.name, alb.artist.name, te.createdAt, te.likeCount
         )
         FROM TrackEditorial te
