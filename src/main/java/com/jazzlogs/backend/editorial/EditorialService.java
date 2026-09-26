@@ -7,7 +7,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 import jakarta.persistence.EntityManager;
 
@@ -15,6 +14,7 @@ import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.ai.document.Document;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -25,7 +25,9 @@ import org.springframework.web.server.ResponseStatusException;
 import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.editorial.dto.BlockRequest;
 import com.jazzlogs.backend.editorial.dto.EditorialBlockDto;
+import com.jazzlogs.backend.editorial.dto.EditorialTrackSummaryDto;
 import com.jazzlogs.backend.editorial.dto.FeaturedTrackDto;
+import com.jazzlogs.backend.editorial.dto.LatestEditorialDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialCatalogueDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialDto;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialRequest;
@@ -45,6 +47,7 @@ public class EditorialService {
 
     private final TrackRepository trackRepository;
     private final TrackEditorialRepository trackEditorialRepository;
+    private final EditorialBlockRepository editorialBlockRepository;
     private final EmbeddingService embeddingService;
     private final LikeService likeService;
     private final ImageStorageService imageStorageService;
@@ -61,7 +64,7 @@ public class EditorialService {
 
         TrackEditorial editorial = trackEditorialRepository.findByTrackId(trackId)
             .orElseGet(() -> new TrackEditorial(track));
-        editorial.update(request.title(), request.dek(), bylineOrDefault(request.byline()));
+        editorial.update(request.title(), request.dek(), bylineOrDefault(request.byline()), request.logNumber());
         TrackEditorial saved = saveWithUniqueTitle(() -> trackEditorialRepository.save(editorial));
 
         upsertBlocks(saved, request.blocks());
@@ -70,8 +73,8 @@ public class EditorialService {
     }
 
     /**
-     * Uploads this track editorial's own image — one object per editorial
-     * ({@code track-editorials/{trackId}/image.<ext>}), so re-uploading
+     * Uploads this track editorial's cover image — one object per editorial
+     * ({@code track-editorials/{trackId}/cover.<ext>}), so re-uploading
      * overwrites the old one instead of leaving it orphaned in storage.
      *
      * @param trackId the track whose editorial to update
@@ -79,11 +82,79 @@ public class EditorialService {
      * @throws ResponseStatusException 404 if the track has no editorial written yet
      */
     @Transactional
-    public void setTrackEditorialImage(UUID trackId, MultipartFile file) {
-        TrackEditorial editorial = trackEditorialRepository.findByTrackId(trackId)
+    public void setTrackEditorialCoverImage(UUID trackId, MultipartFile file) {
+        TrackEditorial editorial = trackEditorialOrThrow(trackId);
+        String url = imageStorageService.upload("track-editorials/" + trackId + "/cover", file);
+        editorial.updateCoverImageUrl(url);
+    }
+
+    /**
+     * Uploads this track editorial's principal image — see {@link
+     * #setTrackEditorialCoverImage}. One object per editorial ({@code
+     * track-editorials/{trackId}/principal.<ext>}).
+     *
+     * @param trackId the track whose editorial to update
+     * @param file    the image file (jpeg/png/webp only)
+     * @throws ResponseStatusException 404 if the track has no editorial written yet
+     */
+    @Transactional
+    public void setTrackEditorialPrincipalImage(UUID trackId, MultipartFile file) {
+        TrackEditorial editorial = trackEditorialOrThrow(trackId);
+        String url = imageStorageService.upload("track-editorials/" + trackId + "/principal", file);
+        editorial.updatePrincipalImageUrl(url);
+    }
+
+    /**
+     * Uploads this track editorial's secondary image — see {@link
+     * #setTrackEditorialCoverImage}. One object per editorial ({@code
+     * track-editorials/{trackId}/secondary.<ext>}).
+     *
+     * @param trackId the track whose editorial to update
+     * @param file    the image file (jpeg/png/webp only)
+     * @throws ResponseStatusException 404 if the track has no editorial written yet
+     */
+    @Transactional
+    public void setTrackEditorialSecondaryImage(UUID trackId, MultipartFile file) {
+        TrackEditorial editorial = trackEditorialOrThrow(trackId);
+        String url = imageStorageService.upload("track-editorials/" + trackId + "/secondary", file);
+        editorial.updateSecondaryImageUrl(url);
+    }
+
+    /**
+     * Uploads this track editorial's banner image — see {@link
+     * #setTrackEditorialCoverImage}. One object per editorial ({@code
+     * track-editorials/{trackId}/banner.<ext>}).
+     *
+     * @param trackId the track whose editorial to update
+     * @param file    the image file (jpeg/png/webp only)
+     * @throws ResponseStatusException 404 if the track has no editorial written yet
+     */
+    @Transactional
+    public void setTrackEditorialBannerImage(UUID trackId, MultipartFile file) {
+        TrackEditorial editorial = trackEditorialOrThrow(trackId);
+        String url = imageStorageService.upload("track-editorials/" + trackId + "/banner", file);
+        editorial.updateBannerImageUrl(url);
+    }
+
+    /**
+     * Uploads this track editorial's footer image — see {@link
+     * #setTrackEditorialCoverImage}. One object per editorial ({@code
+     * track-editorials/{trackId}/footer.<ext>}).
+     *
+     * @param trackId the track whose editorial to update
+     * @param file    the image file (jpeg/png/webp only)
+     * @throws ResponseStatusException 404 if the track has no editorial written yet
+     */
+    @Transactional
+    public void setTrackEditorialFooterImage(UUID trackId, MultipartFile file) {
+        TrackEditorial editorial = trackEditorialOrThrow(trackId);
+        String url = imageStorageService.upload("track-editorials/" + trackId + "/footer", file);
+        editorial.updateFooterImageUrl(url);
+    }
+
+    private TrackEditorial trackEditorialOrThrow(UUID trackId) {
+        return trackEditorialRepository.findByTrackId(trackId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No editorial for track: " + trackId));
-        String url = imageStorageService.upload("track-editorials/" + trackId + "/image", file);
-        editorial.updateImageUrl(url);
     }
 
     /**
@@ -162,9 +233,14 @@ public class EditorialService {
      * @return the matching page
      */
     @Transactional(readOnly = true)
-    public Page<TrackEditorialCatalogueDto> listEditorials(String q, Pageable pageable, UUID currentUserId) {
+    public Page<TrackEditorialCatalogueDto> listEditorials(
+        String q,
+        EditorialByline byline,
+        Pageable pageable,
+        UUID currentUserId
+    ) {
         String pattern = (q == null || q.isBlank()) ? null : "%" + q.trim().toLowerCase() + "%";
-        Page<TrackEditorialCatalogueRow> page = trackEditorialRepository.searchCatalogue(pattern, pageable);
+        Page<TrackEditorialCatalogueRow> page = trackEditorialRepository.searchCatalogue(pattern, byline, pageable);
 
         List<UUID> ids = page.getContent().stream().map(TrackEditorialCatalogueRow::id).toList();
         Set<UUID> liked = likeService.hasUserLikedBatch(currentUserId, LikeableEntityType.EDITORIAL, ids);
@@ -172,10 +248,15 @@ public class EditorialService {
         return page.map(row -> toTrackEditorialCatalogueDto(row, liked.contains(row.id())));
     }
 
+    /** Backward-compatible catalogue listing without an author filter. */
+    public Page<TrackEditorialCatalogueDto> listEditorials(String q, Pageable pageable, UUID currentUserId) {
+        return listEditorials(q, null, pageable, currentUserId);
+    }
+
     private TrackEditorialCatalogueDto toTrackEditorialCatalogueDto(TrackEditorialCatalogueRow row, boolean likedByCurrentUser) {
         return new TrackEditorialCatalogueDto(
-            row.id(), row.trackId(), row.trackName(), row.trackImageUrl(), row.albumName(), row.albumId(),
-            row.title(), row.dek(), row.byline(), row.createdAt(), row.likeCount(), likedByCurrentUser
+            row.id(), row.trackId(), row.trackName(), row.editorialCoverUrl(), row.albumName(), row.albumId(), row.artistName(),
+            row.title(), row.logNumber(), row.dek(), row.byline(), row.createdAt(), row.likeCount(), likedByCurrentUser
         );
     }
 
@@ -185,20 +266,98 @@ public class EditorialService {
         return trackEditorialRepository.count();
     }
 
+    /** Never exposes more than this many rows, however large {@code n} is asked for — the server has the final word, same as everywhere else this pattern shows up (e.g. GraphFilterTool's topK). */
+    private static final int MAX_RECENT_BY_BYLINE = 10;
+    private static final int MAX_RECENT_EDITORIALS = 15;
+
+    /**
+     * The newest editorials across all bylines, newest first.
+     *
+     * @param n             how many to return; clamped to {@code [1, MAX_RECENT_EDITORIALS]}
+     * @param currentUserId used only to compute each result's {@code likedByCurrentUser}
+     */
+    @Transactional(readOnly = true)
+    public List<EditorialTrackSummaryDto> getRecentEditorials(int n, UUID currentUserId) {
+        int limit = Math.min(Math.max(n, 1), MAX_RECENT_EDITORIALS);
+        List<EditorialTrackSummaryRow> rows = trackEditorialRepository.findRecent(PageRequest.of(0, limit));
+
+        List<UUID> ids = rows.stream().map(EditorialTrackSummaryRow::id).toList();
+        Set<UUID> liked = likeService.hasUserLikedBatch(currentUserId, LikeableEntityType.EDITORIAL, ids);
+
+        return rows.stream().map(row -> toEditorialTrackSummaryDto(row, liked.contains(row.id()))).toList();
+    }
+
+    /** The newest editorial, with its first {@link BlockContentCategory#HOOK} block for a preview. */
+    @Transactional(readOnly = true)
+    public LatestEditorialDto getLatestEditorial(UUID currentUserId) {
+        TrackEditorial editorial = trackEditorialRepository.findFirstByOrderByCreatedAtDesc()
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No editorials found"));
+        Track track = editorial.getTrack();
+        Album album = track.getAlbum();
+        boolean likedByCurrentUser = likeService.hasUserLiked(currentUserId, LikeableEntityType.EDITORIAL, editorial.getId());
+        String hook = editorialBlockRepository
+            .findByTrackEditorialIdAndContentCategoryInOrderByPositionAsc(editorial.getId(), List.of(BlockContentCategory.HOOK))
+            .stream()
+            .findFirst()
+            .map(EditorialBlock::getText)
+            .orElse(null);
+
+        return new LatestEditorialDto(
+            track.getId(), track.getName(), album.getName(),
+            editorial.getTitle(), editorial.getLogNumber(), editorial.getDek(), editorial.getByline(),
+            editorial.getCoverImageUrl(), editorial.getPrincipalImageUrl(), editorial.getCreatedAt(), editorial.getLikeCount(),
+            likedByCurrentUser, hook
+        );
+    }
+
+    /**
+     * A byline's most recent editorials, newest first.
+     *
+     * @param byline        the narrator to filter by
+     * @param n             how many to return; clamped to {@code [1, MAX_RECENT_BY_BYLINE]}, never rejected
+     * @param currentUserId used only to compute each result's {@code likedByCurrentUser}
+     * @return up to {@code n} editorials, newest first
+     */
+    @Transactional(readOnly = true)
+    public List<EditorialTrackSummaryDto> getRecentByByline(EditorialByline byline, int n, UUID currentUserId) {
+        int limit = Math.min(Math.max(n, 1), MAX_RECENT_BY_BYLINE);
+        List<EditorialTrackSummaryRow> rows = trackEditorialRepository.findRecentByByline(byline, PageRequest.of(0, limit));
+
+        List<UUID> ids = rows.stream().map(EditorialTrackSummaryRow::id).toList();
+        Set<UUID> liked = likeService.hasUserLikedBatch(currentUserId, LikeableEntityType.EDITORIAL, ids);
+
+        return rows.stream().map(row -> toEditorialTrackSummaryDto(row, liked.contains(row.id()))).toList();
+    }
+
+    private EditorialTrackSummaryDto toEditorialTrackSummaryDto(EditorialTrackSummaryRow row, boolean likedByCurrentUser) {
+        return new EditorialTrackSummaryDto(
+            row.id(), row.title(), row.logNumber(), row.dek(), row.byline(), row.trackId(),
+            row.trackName(), row.coverImageUrl(), row.albumName(), row.artistName(), row.createdAt(), row.likeCount(),
+            likedByCurrentUser
+        );
+    }
+
     public TrackEditorialDto getTrackEditorialDto(UUID trackId) {
         return trackEditorialRepository.findByTrackId(trackId)
             .map(this::toTrackEditorialDto)
             .orElse(null);
     }
 
+    /**
+     * Same as {@link #getTrackEditorialDto(UUID)}, but resolves {@code
+     * likedByCurrentUser} against a real user instead of defaulting it to
+     * {@code false} — see {@code TrackService#getTrackDetail}, the only
+     * caller with a real user in scope.
+     */
+    public TrackEditorialDto getTrackEditorialDto(UUID trackId, UUID currentUserId) {
+        return trackEditorialRepository.findByTrackId(trackId)
+            .map(editorial -> toTrackEditorialDto(editorial, currentUserId))
+            .orElse(null);
+    }
+
     /** For {@code TrackService.setFeatured} — a track needs a {@link TrackEditorial} before it can be featured. */
     public boolean hasTrackEditorial(UUID trackId) {
         return trackEditorialRepository.existsByTrackId(trackId);
-    }
-
-    public Map<UUID, TrackEditorialDto> getTrackEditorialDtosByAlbumId(UUID albumId) {
-        return trackEditorialRepository.findByTrackAlbumId(albumId).stream()
-            .collect(Collectors.toMap(te -> te.getTrack().getId(), this::toTrackEditorialDto));
     }
 
     /**
@@ -219,28 +378,40 @@ public class EditorialService {
 
     private FeaturedTrackDto toFeaturedTrackDto(FeaturedTrackRow row, boolean likedByCurrentUser) {
         return new FeaturedTrackDto(
-            row.id(), row.title(), row.dek(), row.byline(),
-            row.trackName(), row.imageUrl(), row.albumName(), row.albumId(), row.createdAt(), row.likeCount(),
+            row.id(), row.title(), row.logNumber(), row.dek(), row.byline(), row.trackId(),
+            row.trackName(), row.coverImageUrl(), row.albumName(), row.artistName(), row.createdAt(), row.likeCount(),
             likedByCurrentUser
         );
     }
 
     public TrackEditorialDto toTrackEditorialDto(TrackEditorial editorial) {
+        return toTrackEditorialDto(editorial, null);
+    }
+
+    /** currentUserId is optional — {@code null} skips the like check entirely instead of querying for a user that was never given. */
+    private TrackEditorialDto toTrackEditorialDto(TrackEditorial editorial, UUID currentUserId) {
+        boolean likedByCurrentUser = currentUserId != null
+            && likeService.hasUserLiked(currentUserId, LikeableEntityType.EDITORIAL, editorial.getId());
+
         return new TrackEditorialDto(
-            editorial.getTitle(), editorial.getDek(), editorial.getByline(), editorial.getImageUrl(), blocksOf(editorial)
+            editorial.getTitle(), editorial.getLogNumber(), editorial.getDek(), editorial.getByline(),
+            editorial.getCoverImageUrl(), editorial.getPrincipalImageUrl(), editorial.getSecondaryImageUrl(),
+            editorial.getBannerImageUrl(), editorial.getFooterImageUrl(),
+            editorial.getLikeCount(), likedByCurrentUser, editorial.getCreatedAt(),
+            blocksOf(editorial)
         );
     }
 
     private List<EditorialBlockDto> blocksOf(TrackEditorial editorial) {
         return editorial.getBlocks().stream()
-            .map(block -> new EditorialBlockDto(
-                block.getPosition(),
-                block.getType(),
-                block.getSubhead(),
-                block.getText(),
-                block.getContentCategory()
-            ))
+            .map(this::toEditorialBlockDto)
             .toList();
+    }
+
+    private EditorialBlockDto toEditorialBlockDto(EditorialBlock block) {
+        return new EditorialBlockDto(
+            block.getPosition(), block.getType(), block.getSubhead(), block.getText(), block.getContentCategory()
+        );
     }
 
     private Map<String, Object> buildBaseMetadata(TrackEditorial editorial) {

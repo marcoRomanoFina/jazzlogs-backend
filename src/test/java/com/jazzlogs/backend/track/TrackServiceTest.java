@@ -27,14 +27,19 @@ import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
 import com.jazzlogs.backend.editorial.EditorialByline;
 import com.jazzlogs.backend.editorial.EditorialService;
+import com.jazzlogs.backend.editorial.TrackEditorialRepository;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialRequest;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.TrackPlacement;
+import com.jazzlogs.backend.like.LikeService;
+import com.jazzlogs.backend.like.LikeableEntityType;
+import com.jazzlogs.backend.spotify.SpotifyArtistData;
 import com.jazzlogs.backend.spotify.SpotifyCatalogService;
 import com.jazzlogs.backend.spotify.SpotifyTrackAlbumData;
 import com.jazzlogs.backend.spotify.SpotifyTrackArtistData;
 import com.jazzlogs.backend.spotify.SpotifyTrackData;
 import com.jazzlogs.backend.track.dto.CreateTrackRequest;
+import com.jazzlogs.backend.track.dto.TrackDetailDto;
 
 // GraphService is mocked here (not the real Neo4jClient-backed bean) — same
 // reasoning as AlbumServiceTest/ArtistServiceTest: createOrUpdateTrack is
@@ -59,6 +64,12 @@ class TrackServiceTest {
 
     @Autowired
     private EditorialService editorialService;
+
+    @Autowired
+    private TrackEditorialRepository trackEditorialRepository;
+
+    @Autowired
+    private LikeService likeService;
 
     @Autowired
     private EntityManager entityManager;
@@ -207,6 +218,8 @@ class TrackServiceTest {
         );
         when(spotifyCatalogService.fetchTrack("spotify-track-new"))
             .thenReturn(new SpotifyTrackData("spotify-track-new", "Brand New Track", 200000, null, 1, "http://img.example/album.jpg", albumData, artistData));
+        when(spotifyCatalogService.fetchArtist("spotify-artist-new"))
+            .thenReturn(new SpotifyArtistData("spotify-artist-new", "Brand New Artist", "http://open.spotify.com/artist/new", "http://img.example/artist.jpg"));
         when(graphService.getTrackPlacements(any())).thenReturn(List.of());
 
         Track track = trackService.createOrUpdateTrack(new CreateTrackRequest("spotify-track-new", null, null, null, null, null, null));
@@ -218,7 +231,7 @@ class TrackServiceTest {
         Artist artist = album.getArtist();
         assertThat(artist.getSpotifyArtistId()).isEqualTo("spotify-artist-new");
         assertThat(artist.getName()).isEqualTo("Brand New Artist");
-        assertThat(artist.getImageUrl()).isNull();
+        assertThat(artist.getImageUrl()).isEqualTo("http://img.example/artist.jpg");
     }
 
     @Test
@@ -229,6 +242,8 @@ class TrackServiceTest {
             .thenReturn(new SpotifyTrackData("spotify-track-shared-1", "Track One", 200000, null, 1, null, albumData, artistData));
         when(spotifyCatalogService.fetchTrack("spotify-track-shared-2"))
             .thenReturn(new SpotifyTrackData("spotify-track-shared-2", "Track Two", 200000, null, 2, null, albumData, artistData));
+        when(spotifyCatalogService.fetchArtist("spotify-artist-shared"))
+            .thenReturn(new SpotifyArtistData("spotify-artist-shared", "Shared Artist", null, null));
         when(graphService.getTrackPlacements(any())).thenReturn(List.of(), List.of(new TrackPlacement(UUID.randomUUID(), 1)));
 
         Track first = trackService.createOrUpdateTrack(new CreateTrackRequest("spotify-track-shared-1", null, null, null, null, null, null));
@@ -238,11 +253,67 @@ class TrackServiceTest {
         assertThat(second.getAlbum().getArtist().getId()).isEqualTo(first.getAlbum().getArtist().getId());
     }
 
+    @Test
+    void getTrackDetail_includesArtistAndAlbumContextAlongsideTheTracksOwnData() {
+        Track track = persistTrack("Detail Track");
+        Album album = track.getAlbum();
+        Artist artist = album.getArtist();
+        when(graphService.getTrackPlacement(track.getId())).thenReturn(new TrackPlacement(track.getId(), 3));
+
+        TrackDetailDto detail = trackService.getTrackDetail(track.getId(), UUID.randomUUID());
+
+        assertThat(detail.artistId()).isEqualTo(artist.getId());
+        assertThat(detail.artistName()).isEqualTo(artist.getName());
+        assertThat(detail.albumId()).isEqualTo(album.getId());
+        assertThat(detail.albumName()).isEqualTo(album.getName());
+        assertThat(detail.albumReleaseYear()).isEqualTo(album.getReleaseYear());
+        assertThat(detail.track().id()).isEqualTo(track.getId());
+        assertThat(detail.track().name()).isEqualTo("Detail Track");
+        assertThat(detail.track().trackNumber()).isEqualTo(3);
+        assertThat(detail.track().editorial()).isNotNull();
+        assertThat(detail.track().editorial().likeCount()).isZero();
+        assertThat(detail.track().editorial().likedByCurrentUser()).isFalse();
+        assertThat(detail.track().hasListened()).isFalse();
+        assertThat(detail.track().isSaved()).isFalse();
+        assertThat(detail.track().myRating()).isNull();
+    }
+
+    @Test
+    void getTrackDetail_reflectsTheRequestingUsersOwnLike_notJustTheRawCount() {
+        Track track = persistTrack("Liked Detail Track");
+        UUID likingUserId = UUID.randomUUID();
+        UUID editorialId = trackEditorialRepository.findByTrackId(track.getId()).orElseThrow().getId();
+        likeService.addLike(likingUserId, LikeableEntityType.EDITORIAL, editorialId);
+        // incrementLikeCount is a bulk UPDATE — it never touches the TrackEditorial
+        // instance findByTrackId above already loaded into this transaction's
+        // persistence context, so without clearing it, every later fetch by id
+        // would keep returning that same stale (pre-increment) managed instance.
+        entityManager.clear();
+        when(graphService.getTrackPlacement(track.getId())).thenReturn(new TrackPlacement(track.getId(), 1));
+
+        TrackDetailDto likedByRequester = trackService.getTrackDetail(track.getId(), likingUserId);
+        TrackDetailDto seenByAnotherUser = trackService.getTrackDetail(track.getId(), UUID.randomUUID());
+
+        assertThat(likedByRequester.track().editorial().likeCount()).isEqualTo(1);
+        assertThat(likedByRequester.track().editorial().likedByCurrentUser()).isTrue();
+        assertThat(seenByAnotherUser.track().editorial().likeCount()).isEqualTo(1);
+        assertThat(seenByAnotherUser.track().editorial().likedByCurrentUser()).isFalse();
+    }
+
+    @Test
+    void getTrackDetail_rejectsUnknownTrack() {
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class, () -> trackService.getTrackDetail(UUID.randomUUID(), UUID.randomUUID())
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
     // setFeatured requires a TrackEditorial to already exist — every scenario
     // here needs one except the dedicated "rejects with no editorial" test.
     private Track persistTrack(String name) {
         Track track = persistTrackWithoutEditorial(name);
-        editorialService.upsertTrackEditorial(track.getId(), new TrackEditorialRequest(name + " Editorial", "dek", EditorialByline.JAZZLOGS, List.of()));
+        editorialService.upsertTrackEditorial(track.getId(), new TrackEditorialRequest(name + " Editorial", "1", "dek", EditorialByline.JAZZLOGS, List.of()));
         return track;
     }
 

@@ -40,6 +40,7 @@ import com.jazzlogs.backend.track.dto.CreateTrackRequest;
 import com.jazzlogs.backend.track.dto.FeaturedInstrumentsRequest;
 import com.jazzlogs.backend.track.dto.PerformerRequest;
 import com.jazzlogs.backend.track.dto.RhythmTagRequest;
+import com.jazzlogs.backend.track.dto.TrackDetailDto;
 import com.jazzlogs.backend.track.dto.TrackDto;
 import com.jazzlogs.backend.track.dto.TrackTagsDto;
 import com.jazzlogs.backend.trackrating.TrackRatingService;
@@ -55,7 +56,7 @@ import lombok.AllArgsConstructor;
 public class TrackController {
 
     /** Fixed server-side, not a client-controlled ?size — see {@link #getTrackNotes}. */
-    private static final int NOTES_PAGE_SIZE = 6;
+    private static final int NOTES_PAGE_SIZE = 8;
 
     private final TrackService trackService;
     private final EditorialService editorialService;
@@ -75,6 +76,12 @@ public class TrackController {
         return ResponseEntity.status(HttpStatus.CREATED).body(trackService.toTrackDto(track));
     }
 
+    /** The track detail page's full payload — see {@link TrackService#getTrackDetail}. */
+    @GetMapping("/{id}")
+    public TrackDetailDto getTrack(@PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
+        return trackService.getTrackDetail(id, currentUserId(jwt));
+    }
+
     @PostMapping("/{id}/editorial")
     @PreAuthorize("hasRole('ADMIN')")
     public TrackEditorialDto upsertEditorial(@PathVariable UUID id, @Valid @RequestBody TrackEditorialRequest request) {
@@ -83,15 +90,67 @@ public class TrackController {
     }
 
     /**
-     * Uploads this track's editorial's own image — see {@link EditorialService#setTrackEditorialImage}.
+     * Uploads this track's editorial's cover image — see {@link EditorialService#setTrackEditorialCoverImage}.
      *
      * @param id   the track
      * @param file the image file (jpeg/png/webp only, see {@code ImageStorageService})
      */
-    @PutMapping(value = "/{id}/editorial/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PutMapping(value = "/{id}/editorial/cover-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> setEditorialImage(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
-        editorialService.setTrackEditorialImage(id, file);
+    public ResponseEntity<Void> setEditorialCoverImage(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
+        editorialService.setTrackEditorialCoverImage(id, file);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Uploads this track's editorial's principal image — see {@link EditorialService#setTrackEditorialPrincipalImage}.
+     *
+     * @param id   the track
+     * @param file the image file (jpeg/png/webp only, see {@code ImageStorageService})
+     */
+    @PutMapping(value = "/{id}/editorial/principal-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> setEditorialPrincipalImage(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
+        editorialService.setTrackEditorialPrincipalImage(id, file);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Uploads this track's editorial's secondary image — see {@link EditorialService#setTrackEditorialSecondaryImage}.
+     *
+     * @param id   the track
+     * @param file the image file (jpeg/png/webp only, see {@code ImageStorageService})
+     */
+    @PutMapping(value = "/{id}/editorial/secondary-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> setEditorialSecondaryImage(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
+        editorialService.setTrackEditorialSecondaryImage(id, file);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Uploads this track's editorial's banner image — see {@link EditorialService#setTrackEditorialBannerImage}.
+     *
+     * @param id   the track
+     * @param file the image file (jpeg/png/webp only, see {@code ImageStorageService})
+     */
+    @PutMapping(value = "/{id}/editorial/banner-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> setEditorialBannerImage(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
+        editorialService.setTrackEditorialBannerImage(id, file);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Uploads this track's editorial's footer image — see {@link EditorialService#setTrackEditorialFooterImage}.
+     *
+     * @param id   the track
+     * @param file the image file (jpeg/png/webp only, see {@code ImageStorageService})
+     */
+    @PutMapping(value = "/{id}/editorial/footer-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> setEditorialFooterImage(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
+        editorialService.setTrackEditorialFooterImage(id, file);
         return ResponseEntity.noContent().build();
     }
 

@@ -1,11 +1,8 @@
 package com.jazzlogs.backend.album;
 
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.UUID;
 
-import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -13,8 +10,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
-import jakarta.persistence.OneToMany;
-import jakarta.persistence.OrderBy;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
@@ -24,7 +19,6 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import com.jazzlogs.backend.artist.Artist;
-import com.jazzlogs.backend.track.Track;
 
 // Minimal support metadata only — no editorial, no own page, no admin
 // curation. Resolved/created automatically from a track's own Spotify data
@@ -65,12 +59,6 @@ public class Album {
 
     @Setter
     private Integer totalTracks;
-
-    // Ordered by createdAt only as a stable fallback — the real, editorial track
-    // order (trackNumber) lives on the CONTAINS relationship in Neo4j, not here.
-    @OneToMany(mappedBy = "album", cascade = CascadeType.ALL, orphanRemoval = true)
-    @OrderBy("createdAt ASC")
-    private List<Track> tracks = new ArrayList<>();
 
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
