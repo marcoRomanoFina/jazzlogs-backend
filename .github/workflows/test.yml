@@ -108,13 +108,24 @@ jobs:
       # into a separate --rm container for the next command), --network
       # host so it reaches the MinIO container above via localhost like
       # everything else in this job does.
+      # Retries the whole mc sequence, not just the initial health curl above —
+      # bitnamilegacy/minio sometimes restarts its process right after first-boot
+      # bootstrapping even once /minio/health/live has already gone green, which
+      # resets any connection made in that window ("Connection closed by foreign
+      # host"). A single retry loop here covers that race without guessing at a
+      # fixed extra sleep.
       - name: Create MinIO bucket
         run: |
-          docker run --rm --network host --entrypoint sh bitnamilegacy/minio-client:2025.7.21-debian-12-r3 -c "
-            mc alias set local http://localhost:9000 minioadmin jazzlogs-dev-password &&
-            mc mb --ignore-existing local/jazzlogs-images &&
-            mc anonymous set download local/jazzlogs-images
-          "
+          for i in $(seq 1 10); do
+            docker run --rm --network host --entrypoint sh bitnamilegacy/minio-client:2025.7.21-debian-12-r3 -c "
+              mc alias set local http://localhost:9000 minioadmin jazzlogs-dev-password &&
+              mc mb --ignore-existing local/jazzlogs-images &&
+              mc anonymous set download local/jazzlogs-images
+            " && exit 0
+            sleep 3
+          done
+          echo "Failed to create MinIO bucket after retries" >&2
+          exit 1
 
       - name: Run tests
         env:
