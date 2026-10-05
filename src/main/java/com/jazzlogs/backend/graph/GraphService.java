@@ -179,19 +179,19 @@ public class GraphService {
 
     // --- Track relationships ---
 
-    public void addPerformance(UUID artistId, UUID trackId, String role, String instrumentCode, boolean primaryCredit) {
+    public void addPerformance(UUID artistId, UUID trackId, String role, List<String> instrumentCodes, boolean primaryCredit) {
         Map<String, Object> params = new HashMap<>();
         params.put("artistId", artistId.toString());
         params.put("trackId", trackId.toString());
         params.put("role", role);
-        params.put("instrument", instrumentCode);
+        params.put("instruments", instrumentCodes);
         params.put("primaryCredit", primaryCredit);
 
         write("add PERFORMED_ON artist=" + artistId + " track=" + trackId, () ->
             neo4jClient.query("""
                     MATCH (ar:Artist {id: $artistId}), (tr:Track {id: $trackId})
                     MERGE (ar)-[p:PERFORMED_ON]->(tr)
-                    SET p.role = $role, p.instrument = $instrument, p.primaryCredit = $primaryCredit
+                    SET p.role = $role, p.instruments = $instruments, p.primaryCredit = $primaryCredit
                     """)
                 .bindAll(params)
                 .run());
@@ -253,12 +253,13 @@ public class GraphService {
         return getTags("Track", trackId, "FEATURES_INSTRUMENT", "Instrument");
     }
 
+    @SuppressWarnings("unchecked")
     public List<TrackPerformerEntry> getTrackPerformers(UUID trackId) {
         return read("read performers for track=" + trackId, () ->
             neo4jClient.query("""
                     MATCH (ar:Artist)-[p:PERFORMED_ON]->(tr:Track {id: $trackId})
                     RETURN ar.id AS artistId, ar.name AS artistName, p.role AS role,
-                           p.instrument AS instrument, p.primaryCredit AS primaryCredit
+                           p.instruments AS instruments, p.primaryCredit AS primaryCredit
                     """)
                 .bind(trackId.toString()).to("trackId")
                 .fetch()
@@ -268,7 +269,7 @@ public class GraphService {
                     UUID.fromString((String) row.get("artistId")),
                     (String) row.get("artistName"),
                     (String) row.get("role"),
-                    (String) row.get("instrument"),
+                    row.get("instruments") == null ? List.of() : (List<String>) row.get("instruments"),
                     Boolean.TRUE.equals(row.get("primaryCredit"))
                 ))
                 .toList());
@@ -454,12 +455,13 @@ public class GraphService {
                 .toList());
     }
 
+    @SuppressWarnings("unchecked")
     public List<ArtistTrackAppearance> getArtistTrackAppearances(UUID artistId) {
         return read("read track appearances for artist=" + artistId, () ->
             neo4jClient.query("""
                     MATCH (ar:Artist {id: $artistId})-[p:PERFORMED_ON]->(tr:Track)
                     RETURN tr.id AS trackId, tr.name AS trackName, p.role AS role,
-                           p.instrument AS instrument, p.primaryCredit AS primaryCredit
+                           p.instruments AS instruments, p.primaryCredit AS primaryCredit
                     """)
                 .bind(artistId.toString()).to("artistId")
                 .fetch()
@@ -469,7 +471,7 @@ public class GraphService {
                     UUID.fromString((String) row.get("trackId")),
                     (String) row.get("trackName"),
                     (String) row.get("role"),
-                    (String) row.get("instrument"),
+                    row.get("instruments") == null ? List.of() : (List<String>) row.get("instruments"),
                     Boolean.TRUE.equals(row.get("primaryCredit"))
                 ))
                 .toList());

@@ -8,7 +8,6 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.album.Album;
@@ -166,15 +165,14 @@ public class TrackService {
         getTrackOrThrow(trackId);
         getArtistOrThrow(request.artistId());
 
-        if (StringUtils.hasText(request.instrumentCode())) {
-            VocabularyCodes.validate(InstrumentVocabulary.class, request.instrumentCode(), "instrument");
-        }
+        List<String> instrumentCodes = request.instrumentCodes() == null ? List.of() : request.instrumentCodes();
+        instrumentCodes.forEach(code -> VocabularyCodes.validate(InstrumentVocabulary.class, code, "instrument"));
 
         graphService.addPerformance(
             request.artistId(),
             trackId,
             request.role().name(),
-            request.instrumentCode(),
+            instrumentCodes,
             request.primaryCredit()
         );
     }
