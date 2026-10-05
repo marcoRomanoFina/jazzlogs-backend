@@ -3,6 +3,7 @@ package com.jazzlogs.backend.saveditem;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -146,7 +147,7 @@ class SavedItemServiceTest {
 
     private Album persistAlbum(Artist artist) {
         return albumRepository.save(new Album(
-            artist, "Test Album", null, null, null, 2024, 1
+            List.of(artist), "Test Album", null, null, null, 2024, 1
         ));
     }
 
@@ -160,14 +161,10 @@ class SavedItemServiceTest {
         return playlist.getId();
     }
 
-    // Keeps both sides of the bidirectional Album<->Track association in sync
-    // in memory, matching persistTrack in the other fixture-heavy tests.
     private Track persistTrack(Album album) {
-        Track track = trackRepository.save(new Track(
+        return trackRepository.save(new Track(
             album, null, "Test Track", null, null, null,
             null, null, null, null, null, null
         ));
-        album.getTracks().add(track);
-        return track;
     }
 }

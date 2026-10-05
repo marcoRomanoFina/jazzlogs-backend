@@ -74,8 +74,7 @@ public class ListenService {
     }
 
     /**
-     * The album itself is no longer something a user marks directly —
-     * AlbumController's old POST/DELETE /albums/{id}/listen are gone. Its
+     * The album itself is no longer something a user marks directly — its
      * "listened" state is purely a consequence of every one of its tracks
      * being listened, reconciled here after every mark/unmark.
      *
@@ -110,9 +109,7 @@ public class ListenService {
 
     /**
      * Reconciles the album-level listens row (used for countAlbumListens'
-     * stat and the Neo4j mirror — AlbumService.getAlbumHeader computes the
-     * user-facing "hasListened" flag itself, live, from track completion,
-     * precisely so it can't go stale relative to this) to whether every
+     * stat and the Neo4j mirror) to whether every
      * track on the album is currently listened by this user: inserts +
      * syncs it (same side effects the old manual markAlbumListened had) if
      * completion was just reached, removes it if just broken. No-ops for an
@@ -171,8 +168,8 @@ public class ListenService {
     }
 
     /**
-     * Batch — AlbumService.getAlbumHeader/getAlbumTracks both need this for
-     * every track on the album at once, not one existsById per track.
+     * Batch — checks every one of {@code trackIds} at once, not one
+     * existsById per track.
      *
      * @param userId   whose listens to check
      * @param trackIds the tracks to check

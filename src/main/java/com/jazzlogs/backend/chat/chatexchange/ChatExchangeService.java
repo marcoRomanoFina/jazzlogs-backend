@@ -204,7 +204,7 @@ public class ChatExchangeService {
      * @return the WinnerReference to save onto the ChatExchange
      */
     private static WinnerReference toWinnerReference(Track track) {
-        return new WinnerReference(CatalogItemType.TRACK, track.getId(), track.getName(), track.getAlbum().getArtist().getName());
+        return new WinnerReference(CatalogItemType.TRACK, track.getId(), track.getName(), track.getAlbum().getPrimaryArtist().getName());
     }
 
     /**
@@ -316,7 +316,7 @@ public class ChatExchangeService {
      */
     private static WinnerCard toWinnerCard(Track track) {
         return new TrackWinnerCard(
-            track.getId(), track.getName(), track.getImageUrl(), track.getAlbum().getArtist().getName(),
+            track.getId(), track.getName(), track.getImageUrl(), track.getAlbum().getPrimaryArtist().getName(),
             track.getAlbum().getName(), track.getDurationMs(), track.getSpotifyUrl()
         );
     }

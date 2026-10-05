@@ -2,6 +2,7 @@ package com.jazzlogs.backend.listen;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -124,16 +125,14 @@ class ListenServiceTest {
 
     private Album persistAlbum(Artist artist) {
         return albumRepository.save(new Album(
-            artist, "Test Album", null, null, null, 2024, 1
+            List.of(artist), "Test Album", null, null, null, 2024, 1
         ));
     }
 
     private Track persistTrack(Album album) {
-        Track track = trackRepository.save(new Track(
+        return trackRepository.save(new Track(
             album, null, "Test Track", null, null, null,
             null, null, null, null, null, null
         ));
-        album.getTracks().add(track);
-        return track;
     }
 }

@@ -3,6 +3,7 @@ package com.jazzlogs.backend.like;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -97,7 +98,7 @@ class LikeServiceTest {
     private Note persistNote() {
         Artist artist = artistRepository.save(new Artist("Like Test Artist " + UUID.randomUUID(), null, null, null));
         Album album = albumRepository.save(new Album(
-            artist, "Like Test Album " + UUID.randomUUID(), null, null, null, 2024, 1
+            List.of(artist), "Like Test Album " + UUID.randomUUID(), null, null, null, 2024, 1
         ));
         Track track = trackRepository.save(new Track(
             album, null, "Like Test Track", null, null, null, null, null, null, null, null, null

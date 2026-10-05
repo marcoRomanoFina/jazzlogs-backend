@@ -1,7 +1,10 @@
 package com.jazzlogs.backend.playlist.dto;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
+
+import com.jazzlogs.backend.artist.dto.ArtistSummaryDto;
 
 // Same as PlaylistTrackDetailDto, minus albumImageUrl and myNotes — the
 // featured playlist's track list doesn't need per-track artwork or notes.
@@ -12,8 +15,7 @@ public record FeaturedPlaylistTrackDto(
     String spotifyUrl,
     UUID albumId,
     String albumName,
-    UUID artistId,
-    String artistName,
+    List<ArtistSummaryDto> artists,
     int position,
     String title,
     String curatorNote,

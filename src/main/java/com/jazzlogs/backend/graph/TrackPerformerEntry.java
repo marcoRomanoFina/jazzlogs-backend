@@ -1,5 +1,6 @@
 package com.jazzlogs.backend.graph;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -8,14 +9,15 @@ import java.util.UUID;
  * @param artistId      the performing artist
  * @param artistName    the artist's name
  * @param role          how they performed (leader, sideman, ...)
- * @param instrument    what they played; {@code null} if not recorded
+ * @param instruments   what they played; empty if not recorded — an artist can be
+ *                      credited on more than one instrument on the same track
  * @param primaryCredit whether this is their primary credit on the track
  */
 public record TrackPerformerEntry(
     UUID artistId,
     String artistName,
     String role,
-    String instrument,
+    List<String> instruments,
     boolean primaryCredit
 ) {
 }

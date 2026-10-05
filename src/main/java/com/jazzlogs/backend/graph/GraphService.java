@@ -179,19 +179,19 @@ public class GraphService {
 
     // --- Track relationships ---
 
-    public void addPerformance(UUID artistId, UUID trackId, String role, String instrumentCode, boolean primaryCredit) {
+    public void addPerformance(UUID artistId, UUID trackId, String role, List<String> instrumentCodes, boolean primaryCredit) {
         Map<String, Object> params = new HashMap<>();
         params.put("artistId", artistId.toString());
         params.put("trackId", trackId.toString());
         params.put("role", role);
-        params.put("instrument", instrumentCode);
+        params.put("instruments", instrumentCodes);
         params.put("primaryCredit", primaryCredit);
 
         write("add PERFORMED_ON artist=" + artistId + " track=" + trackId, () ->
             neo4jClient.query("""
                     MATCH (ar:Artist {id: $artistId}), (tr:Track {id: $trackId})
                     MERGE (ar)-[p:PERFORMED_ON]->(tr)
-                    SET p.role = $role, p.instrument = $instrument, p.primaryCredit = $primaryCredit
+                    SET p.role = $role, p.instruments = $instruments, p.primaryCredit = $primaryCredit
                     """)
                 .bindAll(params)
                 .run());
@@ -253,12 +253,13 @@ public class GraphService {
         return getTags("Track", trackId, "FEATURES_INSTRUMENT", "Instrument");
     }
 
+    @SuppressWarnings("unchecked")
     public List<TrackPerformerEntry> getTrackPerformers(UUID trackId) {
         return read("read performers for track=" + trackId, () ->
             neo4jClient.query("""
                     MATCH (ar:Artist)-[p:PERFORMED_ON]->(tr:Track {id: $trackId})
                     RETURN ar.id AS artistId, ar.name AS artistName, p.role AS role,
-                           p.instrument AS instrument, p.primaryCredit AS primaryCredit
+                           p.instruments AS instruments, p.primaryCredit AS primaryCredit
                     """)
                 .bind(trackId.toString()).to("trackId")
                 .fetch()
@@ -268,86 +269,15 @@ public class GraphService {
                     UUID.fromString((String) row.get("artistId")),
                     (String) row.get("artistName"),
                     (String) row.get("role"),
-                    (String) row.get("instrument"),
+                    row.get("instruments") == null ? List.of() : (List<String>) row.get("instruments"),
                     Boolean.TRUE.equals(row.get("primaryCredit"))
                 ))
                 .toList());
     }
 
     /**
-     * Every track's moods/contexts/rhythms/featured-instruments/performers
-     * across a whole album, keyed by trackId — one query each instead of
-     * five queries per track (see AlbumService.getAlbumTracks, which used to
-     * call getTrackMoods/getTrackContexts/getTrackRhythms/
-     * getTrackFeaturedInstruments/getTrackPerformers once per track).
-     */
-    public Map<UUID, List<VocabularyTag>> getTrackStylesForAlbum(UUID albumId) {
-        return getTagsForAlbum(albumId, "BELONGS_TO", "Style");
-    }
-
-    public Map<UUID, List<VocabularyTag>> getTrackMoodsForAlbum(UUID albumId) {
-        return getTagsForAlbum(albumId, "EVOKES_MOOD", "Mood");
-    }
-
-    public Map<UUID, List<VocabularyTag>> getTrackContextsForAlbum(UUID albumId) {
-        return getTagsForAlbum(albumId, "PERFECT_FOR", "Context");
-    }
-
-    public Map<UUID, List<VocabularyTag>> getTrackRhythmsForAlbum(UUID albumId) {
-        return getTagsForAlbum(albumId, "HAS_RHYTHM", "Rhythm");
-    }
-
-    public Map<UUID, List<VocabularyTag>> getTrackFeaturedInstrumentsForAlbum(UUID albumId) {
-        return getTagsForAlbum(albumId, "FEATURES_INSTRUMENT", "Instrument");
-    }
-
-    private Map<UUID, List<VocabularyTag>> getTagsForAlbum(UUID albumId, String relationshipType, String targetLabel) {
-        return read("read " + relationshipType + " for album=" + albumId, () ->
-            neo4jClient.query(
-                    "MATCH (:Album {id: $albumId})-[:CONTAINS]->(tr:Track)-[:" + relationshipType + "]->(n:" + targetLabel + ") "
-                        + "RETURN tr.id AS trackId, n.code AS code, n.label AS label")
-                .bind(albumId.toString()).to("albumId")
-                .fetch()
-                .all()
-                .stream()
-                .collect(Collectors.groupingBy(
-                    row -> UUID.fromString((String) row.get("trackId")),
-                    Collectors.mapping(
-                        row -> new VocabularyTag((String) row.get("code"), (String) row.get("label")),
-                        Collectors.toList()
-                    )
-                )));
-    }
-
-    public Map<UUID, List<TrackPerformerEntry>> getTrackPerformersForAlbum(UUID albumId) {
-        return read("read performers for album=" + albumId, () ->
-            neo4jClient.query("""
-                    MATCH (:Album {id: $albumId})-[:CONTAINS]->(tr:Track)<-[p:PERFORMED_ON]-(ar:Artist)
-                    RETURN tr.id AS trackId, ar.id AS artistId, ar.name AS artistName, p.role AS role,
-                           p.instrument AS instrument, p.primaryCredit AS primaryCredit
-                    """)
-                .bind(albumId.toString()).to("albumId")
-                .fetch()
-                .all()
-                .stream()
-                .collect(Collectors.groupingBy(
-                    row -> UUID.fromString((String) row.get("trackId")),
-                    Collectors.mapping(
-                        row -> new TrackPerformerEntry(
-                            UUID.fromString((String) row.get("artistId")),
-                            (String) row.get("artistName"),
-                            (String) row.get("role"),
-                            (String) row.get("instrument"),
-                            Boolean.TRUE.equals(row.get("primaryCredit"))
-                        ),
-                        Collectors.toList()
-                    )
-                )));
-    }
-
-    /**
-     * Every track's placement within its album, keyed by trackId — one query for
-     * the whole album instead of one per track (see AlbumService.getAlbumTracks).
+     * Every track's placement within its album, keyed by trackId — used to
+     * assign the next upload-order position (see {@code TrackService#createOrUpdateTrack}).
      */
     public List<TrackPlacement> getTrackPlacements(UUID albumId) {
         return read("read track placements for album=" + albumId, () ->
@@ -525,12 +455,13 @@ public class GraphService {
                 .toList());
     }
 
+    @SuppressWarnings("unchecked")
     public List<ArtistTrackAppearance> getArtistTrackAppearances(UUID artistId) {
         return read("read track appearances for artist=" + artistId, () ->
             neo4jClient.query("""
                     MATCH (ar:Artist {id: $artistId})-[p:PERFORMED_ON]->(tr:Track)
                     RETURN tr.id AS trackId, tr.name AS trackName, p.role AS role,
-                           p.instrument AS instrument, p.primaryCredit AS primaryCredit
+                           p.instruments AS instruments, p.primaryCredit AS primaryCredit
                     """)
                 .bind(artistId.toString()).to("artistId")
                 .fetch()
@@ -540,7 +471,7 @@ public class GraphService {
                     UUID.fromString((String) row.get("trackId")),
                     (String) row.get("trackName"),
                     (String) row.get("role"),
-                    (String) row.get("instrument"),
+                    row.get("instruments") == null ? List.of() : (List<String>) row.get("instruments"),
                     Boolean.TRUE.equals(row.get("primaryCredit"))
                 ))
                 .toList());

@@ -69,25 +69,36 @@ public interface TrackRepository extends JpaRepository<Track, UUID>, SavedItemRe
     /**
      * JOIN FETCH, not the default findAllById — {@code
      * ChatExchangeService.resolveWinners} needs each track's album AND that
-     * album's artist ({@code track.album} and {@code album.artist} are both
-     * {@code FetchType.LAZY}); without this, resolving N recommended tracks
-     * means up to 2N extra per-row SELECTs (one for the album, one for the
-     * artist) instead of one batched query.
+     * album's artists ({@code track.album} is {@code FetchType.LAZY}, and so
+     * is {@code album.artists}); without this, resolving N recommended
+     * tracks means up to 2N extra per-row SELECTs (one for the album, one
+     * for its artists) instead of one batched query. {@code artists} is a
+     * collection now, not a to-one — fetch-joining it here is still safe
+     * because this method isn't paginated (unlike a {@code Pageable} query,
+     * where it would silently break LIMIT/OFFSET).
      */
-    @Query("SELECT t FROM Track t JOIN FETCH t.album al JOIN FETCH al.artist WHERE t.id IN :ids")
+    @Query("SELECT t FROM Track t JOIN FETCH t.album al LEFT JOIN FETCH al.artists WHERE t.id IN :ids")
     List<Track> findAllByIdWithAlbumAndArtist(@Param("ids") List<UUID> ids);
 
     /**
      * Same matchType/ordering shape as {@code ArtistRepository.search} — see
-     * its Javadoc. Two-hop join (track -> album -> artist): a track's artist
-     * is its album's direct artist_id, no sideman/graph resolution here.
+     * its Javadoc. Two-hop join (track -> album -> artist). {@code
+     * artistFullName} is every one of the album's credited artists joined
+     * with ", ", in credited order — a scalar subquery, not a join, so an
+     * album with more than one artist doesn't fan out into duplicate rows
+     * ahead of the {@code LIMIT}.
      */
     @Override
     @Query(value = """
         SELECT
             t.id AS id,
             t.name AS name,
-            ar.name AS artistFullName,
+            (
+                SELECT string_agg(ar.name, ', ' ORDER BY aa.position)
+                FROM album_artists aa
+                JOIN artists ar ON ar.id = aa.artist_id
+                WHERE aa.album_id = al.id
+            ) AS artistFullName,
             al.name AS albumName,
             similarity(t.normalized_name, :normalizedQuery) AS score,
             CASE
@@ -99,7 +110,6 @@ public interface TrackRepository extends JpaRepository<Track, UUID>, SavedItemRe
             ted.id AS editorialId
         FROM tracks t
         JOIN albums al ON al.id = t.album_id
-        JOIN artists ar ON ar.id = al.artist_id
         LEFT JOIN track_editorials ted ON ted.track_id = t.id
         WHERE t.normalized_name = :normalizedQuery
            OR t.normalized_name LIKE :normalizedQuery || '%'

@@ -48,6 +48,11 @@ public class TrackEditorial {
     @Column(nullable = false)
     private String title;
 
+    // Admin-set — the number JazzLogs itself refers to this log by, updated
+    // alongside title/dek/byline via the same upsert.
+    @Column(name = "log_number", nullable = false)
+    private String logNumber;
+
     @Column(columnDefinition = "TEXT")
     private String dek;
 
@@ -55,10 +60,23 @@ public class TrackEditorial {
     @Column(nullable = false)
     private EditorialByline byline;
 
-    // Upload-only, never set via update(...) — only via its own endpoint
-    // (see EditorialService.setTrackEditorialImage).
-    @Column(name = "image_url")
-    private String imageUrl;
+    // Five images for this editorial's own page layout — upload-only, never
+    // set via update(...), only via their own endpoints (see
+    // EditorialService.setTrackEditorial*Image).
+    @Column(name = "cover_image_url")
+    private String coverImageUrl;
+
+    @Column(name = "principal_image_url")
+    private String principalImageUrl;
+
+    @Column(name = "secondary_image_url")
+    private String secondaryImageUrl;
+
+    @Column(name = "banner_image_url")
+    private String bannerImageUrl;
+
+    @Column(name = "footer_image_url")
+    private String footerImageUrl;
 
     @OneToMany(mappedBy = "trackEditorial", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("position ASC")
@@ -80,14 +98,31 @@ public class TrackEditorial {
         this.track = track;
     }
 
-    public void update(String title, String dek, EditorialByline byline) {
+    public void update(String title, String dek, EditorialByline byline, String logNumber) {
         this.title = title;
         this.dek = dek;
         this.byline = byline;
+        this.logNumber = logNumber;
     }
 
-    public void updateImageUrl(String imageUrl) {
-        this.imageUrl = imageUrl;
+    public void updateCoverImageUrl(String coverImageUrl) {
+        this.coverImageUrl = coverImageUrl;
+    }
+
+    public void updatePrincipalImageUrl(String principalImageUrl) {
+        this.principalImageUrl = principalImageUrl;
+    }
+
+    public void updateSecondaryImageUrl(String secondaryImageUrl) {
+        this.secondaryImageUrl = secondaryImageUrl;
+    }
+
+    public void updateBannerImageUrl(String bannerImageUrl) {
+        this.bannerImageUrl = bannerImageUrl;
+    }
+
+    public void updateFooterImageUrl(String footerImageUrl) {
+        this.footerImageUrl = footerImageUrl;
     }
 
     @PrePersist

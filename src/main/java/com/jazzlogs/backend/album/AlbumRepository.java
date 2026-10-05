@@ -40,43 +40,72 @@ public interface AlbumRepository extends JpaRepository<Album, UUID>, SavedItemRe
     }
 
     /**
-     * JOIN FETCH, not the default findAllById — {@code
-     * ChatExchangeService.resolveWinners} needs each album's artist ({@code
-     * album.artist} is {@code FetchType.LAZY}); without this, resolving N
-     * recommended albums means N extra per-row SELECTs (one per artist)
-     * instead of one batched query.
-     */
-    @Query("SELECT a FROM Album a JOIN FETCH a.artist WHERE a.id IN :ids")
-    List<Album> findAllByIdWithArtist(@Param("ids") List<UUID> ids);
-
-    /**
-     * Same {@code JOIN FETCH a.artist} as {@link #findAllByIdWithArtist},
-     * paginated — for {@code ArtistService.getSidemanAlbums}, whose
-     * candidate album ids come from a single unpaged Neo4j read
-     * ({@code GraphService.getSidemanAlbumIds}) and get their real
-     * pagination (and {@code Page}'s total count) done here instead.
-     * {@code artist} is a to-one association, not a collection — combining
-     * a fetch join with {@code Pageable} is safe here, unlike fetch-joining
-     * a collection would be.
+     * For {@code ArtistService.getSidemanAlbums}, whose candidate album ids
+     * come from a single unpaged Neo4j read ({@code
+     * GraphService.getSidemanAlbumIds}) and get their real pagination (and
+     * {@code Page}'s total count) done here instead. No {@code JOIN FETCH}
+     * on {@code artists} here — it's a collection now, and combining a
+     * fetch join with {@code Pageable} silently breaks LIMIT/OFFSET; see
+     * {@link #findArtistsForAlbums} for how the caller gets each album's
+     * artists instead, batched separately.
      */
     @Query(
-        value = "SELECT a FROM Album a JOIN FETCH a.artist WHERE a.id IN :ids ORDER BY a.releaseYear ASC",
+        value = "SELECT a FROM Album a WHERE a.id IN :ids ORDER BY a.releaseYear ASC",
         countQuery = "SELECT count(a) FROM Album a WHERE a.id IN :ids"
     )
     Page<Album> findByIdInOrderByReleaseYearAsc(@Param("ids") List<UUID> ids, Pageable pageable);
 
     /**
+     * Every artist credited on any of {@code albumIds}, in credited order —
+     * one query for a whole page of albums instead of one per album. Native
+     * (not JPQL): {@code album_artists.position} is what the ordering needs,
+     * and a JPQL join can't surface an {@code @OrderColumn}'s backing column
+     * directly in a projection.
+     */
+    @Query(
+        value = """
+            SELECT aa.album_id AS albumId, ar.id AS artistId, ar.name AS name,
+                   ar.image_url AS imageUrl, ar.spotify_url AS spotifyUrl
+            FROM album_artists aa
+            JOIN artists ar ON ar.id = aa.artist_id
+            WHERE aa.album_id IN :albumIds
+            ORDER BY aa.album_id, aa.position
+            """,
+        nativeQuery = true
+    )
+    List<AlbumArtistRow> findArtistsForAlbums(@Param("albumIds") List<UUID> albumIds);
+
+    /** One row from {@link #findArtistsForAlbums}. */
+    interface AlbumArtistRow {
+        UUID getAlbumId();
+
+        UUID getArtistId();
+
+        String getName();
+
+        String getImageUrl();
+
+        String getSpotifyUrl();
+    }
+
+    /**
      * Same matchType/ordering shape as {@code ArtistRepository.search} — see
-     * its Javadoc. {@code artistFullName} comes from the joined artists row
-     * (an album's artist is just its direct artist_id, no sideman/graph
-     * resolution here).
+     * its Javadoc. {@code artistFullName} is every one of the album's
+     * credited artists joined with ", ", in credited order — a scalar
+     * subquery, not a join, so an album with more than one artist doesn't
+     * fan out into duplicate rows ahead of the {@code LIMIT}.
      */
     @Override
     @Query(value = """
         SELECT
             al.id AS id,
             al.name AS name,
-            ar.name AS artistFullName,
+            (
+                SELECT string_agg(ar.name, ', ' ORDER BY aa.position)
+                FROM album_artists aa
+                JOIN artists ar ON ar.id = aa.artist_id
+                WHERE aa.album_id = al.id
+            ) AS artistFullName,
             NULL::text AS albumName,
             similarity(al.normalized_name, :normalizedQuery) AS score,
             CASE
@@ -87,7 +116,6 @@ public interface AlbumRepository extends JpaRepository<Album, UUID>, SavedItemRe
             END AS matchType,
             NULL::uuid AS editorialId
         FROM albums al
-        JOIN artists ar ON ar.id = al.artist_id
         WHERE al.normalized_name = :normalizedQuery
            OR al.normalized_name LIKE :normalizedQuery || '%'
            OR al.normalized_name LIKE '%' || :normalizedQuery || '%'

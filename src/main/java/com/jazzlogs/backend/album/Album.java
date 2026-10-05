@@ -5,16 +5,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.OneToMany;
-import jakarta.persistence.OrderBy;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
@@ -24,7 +23,6 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import com.jazzlogs.backend.artist.Artist;
-import com.jazzlogs.backend.track.Track;
 
 // Minimal support metadata only — no editorial, no own page, no admin
 // curation. Resolved/created automatically from a track's own Spotify data
@@ -39,9 +37,18 @@ public class Album {
     @GeneratedValue
     private UUID id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "artist_id", nullable = false)
-    private Artist artist;
+    // An album can be credited to more than one leading artist (e.g. "Know
+    // What I Mean?" — Cannonball Adderley & Bill Evans) — ordered by
+    // @OrderColumn, not alphabetically, so display order matches how the
+    // album is actually credited.
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+        name = "album_artists",
+        joinColumns = @JoinColumn(name = "album_id"),
+        inverseJoinColumns = @JoinColumn(name = "artist_id")
+    )
+    @OrderColumn(name = "position")
+    private List<Artist> artists = new ArrayList<>();
 
     @Setter
     @Column(nullable = false)
@@ -66,12 +73,6 @@ public class Album {
     @Setter
     private Integer totalTracks;
 
-    // Ordered by createdAt only as a stable fallback — the real, editorial track
-    // order (trackNumber) lives on the CONTAINS relationship in Neo4j, not here.
-    @OneToMany(mappedBy = "album", cascade = CascadeType.ALL, orphanRemoval = true)
-    @OrderBy("createdAt ASC")
-    private List<Track> tracks = new ArrayList<>();
-
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -79,7 +80,7 @@ public class Album {
     private Instant updatedAt;
 
     public Album(
-        Artist artist,
+        List<Artist> artists,
         String name,
         String spotifyAlbumId,
         String spotifyUrl,
@@ -87,7 +88,7 @@ public class Album {
         Integer releaseYear,
         Integer totalTracks
     ) {
-        this.artist = artist;
+        this.artists = new ArrayList<>(artists);
         this.name = name;
         this.normalizedName = normalize(name);
         this.spotifyAlbumId = spotifyAlbumId;
@@ -95,6 +96,11 @@ public class Album {
         this.imageUrl = imageUrl;
         this.releaseYear = releaseYear;
         this.totalTracks = totalTracks;
+    }
+
+    /** The album's first-credited artist — for the many call sites that only ever show one (e.g. a chat recommendation's display name). */
+    public Artist getPrimaryArtist() {
+        return artists.get(0);
     }
 
     public static String normalize(String name) {
