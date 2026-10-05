@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 import jakarta.persistence.EntityManager;
 
@@ -23,6 +24,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.album.Album;
+import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.editorial.dto.BlockRequest;
 import com.jazzlogs.backend.editorial.dto.EditorialBlockDto;
 import com.jazzlogs.backend.editorial.dto.EditorialTrackSummaryDto;
@@ -423,7 +425,7 @@ public class EditorialService {
         metadata.put("editorialId", editorial.getId().toString());
         metadata.put("trackName", track.getName());
         metadata.put("albumName", album.getName());
-        metadata.put("artistName", album.getArtist().getName());
+        metadata.put("artistName", album.getArtists().stream().map(Artist::getName).collect(Collectors.joining(", ")));
         return metadata;
     }
 

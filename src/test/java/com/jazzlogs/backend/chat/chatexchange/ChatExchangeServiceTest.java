@@ -94,7 +94,7 @@ class ChatExchangeServiceTest {
     void resolvesRealTrackId_andDropsHallucinatedOne() {
         stubSaveAssignsIdAndCreatedAt();
         Artist artist = new Artist("John Coltrane", null, null, null);
-        Album album = new Album(artist, "A Love Supreme", null, null, null, 1965, 4);
+        Album album = new Album(List.of(artist), "A Love Supreme", null, null, null, 1965, 4);
         Track track = new Track(album, null, "Acknowledgement", null, null, null, null, null, null, null, null, null);
         UUID trackId = UUID.randomUUID();
         ReflectionTestUtils.setField(track, "id", trackId);
@@ -123,7 +123,7 @@ class ChatExchangeServiceTest {
     void aStrayAlbumTypedReference_neverResolves_trackIsTheOnlyRecommendableType() {
         stubSaveAssignsIdAndCreatedAt();
         Artist artist = new Artist("Miles Davis", null, null, null);
-        Album album = new Album(artist, "Kind of Blue", null, null, null, 1959, 5);
+        Album album = new Album(List.of(artist), "Kind of Blue", null, null, null, 1959, 5);
         Track track = new Track(album, null, "So What", null, null, null, null, null, null, null, null, null);
         UUID trackId = UUID.randomUUID();
         UUID albumId = UUID.randomUUID();
@@ -183,7 +183,7 @@ class ChatExchangeServiceTest {
         Pageable pageable = PageRequest.of(0, 10);
 
         Artist artist = new Artist("Miles Davis", null, null, null);
-        Album album = new Album(artist, "Kind of Blue (Remastered)", null, null, null, 1959, 5);
+        Album album = new Album(List.of(artist), "Kind of Blue (Remastered)", null, null, null, 1959, 5);
         Track track = new Track(album, null, "So What (Remastered)", null, null, null, null, null, null, null, null, null);
         UUID trackId = UUID.randomUUID();
         ReflectionTestUtils.setField(track, "id", trackId);
@@ -217,7 +217,7 @@ class ChatExchangeServiceTest {
         ReflectionTestUtils.setField(chat, "id", chatId);
 
         Artist artist = new Artist("Bill Evans", null, null, null);
-        Album album = new Album(artist, "Waltz for Debby", null, null, null, 1961, 5);
+        Album album = new Album(List.of(artist), "Waltz for Debby", null, null, null, 1961, 5);
         Track firstTrack = new Track(album, null, "My Foolish Heart", null, null, null, null, null, null, null, null, null);
         Track secondTrack = new Track(album, null, "Waltz for Debby", null, null, null, null, null, null, null, null, null);
         UUID firstTrackId = UUID.randomUUID();

@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
+import com.jazzlogs.backend.artist.dto.ArtistSummaryDto;
 import com.jazzlogs.backend.graph.VocabularyTag;
 
 // No performers/editorial/notes here — same trim as PlaylistTrackDetailDto,
@@ -17,8 +18,7 @@ public record SeriesChapterTrackDto(
     String imageUrl,
     UUID albumId,
     String albumName,
-    UUID artistId,
-    String artistName,
+    List<ArtistSummaryDto> artists,
     BigDecimal avgRating,
     long ratingCount,
     BigDecimal myRating,

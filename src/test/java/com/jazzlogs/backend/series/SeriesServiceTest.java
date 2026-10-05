@@ -29,6 +29,7 @@ import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.album.AlbumRepository;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
+import com.jazzlogs.backend.artist.dto.ArtistSummaryDto;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.listen.ListenService;
@@ -605,7 +606,7 @@ class SeriesServiceTest {
         assertThat(trackDto.id()).isEqualTo(track.getId());
         assertThat(trackDto.name()).isEqualTo("Test Track");
         assertThat(trackDto.albumId()).isEqualTo(album.getId());
-        assertThat(trackDto.artistId()).isEqualTo(artist.getId());
+        assertThat(trackDto.artists()).extracting(ArtistSummaryDto::id).containsExactly(artist.getId());
         assertThat(trackDto.myRating()).isEqualByComparingTo("4.5");
         assertThat(trackDto.hasListened()).isTrue();
         assertThat(trackDto.moods()).containsExactly(new VocabularyTag("MELLOW", "Mellow"));
@@ -837,7 +838,7 @@ class SeriesServiceTest {
 
     private Album persistAlbum(Artist artist) {
         return albumRepository.save(new Album(
-            artist, "Test Album", null, null, null, 2024, 1
+            List.of(artist), "Test Album", null, null, null, 2024, 1
         ));
     }
 

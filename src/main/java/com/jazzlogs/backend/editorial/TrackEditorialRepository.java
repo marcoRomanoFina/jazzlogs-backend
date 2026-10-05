@@ -38,12 +38,15 @@ public interface TrackEditorialRepository extends LikeableRepository<TrackEditor
      * lowercased {@code "%...%"} substring, matched against either the
      * editorial's own title or its track's name; {@code null} means no
      * filter. {@code byline} is optional. No {@code type} filter anymore —
-     * track is the only kind of editorial left.
+     * track is the only kind of editorial left. {@code artistName} is only
+     * the album's first-credited artist ({@code alb.artists[0]}, the
+     * {@code @OrderColumn}-indexed element) — a lean card, not the full
+     * credited list {@code TrackDetailDto}/{@code AlbumSummaryDto} carry.
      */
     @Query(
         value = """
             SELECT new com.jazzlogs.backend.editorial.TrackEditorialCatalogueRow(
-                te.id, t.id, t.name, te.coverImageUrl, alb.name, alb.id, alb.artist.name, te.title, te.logNumber, te.dek, te.byline, te.createdAt, te.likeCount
+                te.id, t.id, t.name, te.coverImageUrl, alb.name, alb.id, alb.artists[0].name, te.title, te.logNumber, te.dek, te.byline, te.createdAt, te.likeCount
             )
             FROM TrackEditorial te
             JOIN te.track t
@@ -75,7 +78,7 @@ public interface TrackEditorialRepository extends LikeableRepository<TrackEditor
     @Query("""
         SELECT new com.jazzlogs.backend.editorial.FeaturedTrackRow(
             te.id, te.title, te.logNumber, te.dek, te.byline,
-            t.id, t.name, te.coverImageUrl, alb.name, alb.artist.name, te.createdAt, te.likeCount
+            t.id, t.name, te.coverImageUrl, alb.name, alb.artists[0].name, te.createdAt, te.likeCount
         )
         FROM TrackEditorial te
         JOIN te.track t
@@ -89,7 +92,7 @@ public interface TrackEditorialRepository extends LikeableRepository<TrackEditor
     @Query("""
         SELECT new com.jazzlogs.backend.editorial.EditorialTrackSummaryRow(
             te.id, te.title, te.logNumber, te.dek, te.byline,
-            t.id, t.name, te.coverImageUrl, alb.name, alb.artist.name, te.createdAt, te.likeCount
+            t.id, t.name, te.coverImageUrl, alb.name, alb.artists[0].name, te.createdAt, te.likeCount
         )
         FROM TrackEditorial te
         JOIN te.track t
@@ -107,7 +110,7 @@ public interface TrackEditorialRepository extends LikeableRepository<TrackEditor
     @Query("""
         SELECT new com.jazzlogs.backend.editorial.EditorialTrackSummaryRow(
             te.id, te.title, te.logNumber, te.dek, te.byline,
-            t.id, t.name, te.coverImageUrl, alb.name, alb.artist.name, te.createdAt, te.likeCount
+            t.id, t.name, te.coverImageUrl, alb.name, alb.artists[0].name, te.createdAt, te.likeCount
         )
         FROM TrackEditorial te
         JOIN te.track t

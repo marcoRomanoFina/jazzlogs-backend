@@ -23,6 +23,9 @@ public interface ArtistRepository extends JpaRepository<Artist, UUID>, SavedItem
      */
     Optional<Artist> findBySpotifyArtistId(String spotifyArtistId);
 
+    /** Case/whitespace-insensitive duplicate check for manual (no-Spotify-id) artist creation — see {@code ArtistService#createManualArtist}. */
+    boolean existsByNormalizedName(String normalizedName);
+
     /**
      * Paginates a Neo4j-sourced candidate id set (similar artists) here in
      * Postgres — same "unpaged Neo4j read + real Postgres Page" split as

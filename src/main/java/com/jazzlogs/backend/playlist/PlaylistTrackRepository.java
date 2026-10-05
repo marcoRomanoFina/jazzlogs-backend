@@ -18,7 +18,7 @@ public interface PlaylistTrackRepository extends JpaRepository<PlaylistTrack, UU
         SELECT pt FROM PlaylistTrack pt
         JOIN FETCH pt.track t
         JOIN FETCH t.album a
-        JOIN FETCH a.artist
+        JOIN FETCH a.artists
         WHERE pt.playlist.id = :playlistId
         ORDER BY pt.position
         """)

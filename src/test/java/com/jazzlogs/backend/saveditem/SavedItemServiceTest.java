@@ -3,6 +3,7 @@ package com.jazzlogs.backend.saveditem;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -146,7 +147,7 @@ class SavedItemServiceTest {
 
     private Album persistAlbum(Artist artist) {
         return albumRepository.save(new Album(
-            artist, "Test Album", null, null, null, 2024, 1
+            List.of(artist), "Test Album", null, null, null, 2024, 1
         ));
     }
 

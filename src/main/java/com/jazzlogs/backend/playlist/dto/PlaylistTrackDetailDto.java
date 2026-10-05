@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
+import com.jazzlogs.backend.artist.dto.ArtistSummaryDto;
 import com.jazzlogs.backend.note.dto.NoteDto;
 
 // avgRating is null / ratingCount is 0 when no one has rated this track yet.
@@ -18,8 +19,7 @@ public record PlaylistTrackDetailDto(
     UUID albumId,
     String albumName,
     String albumImageUrl,
-    UUID artistId,
-    String artistName,
+    List<ArtistSummaryDto> artists,
     int position,
     String title,
     String curatorNote,

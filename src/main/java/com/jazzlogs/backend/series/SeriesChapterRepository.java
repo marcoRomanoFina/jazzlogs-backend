@@ -15,7 +15,7 @@ public interface SeriesChapterRepository extends JpaRepository<SeriesChapter, UU
         SELECT c FROM SeriesChapter c
         LEFT JOIN FETCH c.track t
         LEFT JOIN FETCH t.album a
-        LEFT JOIN FETCH a.artist
+        LEFT JOIN FETCH a.artists
         WHERE c.series.id = :seriesId
         ORDER BY c.position
         """)

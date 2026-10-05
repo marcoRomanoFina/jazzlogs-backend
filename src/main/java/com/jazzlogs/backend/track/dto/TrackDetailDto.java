@@ -1,17 +1,17 @@
 package com.jazzlogs.backend.track.dto;
 
+import java.util.List;
 import java.util.UUID;
+
+import com.jazzlogs.backend.artist.dto.ArtistSummaryDto;
 
 /**
  * The track detail page's full payload — the track's own everything (see
- * {@link TrackDto}) plus enough about its artist/album to render without a
+ * {@link TrackDto}) plus enough about its artists/album to render without a
  * separate lookup, same flattening {@code AlbumSummaryDto} uses for its own
  * parent context.
  *
- * @param artistId         the track's artist (via its album)
- * @param artistName       the artist's name
- * @param artistImageUrl   the artist's photo
- * @param artistSpotifyUrl link to the artist's Spotify page
+ * @param artists          the album's credited artist(s), in credited order
  * @param albumId          the track's album
  * @param albumName        the album's name
  * @param albumImageUrl    the album's cover art
@@ -20,10 +20,7 @@ import java.util.UUID;
  * @param track            the track's own full data
  */
 public record TrackDetailDto(
-    UUID artistId,
-    String artistName,
-    String artistImageUrl,
-    String artistSpotifyUrl,
+    List<ArtistSummaryDto> artists,
     UUID albumId,
     String albumName,
     String albumImageUrl,

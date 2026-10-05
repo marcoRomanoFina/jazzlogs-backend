@@ -25,6 +25,7 @@ import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.album.AlbumRepository;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
+import com.jazzlogs.backend.artist.dto.ArtistSummaryDto;
 import com.jazzlogs.backend.editorial.EditorialByline;
 import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.editorial.TrackEditorialRepository;
@@ -166,16 +167,18 @@ class TrackServiceTest {
     void createOrUpdateTrack_assignsSequentialTrackNumberByUploadOrder_andBumpsTotalTracks() {
         Artist artist = artistRepository.save(new Artist("Upload Order Test Artist", "spotify-artist-upload-order", null, null));
         Album album = albumRepository.save(new Album(
-            artist, "Upload Order Test Album", "spotify-album-upload-order", null, null, 2024, 0
+            List.of(artist), "Upload Order Test Album", "spotify-album-upload-order", null, null, 2024, 0
         ));
-        SpotifyTrackAlbumData albumData = new SpotifyTrackAlbumData("spotify-album-upload-order", "Upload Order Test Album", null, null, 2024);
         SpotifyTrackArtistData artistData = new SpotifyTrackArtistData("spotify-artist-upload-order", "Upload Order Test Artist", null);
+        SpotifyTrackAlbumData albumData = new SpotifyTrackAlbumData(
+            "spotify-album-upload-order", "Upload Order Test Album", null, null, 2024, List.of(artistData)
+        );
         // Spotify's own trackNumber (99/1) is deliberately wrong/out of order here —
         // it must be ignored in favor of upload order.
         when(spotifyCatalogService.fetchTrack("spotify-track-first"))
-            .thenReturn(new SpotifyTrackData("spotify-track-first", "First Track", 200000, null, 99, null, albumData, artistData));
+            .thenReturn(new SpotifyTrackData("spotify-track-first", "First Track", 200000, null, 99, null, albumData));
         when(spotifyCatalogService.fetchTrack("spotify-track-second"))
-            .thenReturn(new SpotifyTrackData("spotify-track-second", "Second Track", 200000, null, 1, null, albumData, artistData));
+            .thenReturn(new SpotifyTrackData("spotify-track-second", "Second Track", 200000, null, 1, null, albumData));
         when(graphService.getTrackPlacements(album.getId())).thenReturn(List.of(), List.of(new TrackPlacement(UUID.randomUUID(), 1)));
 
         Track first = trackService.createOrUpdateTrack(new CreateTrackRequest("spotify-track-first", null, null, null, null, null, null));
@@ -190,18 +193,20 @@ class TrackServiceTest {
     void createOrUpdateTrack_onUpdate_doesNotReassignTrackNumberOrTotalTracks() {
         Artist artist = artistRepository.save(new Artist("Update Test Artist", "spotify-artist-update", null, null));
         Album album = albumRepository.save(new Album(
-            artist, "Update Test Album", "spotify-album-update", null, null, 2024, 0
+            List.of(artist), "Update Test Album", "spotify-album-update", null, null, 2024, 0
         ));
-        SpotifyTrackAlbumData albumData = new SpotifyTrackAlbumData("spotify-album-update", "Update Test Album", null, null, 2024);
         SpotifyTrackArtistData artistData = new SpotifyTrackArtistData("spotify-artist-update", "Update Test Artist", null);
+        SpotifyTrackAlbumData albumData = new SpotifyTrackAlbumData(
+            "spotify-album-update", "Update Test Album", null, null, 2024, List.of(artistData)
+        );
         when(spotifyCatalogService.fetchTrack("spotify-track-update"))
-            .thenReturn(new SpotifyTrackData("spotify-track-update", "Original Name", 200000, null, 1, null, albumData, artistData));
+            .thenReturn(new SpotifyTrackData("spotify-track-update", "Original Name", 200000, null, 1, null, albumData));
         when(graphService.getTrackPlacements(album.getId())).thenReturn(List.of());
         trackService.createOrUpdateTrack(new CreateTrackRequest("spotify-track-update", null, null, null, null, null, null));
 
         // Re-post the same track — a metadata refresh, not a new upload.
         when(spotifyCatalogService.fetchTrack("spotify-track-update"))
-            .thenReturn(new SpotifyTrackData("spotify-track-update", "Renamed", 200000, null, 1, null, albumData, artistData));
+            .thenReturn(new SpotifyTrackData("spotify-track-update", "Renamed", 200000, null, 1, null, albumData));
         trackService.createOrUpdateTrack(new CreateTrackRequest("spotify-track-update", null, null, null, null, null, null));
 
         verify(graphService, times(1)).addTrackToAlbum(any(), any(), any(Integer.class));
@@ -210,14 +215,15 @@ class TrackServiceTest {
 
     @Test
     void createOrUpdateTrack_createsMinimalAlbumAndArtist_whenNeitherExistsYet() {
-        SpotifyTrackAlbumData albumData = new SpotifyTrackAlbumData(
-            "spotify-album-new", "Brand New Album", "http://img.example/album.jpg", "http://open.spotify.com/album/new", 2023
-        );
         SpotifyTrackArtistData artistData = new SpotifyTrackArtistData(
             "spotify-artist-new", "Brand New Artist", "http://open.spotify.com/artist/new"
         );
+        SpotifyTrackAlbumData albumData = new SpotifyTrackAlbumData(
+            "spotify-album-new", "Brand New Album", "http://img.example/album.jpg", "http://open.spotify.com/album/new", 2023,
+            List.of(artistData)
+        );
         when(spotifyCatalogService.fetchTrack("spotify-track-new"))
-            .thenReturn(new SpotifyTrackData("spotify-track-new", "Brand New Track", 200000, null, 1, "http://img.example/album.jpg", albumData, artistData));
+            .thenReturn(new SpotifyTrackData("spotify-track-new", "Brand New Track", 200000, null, 1, "http://img.example/album.jpg", albumData));
         when(spotifyCatalogService.fetchArtist("spotify-artist-new"))
             .thenReturn(new SpotifyArtistData("spotify-artist-new", "Brand New Artist", "http://open.spotify.com/artist/new", "http://img.example/artist.jpg"));
         when(graphService.getTrackPlacements(any())).thenReturn(List.of());
@@ -228,7 +234,7 @@ class TrackServiceTest {
         assertThat(album.getSpotifyAlbumId()).isEqualTo("spotify-album-new");
         assertThat(album.getName()).isEqualTo("Brand New Album");
         assertThat(album.getReleaseYear()).isEqualTo(2023);
-        Artist artist = album.getArtist();
+        Artist artist = album.getPrimaryArtist();
         assertThat(artist.getSpotifyArtistId()).isEqualTo("spotify-artist-new");
         assertThat(artist.getName()).isEqualTo("Brand New Artist");
         assertThat(artist.getImageUrl()).isEqualTo("http://img.example/artist.jpg");
@@ -236,12 +242,14 @@ class TrackServiceTest {
 
     @Test
     void createOrUpdateTrack_reusesTheSameAlbumAndArtist_forASecondTrackWithTheSameSpotifyIds() {
-        SpotifyTrackAlbumData albumData = new SpotifyTrackAlbumData("spotify-album-shared", "Shared Album", null, null, 2022);
         SpotifyTrackArtistData artistData = new SpotifyTrackArtistData("spotify-artist-shared", "Shared Artist", null);
+        SpotifyTrackAlbumData albumData = new SpotifyTrackAlbumData(
+            "spotify-album-shared", "Shared Album", null, null, 2022, List.of(artistData)
+        );
         when(spotifyCatalogService.fetchTrack("spotify-track-shared-1"))
-            .thenReturn(new SpotifyTrackData("spotify-track-shared-1", "Track One", 200000, null, 1, null, albumData, artistData));
+            .thenReturn(new SpotifyTrackData("spotify-track-shared-1", "Track One", 200000, null, 1, null, albumData));
         when(spotifyCatalogService.fetchTrack("spotify-track-shared-2"))
-            .thenReturn(new SpotifyTrackData("spotify-track-shared-2", "Track Two", 200000, null, 2, null, albumData, artistData));
+            .thenReturn(new SpotifyTrackData("spotify-track-shared-2", "Track Two", 200000, null, 2, null, albumData));
         when(spotifyCatalogService.fetchArtist("spotify-artist-shared"))
             .thenReturn(new SpotifyArtistData("spotify-artist-shared", "Shared Artist", null, null));
         when(graphService.getTrackPlacements(any())).thenReturn(List.of(), List.of(new TrackPlacement(UUID.randomUUID(), 1)));
@@ -250,20 +258,20 @@ class TrackServiceTest {
         Track second = trackService.createOrUpdateTrack(new CreateTrackRequest("spotify-track-shared-2", null, null, null, null, null, null));
 
         assertThat(second.getAlbum().getId()).isEqualTo(first.getAlbum().getId());
-        assertThat(second.getAlbum().getArtist().getId()).isEqualTo(first.getAlbum().getArtist().getId());
+        assertThat(second.getAlbum().getPrimaryArtist().getId()).isEqualTo(first.getAlbum().getPrimaryArtist().getId());
     }
 
     @Test
     void getTrackDetail_includesArtistAndAlbumContextAlongsideTheTracksOwnData() {
         Track track = persistTrack("Detail Track");
         Album album = track.getAlbum();
-        Artist artist = album.getArtist();
+        Artist artist = album.getPrimaryArtist();
         when(graphService.getTrackPlacement(track.getId())).thenReturn(new TrackPlacement(track.getId(), 3));
 
         TrackDetailDto detail = trackService.getTrackDetail(track.getId(), UUID.randomUUID());
 
-        assertThat(detail.artistId()).isEqualTo(artist.getId());
-        assertThat(detail.artistName()).isEqualTo(artist.getName());
+        assertThat(detail.artists()).extracting(ArtistSummaryDto::id).containsExactly(artist.getId());
+        assertThat(detail.artists()).extracting(ArtistSummaryDto::name).containsExactly(artist.getName());
         assertThat(detail.albumId()).isEqualTo(album.getId());
         assertThat(detail.albumName()).isEqualTo(album.getName());
         assertThat(detail.albumReleaseYear()).isEqualTo(album.getReleaseYear());
@@ -320,7 +328,7 @@ class TrackServiceTest {
     private Track persistTrackWithoutEditorial(String name) {
         Artist artist = artistRepository.save(new Artist("Featured Test Artist " + UUID.randomUUID(), null, null, null));
         Album album = albumRepository.save(new Album(
-            artist, "Featured Test Album " + UUID.randomUUID(), null, null, null, 2024, 1
+            List.of(artist), "Featured Test Album " + UUID.randomUUID(), null, null, null, 2024, 1
         ));
         return trackRepository.save(new Track(
             album, null, name, null, null, null, null, null, null, null, null, null

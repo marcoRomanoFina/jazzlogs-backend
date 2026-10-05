@@ -23,6 +23,8 @@ import com.jazzlogs.backend.album.AlbumRepository;
 import com.jazzlogs.backend.artist.dto.ArtistTagsDto;
 import com.jazzlogs.backend.artist.dto.ArtistHeaderDto;
 import com.jazzlogs.backend.artist.dto.AlbumSummaryDto;
+import com.jazzlogs.backend.artist.dto.ArtistSummaryDto;
+import com.jazzlogs.backend.artist.dto.CreateArtistRequest;
 import com.jazzlogs.backend.artist.dto.SimilarArtistDto;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.SimilarArtistEntry;
@@ -101,8 +103,8 @@ class ArtistServiceTest {
         Page<AlbumSummaryDto> page = artistService.getSidemanAlbums(sideman.getId(), PageRequest.of(0, 6));
 
         assertThat(page.getContent()).extracting(AlbumSummaryDto::name).containsExactly("Older Album", "Newer Album");
-        assertThat(page.getContent().get(0).artistId()).isEqualTo(leader.getId());
-        assertThat(page.getContent().get(0).artistName()).isEqualTo("Leader Artist");
+        assertThat(page.getContent().get(0).artists()).extracting(ArtistSummaryDto::id).containsExactly(leader.getId());
+        assertThat(page.getContent().get(0).artists()).extracting(ArtistSummaryDto::name).containsExactly("Leader Artist");
     }
 
     @Test
@@ -188,13 +190,35 @@ class ArtistServiceTest {
         assertThat(dto.contexts()).extracting(VocabularyTag::code).containsExactly("LATE_NIGHT");
     }
 
+    @Test
+    void createOrUpdateArtist_rejectsADuplicateManualNameCaseAndWhitespaceInsensitively() {
+        artistService.createOrUpdateArtist(new CreateArtistRequest(null, "Duplicate Name Test Artist"));
+
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class,
+            () -> artistService.createOrUpdateArtist(new CreateArtistRequest(null, "  duplicate name test artist  "))
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
+    void createOrUpdateArtist_rejectsBlankRequest_whenNeitherSpotifyIdNorNameGiven() {
+        ResponseStatusException ex = catchThrowableOfType(
+            ResponseStatusException.class,
+            () -> artistService.createOrUpdateArtist(new CreateArtistRequest(null, null))
+        );
+
+        assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
     private Artist persistArtist(String name) {
         return artistRepository.save(new Artist(name, null, null, null));
     }
 
     private Album persistAlbum(Artist artist, String name, Integer releaseYear) {
         return albumRepository.save(new Album(
-            artist, name, null, null, null, releaseYear, 1
+            List.of(artist), name, null, null, null, releaseYear, 1
         ));
     }
 }

@@ -1,5 +1,6 @@
 package com.jazzlogs.backend.artist;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -21,6 +22,7 @@ import com.jazzlogs.backend.artist.dto.ArtistTagsDto;
 import com.jazzlogs.backend.artist.dto.ArtistHeaderDto;
 import com.jazzlogs.backend.artist.dto.CreateArtistRequest;
 import com.jazzlogs.backend.artist.dto.AlbumSummaryDto;
+import com.jazzlogs.backend.artist.dto.ArtistSummaryDto;
 import com.jazzlogs.backend.artist.dto.SimilarArtistDto;
 import com.jazzlogs.backend.artist.dto.SimilarArtistRequest;
 import com.jazzlogs.backend.graph.GraphService;
@@ -69,13 +71,17 @@ public class ArtistService {
         return saved;
     }
 
-    // No spotifyArtistId means no natural id to upsert on, so this always
-    // creates a new artist — re-posting the same name doesn't match it back
-    // to an existing manual artist. Editing one after creation isn't
-    // supported yet (there's no PATCH/PUT for a bare name change).
+    // No spotifyArtistId means no natural id to upsert on, so a duplicate
+    // name is checked explicitly here instead — re-posting the same name
+    // (any case/whitespace) now rejects rather than creating a second
+    // artist. Editing one after creation isn't supported yet (there's no
+    // PATCH/PUT for a bare name change).
     private Artist createManualArtist(String name) {
         if (!StringUtils.hasText(name)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Either spotifyArtistId or name is required");
+        }
+        if (artistRepository.existsByNormalizedName(Album.normalize(name))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "An artist named '" + name + "' already exists");
         }
 
         Artist artist = new Artist(name, null, null, null);
@@ -192,14 +198,24 @@ public class ArtistService {
 
         Page<Album> page = albumRepository.findByIdInOrderByReleaseYearAsc(albumIds, pageable);
 
+        List<UUID> pageAlbumIds = page.getContent().stream().map(Album::getId).toList();
+        Map<UUID, List<ArtistSummaryDto>> artistsByAlbumId = albumRepository.findArtistsForAlbums(pageAlbumIds).stream()
+            .collect(Collectors.groupingBy(
+                AlbumRepository.AlbumArtistRow::getAlbumId,
+                LinkedHashMap::new,
+                Collectors.mapping(
+                    row -> new ArtistSummaryDto(row.getArtistId(), row.getName(), row.getImageUrl(), row.getSpotifyUrl()),
+                    Collectors.toList()
+                )
+            ));
+
         return page.map(album -> new AlbumSummaryDto(
             album.getId(),
             album.getName(),
             album.getImageUrl(),
             album.getReleaseYear(),
             album.getTotalTracks(),
-            album.getArtist().getId(),
-            album.getArtist().getName()
+            artistsByAlbumId.getOrDefault(album.getId(), List.of())
         ));
     }
 

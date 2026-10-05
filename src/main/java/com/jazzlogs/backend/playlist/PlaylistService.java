@@ -24,7 +24,7 @@ import org.springframework.web.server.ResponseStatusException;
 import jakarta.persistence.EntityManager;
 
 import com.jazzlogs.backend.album.Album;
-import com.jazzlogs.backend.artist.Artist;
+import com.jazzlogs.backend.artist.dto.ArtistSummaryDto;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.like.LikeService;
@@ -592,11 +592,10 @@ public class PlaylistService {
     ) {
         Track track = playlistTrack.getTrack();
         Album album = track.getAlbum();
-        Artist artist = album.getArtist();
         return new FeaturedPlaylistTrackDto(
             track.getId(), track.getName(), track.getDurationMs(), track.getSpotifyUrl(),
             album.getId(), album.getName(),
-            artist.getId(), artist.getName(),
+            toArtistSummaries(album),
             playlistTrack.getPosition(), playlistTrack.getTitle(), playlistTrack.getCuratorNote(),
             stats == null ? null : stats.getAvgRating(),
             stats == null ? 0 : stats.getCount(),
@@ -692,16 +691,21 @@ public class PlaylistService {
         return trackRatingRepository.getRatingStatsForTracks(List.of(trackId)).stream().findFirst().orElse(null);
     }
 
+    private List<ArtistSummaryDto> toArtistSummaries(Album album) {
+        return album.getArtists().stream()
+            .map(artist -> new ArtistSummaryDto(artist.getId(), artist.getName(), artist.getImageUrl(), artist.getSpotifyUrl()))
+            .toList();
+    }
+
     private PlaylistTrackDetailDto toTrackDetailDto(
         PlaylistTrack playlistTrack, TrackRatingRepository.TrackRatingStats stats, BigDecimal myRating, boolean listened, List<NoteDto> myNotes
     ) {
         Track track = playlistTrack.getTrack();
         Album album = track.getAlbum();
-        Artist artist = album.getArtist();
         return new PlaylistTrackDetailDto(
             track.getId(), track.getName(), track.getDurationMs(), track.getSpotifyUrl(),
             album.getId(), album.getName(), album.getImageUrl(),
-            artist.getId(), artist.getName(),
+            toArtistSummaries(album),
             playlistTrack.getPosition(), playlistTrack.getTitle(), playlistTrack.getCuratorNote(),
             stats == null ? null : stats.getAvgRating(),
             stats == null ? 0 : stats.getCount(),

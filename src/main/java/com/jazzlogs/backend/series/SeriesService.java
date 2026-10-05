@@ -24,7 +24,7 @@ import org.springframework.web.server.ResponseStatusException;
 import jakarta.persistence.EntityManager;
 
 import com.jazzlogs.backend.album.Album;
-import com.jazzlogs.backend.artist.Artist;
+import com.jazzlogs.backend.artist.dto.ArtistSummaryDto;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.like.LikeService;
@@ -680,11 +680,13 @@ public class SeriesService {
         Track track, TrackRatingRepository.TrackRatingStats stats, BigDecimal myRating, boolean listened
     ) {
         Album album = track.getAlbum();
-        Artist artist = album.getArtist();
         UUID trackId = track.getId();
+        List<ArtistSummaryDto> artists = album.getArtists().stream()
+            .map(artist -> new ArtistSummaryDto(artist.getId(), artist.getName(), artist.getImageUrl(), artist.getSpotifyUrl()))
+            .toList();
         return new SeriesChapterTrackDto(
             trackId, track.getName(), track.getDurationMs(), track.getSpotifyUrl(), track.getImageUrl(),
-            album.getId(), album.getName(), artist.getId(), artist.getName(),
+            album.getId(), album.getName(), artists,
             stats == null ? null : stats.getAvgRating(), stats == null ? 0 : stats.getCount(),
             myRating, listened,
             graphService.getTrackMoods(trackId), graphService.getTrackContexts(trackId),

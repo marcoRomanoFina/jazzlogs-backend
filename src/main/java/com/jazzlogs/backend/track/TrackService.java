@@ -17,6 +17,7 @@ import com.jazzlogs.backend.album.dto.MoodTagRequest;
 import com.jazzlogs.backend.album.dto.StyleTagRequest;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
+import com.jazzlogs.backend.artist.dto.ArtistSummaryDto;
 import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialDto;
 import com.jazzlogs.backend.graph.GraphService;
@@ -81,8 +82,8 @@ public class TrackService {
         Track track = existingTrack
             .map(existing -> applyToExisting(existing, data, request))
             .orElseGet(() -> {
-                Artist artist = resolveOrCreateArtist(data.artist());
-                Album album = resolveOrCreateAlbum(data.album(), artist);
+                List<Artist> artists = data.album().artists().stream().map(this::resolveOrCreateArtist).toList();
+                Album album = resolveOrCreateAlbum(data.album(), artists);
                 return new Track(
                     album,
                     data.spotifyTrackId(),
@@ -134,11 +135,11 @@ public class TrackService {
     }
 
     /** Same "resolve, don't overwrite" contract as {@link #resolveOrCreateArtist} — upsert by spotifyAlbumId. */
-    private Album resolveOrCreateAlbum(SpotifyTrackAlbumData data, Artist artist) {
+    private Album resolveOrCreateAlbum(SpotifyTrackAlbumData data, List<Artist> artists) {
         return albumRepository.findBySpotifyAlbumId(data.spotifyAlbumId())
             .orElseGet(() -> {
                 Album album = new Album(
-                    artist, data.name(), data.spotifyAlbumId(), data.spotifyUrl(), data.imageUrl(),
+                    artists, data.name(), data.spotifyAlbumId(), data.spotifyUrl(), data.imageUrl(),
                     data.releaseYear(), 0
                 );
                 Album saved = albumRepository.save(album);
@@ -270,7 +271,9 @@ public class TrackService {
     public TrackDetailDto getTrackDetail(UUID trackId, UUID currentUserId) {
         Track track = getTrackOrThrow(trackId);
         Album album = track.getAlbum();
-        Artist artist = album.getArtist();
+        List<ArtistSummaryDto> artists = album.getArtists().stream()
+            .map(artist -> new ArtistSummaryDto(artist.getId(), artist.getName(), artist.getImageUrl(), artist.getSpotifyUrl()))
+            .toList();
 
         TrackRatingRepository.TrackRatingStats stats = trackRatingRepository.getRatingStatsForTracks(List.of(trackId))
             .stream().findFirst().orElse(null);
@@ -296,7 +299,7 @@ public class TrackService {
         ));
 
         return new TrackDetailDto(
-            artist.getId(), artist.getName(), artist.getImageUrl(), artist.getSpotifyUrl(),
+            artists,
             album.getId(), album.getName(), album.getImageUrl(), album.getSpotifyUrl(), album.getReleaseYear(),
             trackDto
         );
