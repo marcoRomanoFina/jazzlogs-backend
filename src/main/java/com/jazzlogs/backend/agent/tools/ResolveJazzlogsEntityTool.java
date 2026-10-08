@@ -16,6 +16,7 @@ import com.jazzlogs.backend.agent.ToolExecutionResult;
 import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.album.AlbumRepository;
 import com.jazzlogs.backend.artist.ArtistRepository;
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.chat.CatalogItemType;
 import com.jazzlogs.backend.track.TrackRepository;
 
@@ -48,17 +49,25 @@ public class ResolveJazzlogsEntityTool extends JazzTool {
     /** Each repository implements {@link CatalogEntityResolver} itself — no separate resolver classes needed. */
     private final Map<CatalogItemType, CatalogEntityResolver> resolversByType;
 
+    private final LogAuthorLookup logAuthorLookup;
+
     public ResolveJazzlogsEntityTool(
-        AlbumRepository albumRepository, ArtistRepository artistRepository, TrackRepository trackRepository, JsonMapper objectMapper
+        AlbumRepository albumRepository,
+        ArtistRepository artistRepository,
+        TrackRepository trackRepository,
+        LogAuthorLookup logAuthorLookup,
+        JsonMapper objectMapper
     ) {
         super(
             NAME,
             "Resolve a free-text album, track, or artist name the user mentioned into ranked JazzLogs "
                 + "catalog id candidates. Use this whenever you need a concrete catalog id and don't "
-                + "already have one from an earlier tool result in this conversation.",
+                + "already have one from an earlier tool result in this conversation. A TRACK candidate "
+                + "also says which narrator wrote its log (writtenBy).",
             "Identificando el álbum/artista"
         );
         this.objectMapper = objectMapper;
+        this.logAuthorLookup = logAuthorLookup;
         this.resolversByType = Map.of(
             CatalogItemType.ALBUM, albumRepository,
             CatalogItemType.ARTIST, artistRepository,
@@ -113,15 +122,21 @@ public class ResolveJazzlogsEntityTool extends JazzTool {
      * matchType/score-sorted by the query itself, this never re-sorts.
      */
     private List<Candidate> dedupeAndTruncate(List<CatalogEntityResolver.CandidateRow> rows, CatalogItemType entityType) {
-        Map<UUID, Candidate> byId = new LinkedHashMap<>();
+        Map<UUID, CatalogEntityResolver.CandidateRow> byId = new LinkedHashMap<>();
         for (CatalogEntityResolver.CandidateRow row : rows) {
-            byId.putIfAbsent(row.getId(), toCandidate(row, entityType));
+            byId.putIfAbsent(row.getId(), row);
         }
-        return byId.values().stream().limit(MAX_CANDIDATES).toList();
+        List<CatalogEntityResolver.CandidateRow> kept = byId.values().stream().limit(MAX_CANDIDATES).toList();
+
+        // Only a track has a log to be the author of — albums/artists skip the lookup entirely.
+        Map<UUID, JazzlogsCharacter> authors = entityType == CatalogItemType.TRACK
+            ? logAuthorLookup.byTrackIds(kept.stream().map(CatalogEntityResolver.CandidateRow::getId).toList())
+            : Map.of();
+        return kept.stream().map(row -> toCandidate(row, entityType, authors.get(row.getId()))).toList();
     }
 
     /** Projects one resolver row into the tool's output shape. */
-    private Candidate toCandidate(CatalogEntityResolver.CandidateRow row, CatalogItemType entityType) {
+    private Candidate toCandidate(CatalogEntityResolver.CandidateRow row, CatalogItemType entityType, JazzlogsCharacter writtenBy) {
         return new Candidate(
             row.getId(),
             entityType,
@@ -130,7 +145,8 @@ public class ResolveJazzlogsEntityTool extends JazzTool {
             entityType == CatalogItemType.TRACK ? row.getAlbumName() : null,
             row.getScore(),
             row.getMatchType(),
-            row.getEditorialId()
+            row.getEditorialId(),
+            writtenBy
         );
     }
 
@@ -155,9 +171,17 @@ public class ResolveJazzlogsEntityTool extends JazzTool {
     private record Args(String entityType, String query) {
     }
 
-    /** One ranked candidate; {@code album} is only set for a TRACK. */
+    /** One ranked candidate; {@code album} and {@code writtenBy} (who signed its log) are only set for a TRACK. */
     private record Candidate(
-        UUID id, CatalogItemType type, String name, String artistFullName, String album, Double score, String matchType, UUID editorialId
+        UUID id,
+        CatalogItemType type,
+        String name,
+        String artistFullName,
+        String album,
+        Double score,
+        String matchType,
+        UUID editorialId,
+        JazzlogsCharacter writtenBy
     ) {
     }
 

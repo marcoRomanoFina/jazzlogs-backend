@@ -12,6 +12,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import com.jazzlogs.backend.agent.ToolCallRequest;
 import com.jazzlogs.backend.agent.ToolExecutionResult;
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.editorial.BlockContentCategory;
 import com.jazzlogs.backend.editorial.EditorialBlock;
 import com.jazzlogs.backend.editorial.EditorialBlockRepository;
@@ -43,8 +44,11 @@ public class EditorialContentTool extends JazzTool {
 
     private final JsonMapper objectMapper;
     private final EditorialBlockRepository editorialBlockRepository;
+    private final LogAuthorLookup logAuthorLookup;
 
-    public EditorialContentTool(EditorialBlockRepository editorialBlockRepository, JsonMapper objectMapper) {
+    public EditorialContentTool(
+        EditorialBlockRepository editorialBlockRepository, LogAuthorLookup logAuthorLookup, JsonMapper objectMapper
+    ) {
         super(
             NAME,
             "Fetch the full or filtered text content of an editorial's blocks, given an editorialId. "
@@ -57,6 +61,7 @@ public class EditorialContentTool extends JazzTool {
             "Leyendo la editorial"
         );
         this.editorialBlockRepository = editorialBlockRepository;
+        this.logAuthorLookup = logAuthorLookup;
         this.objectMapper = objectMapper;
     }
 
@@ -77,7 +82,8 @@ public class EditorialContentTool extends JazzTool {
             : editorialBlockRepository.findByTrackEditorialIdAndContentCategoryInOrderByPositionAsc(editorialId, categories);
 
         List<Block> blockDtos = blocks.stream().map(EditorialContentTool::toBlock).toList();
-        Output output = new Output(buildContent(editorialId, blockDtos), new Metadata(editorialId, blockDtos));
+        JazzlogsCharacter writtenBy = logAuthorLookup.byEditorialId(editorialId).orElse(null);
+        Output output = new Output(buildContent(editorialId, blockDtos), new Metadata(editorialId, writtenBy, blockDtos));
         return new ToolExecutionResult(writeJson(output), true);
     }
 
@@ -138,7 +144,7 @@ public class EditorialContentTool extends JazzTool {
     }
 
     /** The tool's structured payload, alongside {@link #buildContent}'s summary. */
-    private record Metadata(UUID editorialId, List<Block> blocks) {
+    private record Metadata(UUID editorialId, JazzlogsCharacter writtenBy, List<Block> blocks) {
     }
 
     /** The tool's full JSON result shape — conversational summary plus structured metadata. */

@@ -1,5 +1,6 @@
 package com.jazzlogs.backend.editorial;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -20,6 +21,24 @@ public interface TrackEditorialRepository extends LikeableRepository<TrackEditor
     Optional<TrackEditorial> findFirstByOrderByCreatedAtDesc();
 
     boolean existsByTrackId(UUID trackId);
+
+    /**
+     * Who signed the log of each of {@code trackIds} — one query for a whole
+     * batch of agent tool candidates. A track with no log yet simply has no
+     * row here.
+     */
+    @Query("SELECT te.track.id AS trackId, te.byline AS byline FROM TrackEditorial te WHERE te.track.id IN :trackIds")
+    List<LogAuthorRow> findAuthorsByTrackIds(@Param("trackIds") Collection<UUID> trackIds);
+
+    /** One row from {@link #findAuthorsByTrackIds}. */
+    interface LogAuthorRow {
+        UUID getTrackId();
+
+        JazzlogsCharacter getByline();
+    }
+
+    @Query("SELECT te.byline FROM TrackEditorial te WHERE te.id = :id")
+    Optional<JazzlogsCharacter> findBylineById(@Param("id") UUID editorialId);
 
     // Atomic UPDATE, not read-modify-save — two concurrent likes must not race
     // and lose an increment.

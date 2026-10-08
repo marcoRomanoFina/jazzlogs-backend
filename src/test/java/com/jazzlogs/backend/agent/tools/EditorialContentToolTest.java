@@ -36,13 +36,16 @@ class EditorialContentToolTest {
     private static final UUID USER_ID = UUID.randomUUID();
 
     @Mock
+    private LogAuthorLookup logAuthorLookup;
+
+    @Mock
     private EditorialBlockRepository editorialBlockRepository;
 
     private EditorialContentTool tool;
 
     @BeforeEach
     void setUp() {
-        tool = new EditorialContentTool(editorialBlockRepository, new JsonMapper());
+        tool = new EditorialContentTool(editorialBlockRepository, logAuthorLookup, new JsonMapper());
     }
 
     @Test

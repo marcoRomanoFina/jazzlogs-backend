@@ -43,13 +43,16 @@ class SemanticSearchToolTest {
     private static final UUID USER_ID = UUID.randomUUID();
 
     @Mock
+    private LogAuthorLookup logAuthorLookup;
+
+    @Mock
     private SemanticSearchService semanticSearchService;
 
     private SemanticSearchTool tool;
 
     @BeforeEach
     void setUp() {
-        tool = new SemanticSearchTool(semanticSearchService, new JsonMapper());
+        tool = new SemanticSearchTool(semanticSearchService, logAuthorLookup, new JsonMapper());
     }
 
     @Test
