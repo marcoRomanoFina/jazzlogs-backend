@@ -114,14 +114,12 @@ public class ChatContextBuilder {
             moods: %s
             rhythms: %s
             contexts: %s
-            instruments: %s
-            editorial categories: %s""".formatted(
+            instruments: %s""".formatted(
             vocabularyProvider.styles(),
             vocabularyProvider.moods(),
             vocabularyProvider.rhythms(),
             vocabularyProvider.contexts(),
-            vocabularyProvider.instruments(),
-            vocabularyProvider.editorialCategories()
+            vocabularyProvider.instruments()
         );
     }
 

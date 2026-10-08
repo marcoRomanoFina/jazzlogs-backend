@@ -158,8 +158,8 @@ public class ResolveJazzlogsEntityTool extends JazzTool {
     }
 
     /**
-     * One ranked candidate, named like GRAPH_FILTER's and SEMANTIC_SEARCH's so the
-     * model sees one vocabulary for ids and names. {@code album} and {@code
+     * One ranked candidate, named like FIND_TRACKS's so the model sees one
+     * vocabulary for ids and names. {@code album} and {@code
      * writtenBy} (who signed its log) are only set for a TRACK.
      */
     private record Candidate(

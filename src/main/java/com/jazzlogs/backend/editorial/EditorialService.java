@@ -264,7 +264,7 @@ public class EditorialService {
         return trackEditorialRepository.count();
     }
 
-    /** Never exposes more than this many rows, however large {@code n} is asked for — the server has the final word, same as everywhere else this pattern shows up (e.g. GraphFilterTool's topK). */
+    /** Never exposes more than this many rows, however large {@code n} is asked for — the server has the final word, same as everywhere else this pattern shows up (e.g. TrackSearchService's MAX_CANDIDATES). */
     private static final int MAX_RECENT_BY_BYLINE = 10;
     private static final int MAX_RECENT_EDITORIALS = 15;
 

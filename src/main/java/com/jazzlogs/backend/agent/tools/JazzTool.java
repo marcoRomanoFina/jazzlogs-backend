@@ -59,7 +59,7 @@ public abstract class JazzTool {
      * strict mode requires every property to be listed in "required"
      * (optional fields expressed via a nullable type union instead of
      * omission) — none of our {@code schema()}s satisfy that today (e.g.
-     * {@code GraphFilterTool}'s vocabulary filters are genuinely optional),
+     * {@code FindTracksTool}'s vocabulary tags are genuinely optional),
      * so {@code strict(true)} would be rejected by the API. {@code
      * .strict(...)} itself is non-optional on the SDK's builder — omitting
      * it entirely throws at build() time, not request time. Compare {@code
@@ -78,8 +78,8 @@ public abstract class JazzTool {
      *               {@code JazzlogsAgent.run}, which threads {@code
      *               chat.getUserId()} through) — not something the model
      *               supplies or controls. Most tools ignore it; tools that
-     *               need per-user context (e.g. graphFilter's
-     *               excludeListened/excludeAlreadyRated) read it here
+     *               need per-user context (e.g. {@code FindTracksTool},
+     *               to mark what they already listened to) read it here
      *               instead of it living anywhere in {@link ToolCallRequest},
      *               which represents only what the model asked for
      */
@@ -88,7 +88,7 @@ public abstract class JazzTool {
     // --- shared JSON-arg parsing helpers ---
     //
     // Every tool turns the model's raw string args into typed enums the same
-    // way; living here once a second tool (GraphFilterTool, SemanticSearchTool)
+    // way; living here once more than one tool
     // needed the identical logic, instead of each subclass keeping its own copy.
 
     /**

@@ -1,5 +1,6 @@
 package com.jazzlogs.backend.track;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -124,4 +125,41 @@ public interface TrackRepository extends JpaRepository<Track, UUID>, SavedItemRe
         LIMIT :limit
         """, nativeQuery = true)
     List<CandidateRow> search(@Param("normalizedQuery") String normalizedQuery, @Param("limit") int limit);
+
+    /**
+     * What a search result shows of each track without opening its log: its
+     * name, album, credited artists (joined with ", " in credited order, same
+     * as {@link #search}) and who wrote its log.
+     */
+    @Query(value = """
+        SELECT
+            t.id AS id,
+            t.name AS name,
+            al.name AS albumName,
+            (
+                SELECT string_agg(ar.name, ', ' ORDER BY aa.position)
+                FROM album_artists aa
+                JOIN artists ar ON ar.id = aa.artist_id
+                WHERE aa.album_id = al.id
+            ) AS artistFullName,
+            te.byline AS writtenBy
+        FROM tracks t
+        JOIN albums al ON al.id = t.album_id
+        LEFT JOIN track_editorials te ON te.track_id = t.id
+        WHERE t.id IN (:trackIds)
+        """, nativeQuery = true)
+    List<TrackCardRow> findCards(@Param("trackIds") Collection<UUID> trackIds);
+
+    /** One row from {@link #findCards}; {@code writtenBy} is a {@code JazzlogsCharacter} name, null if the track has no log. */
+    interface TrackCardRow {
+        UUID getId();
+
+        String getName();
+
+        String getAlbumName();
+
+        String getArtistFullName();
+
+        String getWrittenBy();
+    }
 }

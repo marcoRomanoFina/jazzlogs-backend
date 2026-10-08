@@ -102,7 +102,7 @@ public class TrackLogReader {
         return new Block(block.getType(), block.getContentCategory(), block.getSubhead(), block.getText());
     }
 
-    /** Codes, not labels — the same vocabulary the model already filters with in GRAPH_FILTER. */
+    /** Codes, not labels — the same vocabulary the model already searches with in FIND_TRACKS. */
     private static List<String> codesOf(List<VocabularyTag> tags) {
         return tags.stream().map(VocabularyTag::code).toList();
     }
@@ -123,7 +123,7 @@ public class TrackLogReader {
     /**
      * The track itself. {@code entityId}/{@code entityName} are named like every
      * other tool's; {@code albumId} and each performer's {@code artistId} are there
-     * so the model can scope a later GRAPH_FILTER without resolving them by name.
+     * so the model can scope a later FIND_TRACKS without resolving them by name.
      */
     public record TrackInfo(
         UUID entityId,

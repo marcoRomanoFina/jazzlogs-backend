@@ -40,8 +40,8 @@ public class EditorialContentTool extends JazzTool {
     public EditorialContentTool(TrackLogReader trackLogReader, JsonMapper objectMapper) {
         super(
             NAME,
-            "Read everything JazzLogs has on one track, given its id — the entityId of a TRACK from "
-                + "GRAPH_FILTER, SEMANTIC_SEARCH, or RESOLVE_JAZZLOGS_ENTITY. Returns the track itself "
+            "Read everything JazzLogs has on one track, given its id — the entityId of a track from "
+                + "FIND_TRACKS or RESOLVE_JAZZLOGS_ENTITY. Returns the track itself "
                 + "(name, artists, album and year, length, vocal profile, energy, accessibility, mood "
                 + "intensity, tempo feel, composition type, its style/mood/context/rhythm/instrument "
                 + "tags, and who plays what on it) and its complete log: title, log number, dek, the "
@@ -49,7 +49,7 @@ public class EditorialContentTool extends JazzTool {
                 + "each labelled with what it covers (contentCategory). This is the last step before "
                 + "recommending: call it once you have decided which track you are recommending, and "
                 + "write your answer from what it returns — never invent editorial content. Do not use "
-                + "it to compare candidates (that is SEMANTIC_SEARCH's job). Only a track id is valid "
+                + "it to compare candidates (FIND_TRACKS already gives you what you need for that). Only a track id is valid "
                 + "here: an album or artist id is rejected.",
             "Leyendo la editorial"
         );
