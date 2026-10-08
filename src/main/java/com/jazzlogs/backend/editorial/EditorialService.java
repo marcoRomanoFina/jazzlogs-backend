@@ -2,6 +2,7 @@ package com.jazzlogs.backend.editorial;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -246,6 +247,28 @@ public class EditorialService {
         return page.map(row -> toTrackEditorialCatalogueDto(row, liked.contains(row.id())));
     }
 
+    /**
+     * The catalogue card of each of {@code trackIds}' logs, keyed by track
+     * id — what a chat shows for a track it recommended. A track with no log
+     * has no entry.
+     *
+     * @param currentUserId used only to compute each card's {@code likedByCurrentUser}
+     */
+    @Transactional(readOnly = true)
+    public Map<UUID, TrackEditorialCatalogueDto> getCatalogueCardsByTrackId(Collection<UUID> trackIds, UUID currentUserId) {
+        if (trackIds.isEmpty()) {
+            return Map.of();
+        }
+        List<TrackEditorialCatalogueRow> rows = trackEditorialRepository.findCatalogueRowsByTrackIds(trackIds);
+        List<UUID> editorialIds = rows.stream().map(TrackEditorialCatalogueRow::id).toList();
+        Set<UUID> liked = likeService.hasUserLikedBatch(currentUserId, LikeableEntityType.EDITORIAL, editorialIds);
+
+        return rows.stream().collect(Collectors.toMap(
+            TrackEditorialCatalogueRow::trackId,
+            row -> toTrackEditorialCatalogueDto(row, liked.contains(row.id()))
+        ));
+    }
+
     /** Backward-compatible catalogue listing without an author filter. */
     public Page<TrackEditorialCatalogueDto> listEditorials(String q, Pageable pageable, UUID currentUserId) {
         return listEditorials(q, null, pageable, currentUserId);
@@ -253,7 +276,8 @@ public class EditorialService {
 
     private TrackEditorialCatalogueDto toTrackEditorialCatalogueDto(TrackEditorialCatalogueRow row, boolean likedByCurrentUser) {
         return new TrackEditorialCatalogueDto(
-            row.id(), row.trackId(), row.trackName(), row.editorialCoverUrl(), row.albumName(), row.albumId(), row.artistName(),
+            row.id(), row.trackId(), row.trackName(), row.durationMs(), row.spotifyUrl(),
+            row.editorialCoverUrl(), row.albumName(), row.albumId(), row.artistName(),
             row.title(), row.logNumber(), row.dek(), row.byline(), row.createdAt(), row.likeCount(), likedByCurrentUser
         );
     }

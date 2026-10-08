@@ -4,6 +4,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+import com.jazzlogs.backend.editorial.dto.TrackEditorialCatalogueDto;
+
 /**
  * Projection of a {@link com.jazzlogs.backend.chat.chatexchange.ChatExchange} — one turn
  * of a chat, as returned by {@code GET /chats/{chatId}/exchanges}.
@@ -12,8 +14,9 @@ import java.util.UUID;
  * @param chatId        the chat this exchange belongs to
  * @param userMessage   what the user sent
  * @param finalResponse the agent's reply
- * @param winners       items the agent recommended in this exchange, if any —
- *                      resolved fresh against the catalog, not the persisted
+ * @param winners       the logs the agent recommended in this exchange, if any,
+ *                      as the same card the archive lists them with — resolved
+ *                      fresh against the catalog, not the persisted
  *                      {@link com.jazzlogs.backend.chat.chatexchange.WinnerReference} snapshot
  * @param createdAt     when the exchange was recorded — drives list ordering
  */
@@ -22,7 +25,7 @@ public record ChatExchangeDto(
     UUID chatId,
     String userMessage,
     String finalResponse,
-    List<WinnerCard> winners,
+    List<TrackEditorialCatalogueDto> winners,
     Instant createdAt
 ) {
 }

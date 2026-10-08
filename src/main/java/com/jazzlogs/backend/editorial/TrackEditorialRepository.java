@@ -63,7 +63,8 @@ public interface TrackEditorialRepository extends LikeableRepository<TrackEditor
     @Query(
         value = """
             SELECT new com.jazzlogs.backend.editorial.TrackEditorialCatalogueRow(
-                te.id, t.id, t.name, te.coverImageUrl, alb.name, alb.id, alb.artists[0].name, te.title, te.logNumber, te.dek, te.byline, te.createdAt, te.likeCount
+                te.id, t.id, t.name, t.durationMs, t.spotifyUrl, te.coverImageUrl, alb.name, alb.id, alb.artists[0].name,
+                te.title, te.logNumber, te.dek, te.byline, te.createdAt, te.likeCount
             )
             FROM TrackEditorial te
             JOIN te.track t
@@ -84,6 +85,22 @@ public interface TrackEditorialRepository extends LikeableRepository<TrackEditor
         @Param("byline") JazzlogsCharacter byline,
         Pageable pageable
     );
+
+    /**
+     * The same catalogue row {@link #searchCatalogue} lists, for the logs of
+     * specific tracks — what a recommended track's card is built from.
+     */
+    @Query("""
+        SELECT new com.jazzlogs.backend.editorial.TrackEditorialCatalogueRow(
+            te.id, t.id, t.name, t.durationMs, t.spotifyUrl, te.coverImageUrl, alb.name, alb.id, alb.artists[0].name,
+                te.title, te.logNumber, te.dek, te.byline, te.createdAt, te.likeCount
+        )
+        FROM TrackEditorial te
+        JOIN te.track t
+        JOIN t.album alb
+        WHERE t.id IN :trackIds
+        """)
+    List<TrackEditorialCatalogueRow> findCatalogueRowsByTrackIds(@Param("trackIds") Collection<UUID> trackIds);
 
     /**
      * Backs "Featured Tracks" — {@code Track#featured}, not {@code

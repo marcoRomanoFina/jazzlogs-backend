@@ -3,7 +3,7 @@ package com.jazzlogs.backend.agent;
 import java.util.List;
 import java.util.UUID;
 
-import com.jazzlogs.backend.chat.chatexchange.dto.WinnerCard;
+import com.jazzlogs.backend.editorial.dto.TrackEditorialCatalogueDto;
 
 /**
  * One occasion an {@link Agent} reports over the course of an exchange.
@@ -52,7 +52,7 @@ public sealed interface AgentEvent {
         UUID chatId,
         String text,
         AgentFinalAnswer.ResultType resultType,
-        List<WinnerCard> recommendedItems,
+        List<TrackEditorialCatalogueDto> recommendedItems,
         String suggestedChatTitle
     ) implements AgentEvent {
         public String wireName() {
