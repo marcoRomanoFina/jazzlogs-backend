@@ -25,6 +25,7 @@ import jakarta.persistence.EntityManager;
 
 import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.artist.dto.ArtistSummaryDto;
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.like.LikeService;
@@ -541,7 +542,7 @@ public class SeriesService {
      * @return the matching page
      */
     @Transactional(readOnly = true)
-    public Page<SeriesSummaryDto> getCatalogue(SeriesVoice voice, boolean includeUnpublished, Pageable pageable) {
+    public Page<SeriesSummaryDto> getCatalogue(JazzlogsCharacter voice, boolean includeUnpublished, Pageable pageable) {
         Page<Series> page;
         if (voice == null) {
             page = includeUnpublished ? seriesRepository.findAll(pageable) : seriesRepository.findByStatus(SeriesStatus.PUBLISHED, pageable);

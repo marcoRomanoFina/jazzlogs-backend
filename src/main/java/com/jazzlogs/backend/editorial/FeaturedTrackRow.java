@@ -3,6 +3,8 @@ package com.jazzlogs.backend.editorial;
 import java.time.Instant;
 import java.util.UUID;
 
+import com.jazzlogs.backend.character.JazzlogsCharacter;
+
 /**
  * What {@link TrackEditorialRepository#findFeatured} actually selects —
  * everything {@link com.jazzlogs.backend.editorial.dto.FeaturedTrackDto}
@@ -14,7 +16,7 @@ public record FeaturedTrackRow(
     String title,
     String logNumber,
     String dek,
-    EditorialByline byline,
+    JazzlogsCharacter byline,
     UUID trackId,
     String trackName,
     String coverImageUrl,

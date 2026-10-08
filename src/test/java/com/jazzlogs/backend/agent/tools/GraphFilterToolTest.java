@@ -47,13 +47,16 @@ class GraphFilterToolTest {
     private static final UUID USER_ID = UUID.randomUUID();
 
     @Mock
+    private LogAuthorLookup logAuthorLookup;
+
+    @Mock
     private GraphFilterService graphFilterService;
 
     private GraphFilterTool tool;
 
     @BeforeEach
     void setUp() {
-        tool = new GraphFilterTool(graphFilterService, new JsonMapper());
+        tool = new GraphFilterTool(graphFilterService, logAuthorLookup, new JsonMapper());
     }
 
     @Test

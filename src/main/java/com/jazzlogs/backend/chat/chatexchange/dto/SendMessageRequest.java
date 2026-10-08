@@ -2,13 +2,13 @@ package com.jazzlogs.backend.chat.chatexchange.dto;
 
 import jakarta.validation.constraints.NotBlank;
 
-// Same body for both POST /chats (first message of a brand-new chat) and
-// POST /chats/{chatId}/messages (any later message) — creating a chat is just
-// sending its first message. There's no finalResponse/winners field: the
-// agent is what produces those now, streamed back over SSE, never supplied
-// by the caller (see AgentOrchestrator, ChatExchangeService).
+// Body of POST /chats/{chatId}/messages — any message after a chat's first
+// (see CreateChatRequest for that one, which also carries the narrator).
+// There's no finalResponse/winners field: the agent is what produces those,
+// streamed back over SSE, never supplied by the caller (see
+// AgentOrchestrator, ChatExchangeService).
 // timezone is an optional IANA zone id (e.g. "America/Argentina/Buenos_Aires"),
 // not persisted anywhere, only used to render ChatContextBuilder's RUNTIME
-// CONTEXT; falls back to UTC when absent, never fails the request.
+// CONTEXT; when absent the user's local time is simply unknown, never a failed request.
 public record SendMessageRequest(@NotBlank String userMessage, String timezone) {
 }

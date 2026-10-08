@@ -3,7 +3,7 @@ package com.jazzlogs.backend.editorial.dto;
 import java.time.Instant;
 import java.util.List;
 
-import com.jazzlogs.backend.editorial.EditorialByline;
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 
 /**
  * A track's own editorial, as nested in {@code TrackDto}. No {@code id}
@@ -31,7 +31,7 @@ public record TrackEditorialDto(
     String title,
     String logNumber,
     String dek,
-    EditorialByline byline,
+    JazzlogsCharacter byline,
     String coverImageUrl,
     String principalImageUrl,
     String secondaryImageUrl,

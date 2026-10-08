@@ -28,6 +28,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.chat.CatalogItemType;
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.chat.chat.Chat;
 import com.jazzlogs.backend.chat.chat.ChatRepository;
 import com.jazzlogs.backend.chat.chat.ChatService;
@@ -74,7 +75,7 @@ class ChatExchangeServiceTest {
         );
 
         User user = new User(UUID.randomUUID(), "test@example.com");
-        chat = new Chat(user, null);
+        chat = new Chat(user, null, JazzlogsCharacter.MARK);
     }
 
     // Only the persist() tests below need chatExchangeRepository.save

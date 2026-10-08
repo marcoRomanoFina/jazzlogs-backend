@@ -3,7 +3,7 @@ package com.jazzlogs.backend.editorial.dto;
 import java.time.Instant;
 import java.util.UUID;
 
-import com.jazzlogs.backend.editorial.EditorialByline;
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 
 /**
  * One row in the archive's search/browse listing — now always a track
@@ -36,7 +36,7 @@ public record TrackEditorialCatalogueDto(
     String title,
     String logNumber,
     String dek,
-    EditorialByline byline,
+    JazzlogsCharacter byline,
     Instant createdAt,
     int likeCount,
     boolean likedByCurrentUser

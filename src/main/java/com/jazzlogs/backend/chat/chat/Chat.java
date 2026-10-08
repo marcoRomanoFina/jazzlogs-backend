@@ -5,6 +5,8 @@ import java.util.UUID;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
@@ -18,6 +20,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.user.User;
 /**
  * A chat session between a user and the agent.
@@ -49,6 +52,15 @@ public class Chat {
 
     private String title;
 
+    /**
+     * Who the user is talking to — chosen with the chat's first message and
+     * never changed after, so a chat's history and session memory stay in
+     * one voice. Drives the agent's persona; see {@code NarratorPersonas}.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, updatable = false)
+    private JazzlogsCharacter narrator;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -58,9 +70,10 @@ public class Chat {
     @Column(name = "last_message_at")
     private Instant lastMessageAt;
 
-    public Chat(User user, String title) {
+    public Chat(User user, String title, JazzlogsCharacter narrator) {
         this.user = user;
         this.title = title;
+        this.narrator = narrator;
     }
 
     public UUID getUserId() {

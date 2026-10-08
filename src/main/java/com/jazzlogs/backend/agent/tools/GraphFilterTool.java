@@ -12,10 +12,13 @@ import tools.jackson.databind.json.JsonMapper;
 
 import com.jazzlogs.backend.agent.ToolCallRequest;
 import com.jazzlogs.backend.agent.ToolExecutionResult;
+import com.jazzlogs.backend.character.JazzlogsCharacter;
+import com.jazzlogs.backend.chat.CatalogItemType;
 import com.jazzlogs.backend.graph.GraphCandidate;
 import com.jazzlogs.backend.graph.GraphFilterFilters;
 import com.jazzlogs.backend.graph.GraphFilterResult;
 import com.jazzlogs.backend.graph.GraphFilterService;
+import com.jazzlogs.backend.graph.MatchedDimension;
 import com.jazzlogs.backend.vocabulary.ContextVocabulary;
 import com.jazzlogs.backend.vocabulary.InstrumentVocabulary;
 import com.jazzlogs.backend.vocabulary.MoodVocabulary;
@@ -79,13 +82,15 @@ public class GraphFilterTool extends JazzTool {
 
     private final JsonMapper objectMapper;
     private final GraphFilterService graphFilterService;
+    private final LogAuthorLookup logAuthorLookup;
 
-    public GraphFilterTool(GraphFilterService graphFilterService, JsonMapper objectMapper) {
+    public GraphFilterTool(GraphFilterService graphFilterService, LogAuthorLookup logAuthorLookup, JsonMapper objectMapper) {
         super(
             NAME,
             "Rank Track candidates by graph-topology overlap with the given style/rhythm/mood/context/"
                 + "instrument vocabulary filters. Returns each candidate's id, name (entityName — use this, "
-                + "never the id, when referring to a candidate in your answer), and exactly which filters "
+                + "never the id, when referring to a candidate in your answer), which narrator wrote its log "
+                + "(writtenBy), and exactly which filters "
                 + "it matched (matchedDimensions) — no long-form description or editorial text (use "
                 + "SEMANTIC_SEARCH for that, required before recommending anything specific — see KNOWLEDGE "
                 + "SOURCE RULE). A candidate only needs to match one of the requested filters to be "
@@ -102,6 +107,7 @@ public class GraphFilterTool extends JazzTool {
             "Filtrando por estilo y clima"
         );
         this.graphFilterService = graphFilterService;
+        this.logAuthorLookup = logAuthorLookup;
         this.objectMapper = objectMapper;
     }
 
@@ -129,7 +135,8 @@ public class GraphFilterTool extends JazzTool {
 
         GraphFilterResult result = graphFilterService.filter(filters, userId);
 
-        Output output = new Output(buildContent(result.candidates()), new Metadata(result.candidates()));
+        List<Candidate> candidates = withAuthors(result.candidates());
+        Output output = new Output(buildContent(candidates), new Metadata(candidates));
         return new ToolExecutionResult(writeJson(output), true);
     }
 
@@ -154,8 +161,16 @@ public class GraphFilterTool extends JazzTool {
         }
     }
 
+    /** Adds who wrote each candidate's log — one batched lookup for the whole result. */
+    private List<Candidate> withAuthors(List<GraphCandidate> candidates) {
+        Map<UUID, JazzlogsCharacter> authors = logAuthorLookup.byTrackIds(candidates.stream().map(GraphCandidate::entityId).toList());
+        return candidates.stream()
+            .map(c -> new Candidate(c.entityType(), c.entityId(), c.entityName(), authors.get(c.entityId()), c.matchedDimensions()))
+            .toList();
+    }
+
     /** The conversational summary line the model reads alongside the structured candidates. */
-    private String buildContent(List<GraphCandidate> candidates) {
+    private String buildContent(List<Candidate> candidates) {
         if (candidates.isEmpty()) {
             return "No graph candidates matched the given filters.";
         }
@@ -191,8 +206,14 @@ public class GraphFilterTool extends JazzTool {
     ) {
     }
 
+    /** A {@link GraphCandidate} plus {@code writtenBy} — the narrator who signed its log, {@code null} if it has none yet. */
+    private record Candidate(
+        CatalogItemType entityType, UUID entityId, String entityName, JazzlogsCharacter writtenBy, List<MatchedDimension> matchedDimensions
+    ) {
+    }
+
     /** The tool's structured payload, alongside {@link #buildContent}'s summary. */
-    private record Metadata(List<GraphCandidate> candidates) {
+    private record Metadata(List<Candidate> candidates) {
     }
 
     /** The tool's full JSON result shape — conversational summary plus structured metadata. */

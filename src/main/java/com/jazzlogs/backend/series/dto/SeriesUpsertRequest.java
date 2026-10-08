@@ -5,7 +5,7 @@ import java.util.List;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
-import com.jazzlogs.backend.series.SeriesVoice;
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 
 // Metadata only — chapters are managed via their own granular endpoints
 // (addChapter/removeChapter/updateChapter/reorderChapters), same shape as Playlist.
@@ -23,7 +23,7 @@ public record SeriesUpsertRequest(
     @NotBlank String title,
     String dek,
     String description,
-    @NotNull SeriesVoice voice,
+    @NotNull JazzlogsCharacter voice,
     List<String> styleCodes,
     List<String> moodCodes,
     List<String> contextCodes,

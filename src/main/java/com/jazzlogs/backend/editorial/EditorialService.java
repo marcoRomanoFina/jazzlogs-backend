@@ -25,6 +25,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.artist.Artist;
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.editorial.dto.BlockRequest;
 import com.jazzlogs.backend.editorial.dto.EditorialBlockDto;
 import com.jazzlogs.backend.editorial.dto.EditorialTrackSummaryDto;
@@ -55,18 +56,13 @@ public class EditorialService {
     private final ImageStorageService imageStorageService;
     private final EntityManager entityManager;
 
-    /** Unsigned pieces default to the outlet itself rather than requiring an explicit choice. */
-    private EditorialByline bylineOrDefault(EditorialByline byline) {
-        return byline == null ? EditorialByline.JAZZLOGS : byline;
-    }
-
     @Transactional
     public TrackEditorial upsertTrackEditorial(UUID trackId, TrackEditorialRequest request) {
         Track track = getTrackOrThrow(trackId);
 
         TrackEditorial editorial = trackEditorialRepository.findByTrackId(trackId)
             .orElseGet(() -> new TrackEditorial(track));
-        editorial.update(request.title(), request.dek(), bylineOrDefault(request.byline()), request.logNumber());
+        editorial.update(request.title(), request.dek(), request.byline(), request.logNumber());
         TrackEditorial saved = saveWithUniqueTitle(() -> trackEditorialRepository.save(editorial));
 
         upsertBlocks(saved, request.blocks());
@@ -237,7 +233,7 @@ public class EditorialService {
     @Transactional(readOnly = true)
     public Page<TrackEditorialCatalogueDto> listEditorials(
         String q,
-        EditorialByline byline,
+        JazzlogsCharacter byline,
         Pageable pageable,
         UUID currentUserId
     ) {
@@ -321,7 +317,7 @@ public class EditorialService {
      * @return up to {@code n} editorials, newest first
      */
     @Transactional(readOnly = true)
-    public List<EditorialTrackSummaryDto> getRecentByByline(EditorialByline byline, int n, UUID currentUserId) {
+    public List<EditorialTrackSummaryDto> getRecentByByline(JazzlogsCharacter byline, int n, UUID currentUserId) {
         int limit = Math.min(Math.max(n, 1), MAX_RECENT_BY_BYLINE);
         List<EditorialTrackSummaryRow> rows = trackEditorialRepository.findRecentByByline(byline, PageRequest.of(0, limit));
 

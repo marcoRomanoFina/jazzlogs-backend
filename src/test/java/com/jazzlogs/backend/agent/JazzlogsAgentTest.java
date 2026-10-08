@@ -27,6 +27,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.json.JsonMapper;
 
 import com.jazzlogs.backend.agent.tools.JazzTool;
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.chat.chat.Chat;
 import com.jazzlogs.backend.chat.chatexchange.ChatExchangeService;
 import com.jazzlogs.backend.chat.chatexchange.dto.ChatExchangeDto;
@@ -85,7 +86,7 @@ class JazzlogsAgentTest {
         ReflectionTestUtils.setField(agent, "maxToolCallsPerTurn", 4);
 
         User user = new User(UUID.randomUUID(), "test@example.com");
-        chat = new Chat(user, null);
+        chat = new Chat(user, null, JazzlogsCharacter.MARK);
         sink = new RecordingSink();
     }
 

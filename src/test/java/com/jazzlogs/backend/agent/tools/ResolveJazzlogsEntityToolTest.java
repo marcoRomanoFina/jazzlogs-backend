@@ -2,11 +2,13 @@ package com.jazzlogs.backend.agent.tools;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -25,6 +27,7 @@ import com.jazzlogs.backend.agent.ToolCallRequest;
 import com.jazzlogs.backend.agent.ToolExecutionResult;
 import com.jazzlogs.backend.album.AlbumRepository;
 import com.jazzlogs.backend.artist.ArtistRepository;
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.track.TrackRepository;
 
 // The repository's native pg_trgm query is what actually establishes
@@ -43,6 +46,9 @@ class ResolveJazzlogsEntityToolTest {
     private static final UUID USER_ID = UUID.randomUUID();
 
     @Mock
+    private LogAuthorLookup logAuthorLookup;
+
+    @Mock
     private AlbumRepository albumRepository;
 
     @Mock
@@ -55,7 +61,7 @@ class ResolveJazzlogsEntityToolTest {
 
     @BeforeEach
     void setUp() {
-        tool = new ResolveJazzlogsEntityTool(albumRepository, artistRepository, trackRepository, new JsonMapper());
+        tool = new ResolveJazzlogsEntityTool(albumRepository, artistRepository, trackRepository, logAuthorLookup, new JsonMapper());
     }
 
     @Test
@@ -159,6 +165,19 @@ class ResolveJazzlogsEntityToolTest {
     }
 
     @Test
+    void trackCandidate_saysWhoWroteItsLog() throws Exception {
+        UUID trackId = UUID.randomUUID();
+        CatalogEntityResolver.CandidateRow row = row(trackId, "So What", "Miles Davis", 1.0, "EXACT");
+        when(trackRepository.search("so what")).thenReturn(List.of(row));
+        when(logAuthorLookup.byTrackIds(List.of(trackId))).thenReturn(Map.of(trackId, JazzlogsCharacter.LAURA));
+
+        ToolExecutionResult result = tool.execute(callWith("{\"entityType\":\"TRACK\",\"query\":\"So What\"}"), USER_ID);
+
+        JsonNode candidate = JSON.readTree(result.payload()).get("metadata").get("candidates").get(0);
+        assertThat(candidate.get("writtenBy").asText()).isEqualTo("LAURA");
+    }
+
+    @Test
     void noMatches_hasFoundFalse_andPlainTextContent() throws Exception {
         when(artistRepository.search("nonexistent")).thenReturn(List.of());
 
@@ -180,13 +199,14 @@ class ResolveJazzlogsEntityToolTest {
     }
 
     private static CatalogEntityResolver.CandidateRow row(UUID id, String name, String artistFullName, double score, String matchType) {
+        // lenient: a row cut by dedupe/truncation is never projected, so only its id is ever read.
         CatalogEntityResolver.CandidateRow row = mock(CatalogEntityResolver.CandidateRow.class);
         when(row.getId()).thenReturn(id);
-        when(row.getName()).thenReturn(name);
-        when(row.getArtistFullName()).thenReturn(artistFullName);
-        when(row.getScore()).thenReturn(score);
-        when(row.getMatchType()).thenReturn(matchType);
-        when(row.getEditorialId()).thenReturn(UUID.randomUUID());
+        lenient().when(row.getName()).thenReturn(name);
+        lenient().when(row.getArtistFullName()).thenReturn(artistFullName);
+        lenient().when(row.getScore()).thenReturn(score);
+        lenient().when(row.getMatchType()).thenReturn(matchType);
+        lenient().when(row.getEditorialId()).thenReturn(UUID.randomUUID());
         return row;
     }
 

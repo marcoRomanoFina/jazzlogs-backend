@@ -1,6 +1,7 @@
 package com.jazzlogs.backend.agent;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 
@@ -82,7 +83,10 @@ public class OpenAiResponsesStreamClient {
     ) {
         this.apiKey = apiKey;
         this.model = model;
-        this.tools = tools;
+        // Tool definitions sit ahead of the prompt in what OpenAI caches by prefix, and Spring
+        // injects this list in classpath-scan order — not guaranteed to match between two
+        // deployments. Sorting pins one order so every instance sends the same prefix.
+        this.tools = tools.stream().sorted(Comparator.comparing(JazzTool::name)).toList();
     }
 
     /**

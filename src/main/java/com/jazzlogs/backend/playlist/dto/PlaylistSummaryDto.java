@@ -6,7 +6,7 @@ import java.util.UUID;
 
 import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.playlist.PlaylistType;
-import com.jazzlogs.backend.series.SeriesVoice;
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 
 // One shape for every playlist listing that isn't a single-item detail page:
 // GET /playlists, /playlists/journey, /playlists/journeys, /playlists/standard,
@@ -20,7 +20,7 @@ public record PlaylistSummaryDto(
     String coverImageUrl,
     String spotifyUrl,
     PlaylistType type,
-    SeriesVoice byline,
+    JazzlogsCharacter byline,
     boolean published,
     int likeCount,
     boolean likedByCurrentUser,

@@ -26,7 +26,7 @@ import com.jazzlogs.backend.album.AlbumRepository;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
 import com.jazzlogs.backend.artist.dto.ArtistSummaryDto;
-import com.jazzlogs.backend.editorial.EditorialByline;
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.editorial.EditorialService;
 import com.jazzlogs.backend.editorial.TrackEditorialRepository;
 import com.jazzlogs.backend.editorial.dto.TrackEditorialRequest;
@@ -321,7 +321,7 @@ class TrackServiceTest {
     // here needs one except the dedicated "rejects with no editorial" test.
     private Track persistTrack(String name) {
         Track track = persistTrackWithoutEditorial(name);
-        editorialService.upsertTrackEditorial(track.getId(), new TrackEditorialRequest(name + " Editorial", "1", "dek", EditorialByline.JAZZLOGS, List.of()));
+        editorialService.upsertTrackEditorial(track.getId(), new TrackEditorialRequest(name + " Editorial", "1", "dek", JazzlogsCharacter.MARK, List.of()));
         return track;
     }
 

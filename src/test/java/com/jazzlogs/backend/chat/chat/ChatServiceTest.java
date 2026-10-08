@@ -19,6 +19,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.user.User;
 
 // createChat: covers the fix for the "orphaned empty chat if the agent's
@@ -47,7 +48,7 @@ class ChatServiceTest {
         User user = new User(UUID.randomUUID(), "test@example.com");
         ReflectionTestUtils.setField(user, "id", userId);
 
-        Chat chat = service.createChat(user);
+        Chat chat = service.createChat(user, JazzlogsCharacter.MARK);
 
         assertThat(chat.getId()).isNull();
         assertThat(chat.getUserId()).isEqualTo(userId);
@@ -95,6 +96,6 @@ class ChatServiceTest {
     private static Chat chatOwnedBy(UUID ownerId) {
         User owner = new User(UUID.randomUUID(), "owner@example.com");
         ReflectionTestUtils.setField(owner, "id", ownerId);
-        return new Chat(owner, null);
+        return new Chat(owner, null, JazzlogsCharacter.MARK);
     }
 }

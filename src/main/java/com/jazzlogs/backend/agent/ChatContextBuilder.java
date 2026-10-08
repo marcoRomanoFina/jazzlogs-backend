@@ -2,12 +2,12 @@ package com.jazzlogs.backend.agent;
 
 import java.time.DateTimeException;
 import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -28,9 +28,9 @@ import lombok.AllArgsConstructor;
 
 /**
  * Assembles the {@code List<ResponseInputItem>} sent to the Responses API
- * for one exchange: a developer message (static tool-usage instructions,
- * canonical vocabulary, runtime context, session summary, recommendation
- * history) followed by up to the 3 most recent exchanges as user/assistant
+ * for one exchange: a developer message (the fixed instructions, the chat's
+ * narrator persona, canonical vocabulary, runtime context, session summary,
+ * recommendation history) followed by up to the 3 most recent exchanges as user/assistant
  * turns, then the new user message. Read-only and side-effect free — this
  * only reads prior state, it never persists anything.
  */
@@ -38,13 +38,13 @@ import lombok.AllArgsConstructor;
 @AllArgsConstructor
 public class ChatContextBuilder {
 
-    /** Fallback zone when {@code timezone} is missing/invalid — see {@link #resolveZone}. */
-    private static final ZoneId DEFAULT_ZONE = ZoneOffset.UTC;
-    private static final DateTimeFormatter RUNTIME_DATETIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
+    /** Day of week included — "Friday 23:40" and "Tuesday 23:40" are different moments to pick music for. */
+    private static final DateTimeFormatter RUNTIME_DATETIME_FORMAT = DateTimeFormatter.ofPattern("EEEE yyyy-MM-dd HH:mm", Locale.ENGLISH);
 
     private final ChatExchangeRepository chatExchangeRepository;
     private final ChatRecommendationMemoryRepository chatRecommendationMemoryRepository;
     private final VocabularyProvider vocabularyProvider;
+    private final NarratorPersonas narratorPersonas;
 
     /**
      * Builds one exchange's input: the developer message plus recent history
@@ -54,7 +54,7 @@ public class ChatContextBuilder {
      *
      * @param chat        the chat this exchange belongs to; may not have an id yet
      * @param userMessage the user's new message, appended last
-     * @param timezone    IANA zone id for the runtime-context section; null/invalid falls back to UTC
+     * @param timezone    IANA zone id used to work out the user's local time; null/invalid means that time is unknown
      * @return the full input list, ready to send to the Responses API
      */
     @Transactional(readOnly = true)
@@ -74,10 +74,16 @@ public class ChatContextBuilder {
             memory = chatRecommendationMemoryRepository.findByChatId(chat.getId());
         }
 
+        // Ordered from least to most variable, on purpose: OpenAI caches a prompt by its
+        // longest unchanged prefix, so anything that differs between requests also throws
+        // away the cache for everything after it. Identical for every request first
+        // (instructions, vocabulary), then one of eight variants (the narrator), then what
+        // changes on every single call (the clock, this chat's memory).
         String developerText = String.join(
             "\n\n",
             AgentPromptTemplates.STATIC_INSTRUCTIONS,
             buildVocabularySection(),
+            narratorPersonas.render(chat.getNarrator()),
             buildRuntimeContextSection(chat, timezone),
             buildSessionSummarySection(memory),
             buildRecommendationHistorySection(memory)
@@ -119,38 +125,40 @@ public class ChatContextBuilder {
         );
     }
 
-    /** Renders the user's current local datetime/timezone, display name, and chat id. */
+    /**
+     * Renders the user's current local date and time, display name, and chat
+     * id. The zone itself is never shown — the model only needs the moment,
+     * already converted — and a missing/invalid zone renders the time as
+     * unknown rather than falling back to some other zone's clock: the hour
+     * steers which tracks get picked (see THE USER'S MOMENT), so a wrong one
+     * is worse than none.
+     */
     private String buildRuntimeContextSection(Chat chat, String timezone) {
-        ZoneId zone = resolveZone(timezone);
-        String datetime = ZonedDateTime.now(zone).format(RUNTIME_DATETIME_FORMAT);
+        String localTime = resolveZone(timezone)
+            .map(zone -> ZonedDateTime.now(zone).format(RUNTIME_DATETIME_FORMAT))
+            .orElse("unknown");
         String displayName = chat.getUser().getResolvedDisplayName();
 
         return """
             RUNTIME CONTEXT
-            Current local datetime for the user: %s
-            User timezone: %s
+            Current local date and time for the user: %s
             User display name: %s
             Chat session id: %s""".formatted(
-            datetime,
-            zone.getId(),
+            localTime,
             displayName,
             chat.getId() == null ? "(new chat, not yet created)" : chat.getId()
         );
     }
 
-    /**
-     * Never fails the request for a missing/invalid timezone — falls back to
-     * UTC, same "don't block the exchange on a soft-context detail" spirit as
-     * {@code ChatRecommendationMemoryService}'s fire-and-forget.
-     */
-    private ZoneId resolveZone(String timezone) {
+    /** Never fails the request over a missing/invalid timezone — it just means the user's local time isn't known. */
+    private Optional<ZoneId> resolveZone(String timezone) {
         if (timezone == null || timezone.isBlank()) {
-            return DEFAULT_ZONE;
+            return Optional.empty();
         }
         try {
-            return ZoneId.of(timezone);
+            return Optional.of(ZoneId.of(timezone));
         } catch (DateTimeException invalidZone) {
-            return DEFAULT_ZONE;
+            return Optional.empty();
         }
     }
 

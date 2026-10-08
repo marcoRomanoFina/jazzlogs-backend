@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.editorial.dto.EditorialCountResponse;
 import com.jazzlogs.backend.editorial.dto.EditorialTrackSummaryDto;
 import com.jazzlogs.backend.editorial.dto.LatestEditorialDto;
@@ -49,7 +50,7 @@ public class EditorialController {
     @GetMapping
     public Page<TrackEditorialCatalogueDto> list(
         @RequestParam(required = false) String q,
-        @RequestParam(required = false) EditorialByline byline,
+        @RequestParam(required = false) JazzlogsCharacter byline,
         @RequestParam(defaultValue = "0") int page,
         @AuthenticationPrincipal Jwt jwt
     ) {
@@ -86,7 +87,7 @@ public class EditorialController {
      */
     @GetMapping("/by-byline/{byline}")
     public List<EditorialTrackSummaryDto> recentByByline(
-        @PathVariable EditorialByline byline,
+        @PathVariable JazzlogsCharacter byline,
         @RequestParam(defaultValue = "10") int n,
         @AuthenticationPrincipal Jwt jwt
     ) {

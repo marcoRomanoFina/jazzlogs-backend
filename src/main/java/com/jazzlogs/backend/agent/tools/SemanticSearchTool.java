@@ -14,6 +14,7 @@ import tools.jackson.databind.json.JsonMapper;
 import com.jazzlogs.backend.agent.ToolCallRequest;
 import com.jazzlogs.backend.agent.ToolExecutionResult;
 import com.jazzlogs.backend.album.Level;
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.chat.CatalogItemType;
 import com.jazzlogs.backend.editorial.BlockContentCategory;
 import com.jazzlogs.backend.semanticsearch.ScoredBlock;
@@ -67,8 +68,9 @@ public class SemanticSearchTool extends JazzTool {
 
     private final JsonMapper objectMapper;
     private final SemanticSearchService semanticSearchService;
+    private final LogAuthorLookup logAuthorLookup;
 
-    public SemanticSearchTool(SemanticSearchService semanticSearchService, JsonMapper objectMapper) {
+    public SemanticSearchTool(SemanticSearchService semanticSearchService, LogAuthorLookup logAuthorLookup, JsonMapper objectMapper) {
         super(
             NAME,
             "Semantically rank track editorial content blocks against a query, scoped to candidateIds "
@@ -78,10 +80,12 @@ public class SemanticSearchTool extends JazzTool {
                 + "no matches without erroring. energy/accessibility/moodIntensity are optional extra "
                 + "filters on the track. albumId/artistId (resolve the id first with "
                 + "RESOLVE_JAZZLOGS_ENTITY) optionally narrow matches to one album's or artist's own "
-                + "tracks, same scoping idea as GRAPH_FILTER.",
+                + "tracks, same scoping idea as GRAPH_FILTER. Each match says which narrator wrote the log it "
+                + "comes from (writtenBy).",
             "Buscando en las editoriales"
         );
         this.semanticSearchService = semanticSearchService;
+        this.logAuthorLookup = logAuthorLookup;
         this.objectMapper = objectMapper;
     }
 
@@ -108,8 +112,19 @@ public class SemanticSearchTool extends JazzTool {
 
         SemanticSearchResult result = semanticSearchService.search(request);
 
-        Output output = new Output(buildContent(result.matches()), new Metadata(result.matches()));
+        List<Match> matches = withAuthors(result.matches());
+        Output output = new Output(buildContent(matches), new Metadata(matches));
         return new ToolExecutionResult(writeJson(output), true);
+    }
+
+    /** Adds who wrote the log each matched block comes from — one batched lookup for the whole result. */
+    private List<Match> withAuthors(List<ScoredBlock> matches) {
+        Map<UUID, JazzlogsCharacter> authors = logAuthorLookup.byTrackIds(matches.stream().map(ScoredBlock::entityId).distinct().toList());
+        return matches.stream()
+            .map(m -> new Match(
+                m.entityType(), m.entityId(), m.entityName(), authors.get(m.entityId()), m.category(), m.similarityScore(), m.blockText()
+            ))
+            .toList();
     }
 
     /** Parses the model's raw JSON args, rejecting malformed JSON. */
@@ -167,7 +182,7 @@ public class SemanticSearchTool extends JazzTool {
     }
 
     /** The conversational summary line the model reads alongside the structured matches. */
-    private String buildContent(List<ScoredBlock> matches) {
+    private String buildContent(List<Match> matches) {
         if (matches.isEmpty()) {
             return "No semantically similar blocks found for the given candidates/category.";
         }
@@ -215,8 +230,20 @@ public class SemanticSearchTool extends JazzTool {
     ) {
     }
 
+    /** A {@link ScoredBlock} plus {@code writtenBy} — the narrator who signed the log this block belongs to. */
+    private record Match(
+        CatalogItemType entityType,
+        UUID entityId,
+        String entityName,
+        JazzlogsCharacter writtenBy,
+        BlockContentCategory category,
+        double similarityScore,
+        String blockText
+    ) {
+    }
+
     /** The tool's structured payload, alongside {@link #buildContent}'s summary. */
-    private record Metadata(List<ScoredBlock> matches) {
+    private record Metadata(List<Match> matches) {
     }
 
     /** The tool's full JSON result shape — conversational summary plus structured metadata. */

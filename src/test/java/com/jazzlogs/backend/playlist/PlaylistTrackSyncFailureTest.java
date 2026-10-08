@@ -17,7 +17,7 @@ import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.album.AlbumRepository;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
-import com.jazzlogs.backend.series.SeriesVoice;
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.syncfailure.SyncFailureEntityType;
 import com.jazzlogs.backend.syncfailure.SyncFailureRepository;
 import com.jazzlogs.backend.syncfailure.SyncFailureStatus;
@@ -126,7 +126,7 @@ class PlaylistTrackSyncFailureTest {
 
     private UUID persistPlaylist() {
         Playlist playlist = playlistRepository.save(new Playlist(
-            "Test Playlist", null, null, null, null, PlaylistType.STANDARD, SeriesVoice.MARK
+            "Test Playlist", null, null, null, null, PlaylistType.STANDARD, JazzlogsCharacter.MARK
         ));
         return playlist.getId();
     }

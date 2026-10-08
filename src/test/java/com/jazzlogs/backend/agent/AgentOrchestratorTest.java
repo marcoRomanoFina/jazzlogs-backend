@@ -18,6 +18,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.chat.chat.Chat;
 import com.jazzlogs.backend.user.User;
 
@@ -41,7 +42,7 @@ class AgentOrchestratorTest {
         orchestrator = new AgentOrchestrator(agent, synchronousExecutor);
 
         User user = new User(UUID.randomUUID(), "test@example.com");
-        chat = new Chat(user, null);
+        chat = new Chat(user, null, JazzlogsCharacter.MARK);
     }
 
     @Test
