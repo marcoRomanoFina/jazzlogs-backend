@@ -34,12 +34,15 @@ import lombok.AllArgsConstructor;
  * each used for what it is good at:
  * <ul>
  *   <li>the <b>graph</b> knows how a track is tagged and who plays on it — it
- *       decides which tracks are <em>eligible</em>;</li>
+ *       decides which tracks are <em>eligible</em>, together with what only
+ *       Postgres knows about a track — its levels (energy, accessibility,
+ *       mood intensity) and who wrote its log — applied as a restriction on
+ *       what the graph may return;</li>
  *   <li>the <b>logs</b> know what was actually written about it — a search
  *       phrase is compared against them to decide the <em>order</em>.</li>
  * </ul>
- * So tags and scope narrow the catalog down to a pool, and the phrase, when
- * there is one, ranks that pool by meaning. With only tags or scope, the pool
+ * So tags, levels, author and scope narrow the catalog down to a pool, and the phrase,
+ * when there is one, ranks that pool by meaning. With no phrase, the pool
  * keeps the graph's own order (most tags matched first); with only a phrase,
  * the whole catalog is ranked by meaning.
  *
@@ -55,8 +58,13 @@ public class TrackSearchService {
     /** How many tagged tracks are kept as the pool a phrase then ranks — wide enough that ranking by meaning has real choices. */
     static final int POOL_SIZE = 30;
 
-    /** How many candidates a search returns: enough to choose between, few enough to actually weigh. */
-    static final int MAX_CANDIDATES = 8;
+    /**
+     * How many candidates a search returns. The caller picks one and the list
+     * is already ranked, so the right track is near the top or not there: five
+     * leaves room to pass over one already recommended or already heard
+     * without handing back so many that none gets weighed properly.
+     */
+    static final int MAX_CANDIDATES = 5;
 
     /**
      * How many of the nearest blocks the vector index shortlists when a phrase
@@ -80,7 +88,7 @@ public class TrackSearchService {
     @Transactional(readOnly = true)
     public List<TrackCandidate> search(TrackSearchCriteria criteria, UUID userId) {
         if (criteria.isEmpty()) {
-            throw new IllegalArgumentException("Nothing to search by: give tags, an album or artist, or a phrase to look for");
+            throw new IllegalArgumentException("Nothing to search by: give tags, levels, a narrator, an album or artist, or a phrase to look for");
         }
         return describe(rank(criteria), userId);
     }
@@ -88,11 +96,11 @@ public class TrackSearchService {
     // --- ranking: which tracks, in what order, and why ---
 
     private List<Ranked> rank(TrackSearchCriteria criteria) {
-        if (!criteria.hasTags() && !criteria.hasScope()) {
+        if (!criteria.narrowsTheCatalog()) {
             return closestPassages(criteria.lookingFor()).stream().map(Ranked::byMeaning).toList();
         }
 
-        List<TaggedTrack> pool = graphService.findTracksByTags(criteria.tagCodes(), criteria.albumId(), criteria.artistId(), POOL_SIZE);
+        List<TaggedTrack> pool = pool(criteria);
         if (pool.isEmpty() || !criteria.hasPhrase()) {
             return pool.stream().limit(MAX_CANDIDATES).map(Ranked::byTags).toList();
         }
@@ -101,6 +109,28 @@ public class TrackSearchService {
         return closestPassagesAmong(criteria.lookingFor(), pooled.keySet()).stream()
             .map(row -> new Ranked(row.getTrackId(), pooled.get(row.getTrackId()).matchedTags(), toPassage(row)))
             .toList();
+    }
+
+    /**
+     * The eligible tracks, best tagged first: what the graph returns once the
+     * levels and the author, if asked for, have said which tracks it may
+     * choose from.
+     */
+    private List<TaggedTrack> pool(TrackSearchCriteria criteria) {
+        List<UUID> allowed = null;
+        if (criteria.hasLevels() || criteria.hasAuthor()) {
+            allowed = trackRepository.findIdsByLevelsAndAuthor(
+                nameOf(criteria.energy()), nameOf(criteria.accessibility()), nameOf(criteria.moodIntensity()), nameOf(criteria.writtenBy())
+            );
+            if (allowed.isEmpty()) {
+                return List.of();
+            }
+        }
+        return graphService.findTracksByTags(criteria.tagCodes(), criteria.albumId(), criteria.artistId(), allowed, POOL_SIZE);
+    }
+
+    private static String nameOf(Enum<?> value) {
+        return value == null ? null : value.name();
     }
 
     /** Whole catalog: approximate, through the vector index, so it stays fast however many logs there are. */

@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.HashMap;
+import java.util.Collection;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -773,14 +774,20 @@ public class GraphService {
 
     /**
      * The tracks tagged with any of the requested vocabulary codes, optionally
-     * only among one album's tracks and/or the tracks one artist plays on
-     * (leader or sideman). Best tagged first, at most {@code limit}.
+     * only among one album's tracks, the tracks one artist plays on (leader or
+     * sideman), and/or a given set of tracks. Best tagged first, at most
+     * {@code limit}.
      *
      * <p>Matching is permissive on purpose (OR, not AND): one matched code is
      * enough to be eligible, and how many matched only decides the order —
      * with ties broken by name, so the same search always returns the same
      * tracks. When {@code requestedCodes} holds no code at all, every track in
      * scope is eligible: that is how "the tracks of this album" is asked.
+     *
+     * <p>Instruments are the exception: a track must feature <em>every</em>
+     * requested instrument to be eligible at all. A mood or a style describes
+     * a track loosely, and a near miss is still a candidate; someone asking
+     * for vibraphone is not served by a track without one.
      *
      * <p>Each dimension is a pattern comprehension collecting the codes that
      * actually matched, not a 0/1 flag — the caller gets to say <em>why</em> a
@@ -789,10 +796,15 @@ public class GraphService {
      *
      * @param requestedCodes the codes to look for, per dimension; a missing
      *                       dimension is the same as an empty list
+     * @param onlyAmong      if not {@code null}, the only tracks that may come
+     *                       back — how a condition the graph knows nothing
+     *                       about (see {@code TrackSearchService}) is applied
      */
     public List<TaggedTrack> findTracksByTags(
-        Map<VocabularyDimension, List<String>> requestedCodes, UUID albumId, UUID artistId, int limit
+        Map<VocabularyDimension, List<String>> requestedCodes, UUID albumId, UUID artistId, Collection<UUID> onlyAmong, int limit
     ) {
+        List<String> onlyAmongIds = onlyAmong == null ? null : onlyAmong.stream().map(UUID::toString).toList();
+
         boolean anyCodeRequested = requestedCodes.values().stream().anyMatch(codes -> !codes.isEmpty());
 
         return read("find tracks by tags", () ->
@@ -800,6 +812,8 @@ public class GraphService {
                     MATCH (tr:Track)
                     WHERE ($albumId IS NULL OR EXISTS { (:Album {id: $albumId})-[:CONTAINS]->(tr) })
                       AND ($artistId IS NULL OR EXISTS { (:Artist {id: $artistId})-[:PERFORMED_ON]->(tr) })
+                      AND ($onlyAmongIds IS NULL OR tr.id IN $onlyAmongIds)
+                      AND ALL(code IN $instrumentCodes WHERE EXISTS { (tr)-[:FEATURES_INSTRUMENT]->(:Instrument {code: code}) })
                     WITH tr,
                         [(tr)-[:BELONGS_TO]->(s:Style) WHERE s.code IN $styleCodes | s.code] AS styleMatches,
                         [(tr)-[:EVOKES_MOOD]->(m:Mood) WHERE m.code IN $moodCodes | m.code] AS moodMatches,
@@ -815,6 +829,7 @@ public class GraphService {
                     """)
                 .bind(albumId == null ? null : albumId.toString()).to("albumId")
                 .bind(artistId == null ? null : artistId.toString()).to("artistId")
+                .bind(onlyAmongIds).to("onlyAmongIds")
                 .bind(requestedCodes.getOrDefault(VocabularyDimension.STYLE, List.of())).to("styleCodes")
                 .bind(requestedCodes.getOrDefault(VocabularyDimension.MOOD, List.of())).to("moodCodes")
                 .bind(requestedCodes.getOrDefault(VocabularyDimension.CONTEXT, List.of())).to("contextCodes")

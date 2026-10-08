@@ -24,6 +24,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import com.jazzlogs.backend.agent.ToolCallRequest;
 import com.jazzlogs.backend.agent.ToolExecutionResult;
+import com.jazzlogs.backend.album.Level;
 import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.editorial.BlockContentCategory;
 import com.jazzlogs.backend.graph.VocabularyDimension;
@@ -61,7 +62,7 @@ class FindTracksToolTest {
         when(trackSearchService.search(any(), any())).thenReturn(List.of());
 
         tool.execute(callWith("""
-            {"lookingFor":"late and quiet","moods":["%s"],"instruments":["%s"],"albumId":"%s"}
+            {"lookingFor":"late and quiet","moods":["%s"],"instruments":["%s"],"energy":"LOW","writtenBy":"LAURA","albumId":"%s"}
             """.formatted(mood, instrument, albumId)), USER_ID);
 
         ArgumentCaptor<TrackSearchCriteria> criteria = ArgumentCaptor.forClass(TrackSearchCriteria.class);
@@ -70,6 +71,9 @@ class FindTracksToolTest {
         assertThat(criteria.getValue().moods()).containsExactly(MoodVocabulary.values()[0]);
         assertThat(criteria.getValue().instruments()).containsExactly(InstrumentVocabulary.values()[0]);
         assertThat(criteria.getValue().styles()).isEmpty();
+        assertThat(criteria.getValue().energy()).isEqualTo(Level.LOW);
+        assertThat(criteria.getValue().accessibility()).isNull();
+        assertThat(criteria.getValue().writtenBy()).isEqualTo(JazzlogsCharacter.LAURA);
         assertThat(criteria.getValue().albumId()).isEqualTo(albumId);
         assertThat(criteria.getValue().artistId()).isNull();
     }
@@ -77,6 +81,20 @@ class FindTracksToolTest {
     @Test
     void codeOutsideTheVocabulary_throws() {
         ToolCallRequest call = callWith("{\"moods\":[\"NOT_A_REAL_MOOD\"]}");
+
+        assertThatThrownBy(() -> tool.execute(call, USER_ID)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void levelThatDoesNotExist_throws() {
+        ToolCallRequest call = callWith("{\"energy\":\"EXTREME\"}");
+
+        assertThatThrownBy(() -> tool.execute(call, USER_ID)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void narratorThatDoesNotExist_throws() {
+        ToolCallRequest call = callWith("{\"writtenBy\":\"JAZZLOGS\"}");
 
         assertThatThrownBy(() -> tool.execute(call, USER_ID)).isInstanceOf(IllegalArgumentException.class);
     }

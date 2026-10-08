@@ -127,6 +127,28 @@ public interface TrackRepository extends JpaRepository<Track, UUID>, SavedItemRe
     List<CandidateRow> search(@Param("normalizedQuery") String normalizedQuery, @Param("limit") int limit);
 
     /**
+     * The tracks at the given levels whose log was written by the given
+     * narrator; a {@code null} condition is not filtered on. Everything is
+     * passed as an enum name — a native query, so that a null one is a plain
+     * untyped NULL Postgres can compare against.
+     */
+    @Query(value = """
+        SELECT t.id
+        FROM tracks t
+        LEFT JOIN track_editorials te ON te.track_id = t.id
+        WHERE (:energy IS NULL OR t.energy = :energy)
+          AND (:accessibility IS NULL OR t.accessibility = :accessibility)
+          AND (:moodIntensity IS NULL OR t.mood_intensity = :moodIntensity)
+          AND (:writtenBy IS NULL OR te.byline = :writtenBy)
+        """, nativeQuery = true)
+    List<UUID> findIdsByLevelsAndAuthor(
+        @Param("energy") String energy,
+        @Param("accessibility") String accessibility,
+        @Param("moodIntensity") String moodIntensity,
+        @Param("writtenBy") String writtenBy
+    );
+
+    /**
      * What a search result shows of each track without opening its log: its
      * name, album, credited artists (joined with ", " in credited order, same
      * as {@link #search}) and who wrote its log.

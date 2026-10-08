@@ -10,12 +10,14 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -23,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.album.AlbumRepository;
+import com.jazzlogs.backend.album.Level;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
 import com.jazzlogs.backend.character.JazzlogsCharacter;
@@ -96,7 +99,7 @@ class TrackSearchServiceTest {
 
     @Test
     void nothingToSearchBy_isRejected() {
-        TrackSearchCriteria empty = new TrackSearchCriteria(null, null, null, null, null, null, null, "   ");
+        TrackSearchCriteria empty = new TrackSearchCriteria(null, null, null, null, null, null, null, null, null, null, null, "   ");
 
         assertThatThrownBy(() -> trackSearchService.search(empty, userId)).isInstanceOf(IllegalArgumentException.class);
     }
@@ -106,7 +109,7 @@ class TrackSearchServiceTest {
         Track first = persistTrackWithLog("Tagged First", JazzlogsCharacter.LAURA, "plain");
         Track second = persistTrackWithLog("Tagged Second", JazzlogsCharacter.MARK, "plain");
         Map<VocabularyDimension, List<String>> relaxed = Map.of(VocabularyDimension.MOOD, List.of("RELAXED"));
-        when(graphService.findTracksByTags(any(), eq(null), eq(null), anyInt()))
+        when(graphService.findTracksByTags(any(), eq(null), eq(null), eq(null), anyInt()))
             .thenReturn(List.of(new TaggedTrack(first.getId(), relaxed), new TaggedTrack(second.getId(), relaxed)));
 
         List<TrackCandidate> result = trackSearchService.search(moods(null, MoodVocabulary.RELAXED), userId);
@@ -127,7 +130,7 @@ class TrackSearchServiceTest {
         Track outsideThePool = persistTrackWithLog("Untagged Nocturne", JazzlogsCharacter.MARK, "a nocturne");
         Map<VocabularyDimension, List<String>> relaxed = Map.of(VocabularyDimension.MOOD, List.of("RELAXED"));
         // The graph puts the plain one first; meaning should overturn that.
-        when(graphService.findTracksByTags(any(), eq(null), eq(null), anyInt()))
+        when(graphService.findTracksByTags(any(), eq(null), eq(null), eq(null), anyInt()))
             .thenReturn(List.of(new TaggedTrack(plain.getId(), relaxed), new TaggedTrack(nocturne.getId(), relaxed)));
 
         List<TrackCandidate> result = trackSearchService.search(moods(PHRASE, MoodVocabulary.RELAXED), userId);
@@ -150,7 +153,7 @@ class TrackSearchServiceTest {
         assertThat(result.get(0).entityId()).isEqualTo(nocturne.getId());
         assertThat(result.get(0).matchedTags()).isEmpty();
         assertThat(result).hasSizeLessThanOrEqualTo(TrackSearchService.MAX_CANDIDATES);
-        verify(graphService, never()).findTracksByTags(any(), any(), any(), anyInt());
+        verify(graphService, never()).findTracksByTags(any(), any(), any(), any(), anyInt());
     }
 
     @Test
@@ -179,7 +182,7 @@ class TrackSearchServiceTest {
                 new BlockRequest(EditorialBlockType.PARA, null, "plain", BlockContentCategory.CONTEXT)
             )
         ));
-        when(graphService.findTracksByTags(any(), eq(null), eq(null), anyInt()))
+        when(graphService.findTracksByTags(any(), eq(null), eq(null), eq(null), anyInt()))
             .thenReturn(List.of(new TaggedTrack(track.getId(), Map.of())));
 
         List<TrackCandidate> result = trackSearchService.search(moods(PHRASE, MoodVocabulary.RELAXED), userId);
@@ -193,14 +196,50 @@ class TrackSearchServiceTest {
     void scopeOnly_returnsTheScopesTracks() {
         Track track = persistTrackWithLog("Scoped Track", JazzlogsCharacter.MARK, "plain");
         UUID albumId = track.getAlbum().getId();
-        when(graphService.findTracksByTags(any(), eq(albumId), eq(null), anyInt()))
+        when(graphService.findTracksByTags(any(), eq(albumId), eq(null), eq(null), anyInt()))
             .thenReturn(List.of(new TaggedTrack(track.getId(), Map.of())));
 
         List<TrackCandidate> result = trackSearchService.search(
-            new TrackSearchCriteria(null, null, null, null, null, albumId, null, null), userId
+            new TrackSearchCriteria(null, null, null, null, null, null, null, null, null, albumId, null, null), userId
         );
 
         assertThat(result).extracting(TrackCandidate::entityName).containsExactly("Scoped Track");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void levels_restrictWhatTheGraphMayReturn() {
+        Track quiet = persistTrackWithLog("Low Energy", JazzlogsCharacter.MARK, "plain", Level.LOW);
+        Track loud = persistTrackWithLog("High Energy", JazzlogsCharacter.MARK, "plain", Level.HIGH);
+        when(graphService.findTracksByTags(any(), eq(null), eq(null), any(), anyInt()))
+            .thenReturn(List.of(new TaggedTrack(quiet.getId(), Map.of())));
+
+        List<TrackCandidate> result = trackSearchService.search(
+            new TrackSearchCriteria(null, null, null, null, null, Level.LOW, null, null, null, null, null, null), userId
+        );
+
+        assertThat(result).extracting(TrackCandidate::entityName).containsExactly("Low Energy");
+        ArgumentCaptor<Collection<UUID>> onlyAmong = ArgumentCaptor.forClass(Collection.class);
+        verify(graphService).findTracksByTags(any(), eq(null), eq(null), onlyAmong.capture(), anyInt());
+        assertThat(onlyAmong.getValue()).contains(quiet.getId()).doesNotContain(loud.getId());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void narrator_restrictsTheSearchToTheirLogs() {
+        Track byNatalie = persistTrackWithLog("Natalie's Track", JazzlogsCharacter.NATALIE, "plain");
+        Track byAdam = persistTrackWithLog("Adam's Track", JazzlogsCharacter.ADAM, "plain");
+        when(graphService.findTracksByTags(any(), eq(null), eq(null), any(), anyInt()))
+            .thenReturn(List.of(new TaggedTrack(byNatalie.getId(), Map.of())));
+
+        List<TrackCandidate> result = trackSearchService.search(
+            new TrackSearchCriteria(null, null, null, null, null, null, null, null, JazzlogsCharacter.NATALIE, null, null, null), userId
+        );
+
+        assertThat(result).extracting(TrackCandidate::writtenBy).containsExactly(JazzlogsCharacter.NATALIE);
+        ArgumentCaptor<Collection<UUID>> onlyAmong = ArgumentCaptor.forClass(Collection.class);
+        verify(graphService).findTracksByTags(any(), eq(null), eq(null), onlyAmong.capture(), anyInt());
+        assertThat(onlyAmong.getValue()).contains(byNatalie.getId()).doesNotContain(byAdam.getId());
     }
 
     @Test
@@ -208,7 +247,7 @@ class TrackSearchServiceTest {
         Track heard = persistTrackWithLog("Already Heard", JazzlogsCharacter.MARK, "plain");
         Track fresh = persistTrackWithLog("Never Heard", JazzlogsCharacter.MARK, "plain");
         listenService.markTrackListened(userId, heard.getId());
-        when(graphService.findTracksByTags(any(), eq(null), eq(null), anyInt()))
+        when(graphService.findTracksByTags(any(), eq(null), eq(null), eq(null), anyInt()))
             .thenReturn(List.of(new TaggedTrack(heard.getId(), Map.of()), new TaggedTrack(fresh.getId(), Map.of())));
 
         List<TrackCandidate> result = trackSearchService.search(moods(null, MoodVocabulary.RELAXED), userId);
@@ -219,7 +258,7 @@ class TrackSearchServiceTest {
     @Test
     void aTrackTheGraphKnowsButTheCatalogDoesNot_isLeftOut() {
         Track real = persistTrackWithLog("Still Here", JazzlogsCharacter.MARK, "plain");
-        when(graphService.findTracksByTags(any(), eq(null), eq(null), anyInt()))
+        when(graphService.findTracksByTags(any(), eq(null), eq(null), eq(null), anyInt()))
             .thenReturn(List.of(new TaggedTrack(UUID.randomUUID(), Map.of()), new TaggedTrack(real.getId(), Map.of())));
 
         List<TrackCandidate> result = trackSearchService.search(moods(null, MoodVocabulary.RELAXED), userId);
@@ -228,7 +267,7 @@ class TrackSearchServiceTest {
     }
 
     private static TrackSearchCriteria moods(String lookingFor, MoodVocabulary... moods) {
-        return new TrackSearchCriteria(null, List.of(moods), null, null, null, null, null, lookingFor);
+        return new TrackSearchCriteria(null, List.of(moods), null, null, null, null, null, null, null, null, null, lookingFor);
     }
 
     /** A unit vector along one axis — two different axes are as unrelated as two meanings can be. */
@@ -239,7 +278,11 @@ class TrackSearchServiceTest {
     }
 
     private Track persistTrackWithLog(String name, JazzlogsCharacter writtenBy, String blockText) {
-        Track track = persistTrack(name);
+        return persistTrackWithLog(name, writtenBy, blockText, null);
+    }
+
+    private Track persistTrackWithLog(String name, JazzlogsCharacter writtenBy, String blockText, Level energy) {
+        Track track = persistTrack(name, energy);
         editorialService.upsertTrackEditorial(track.getId(), new TrackEditorialRequest(
             name + " Log", "7", "dek", writtenBy,
             List.of(new BlockRequest(EditorialBlockType.PARA, null, blockText, BlockContentCategory.MOOD_AND_ATMOSPHERE))
@@ -248,9 +291,13 @@ class TrackSearchServiceTest {
     }
 
     private Track persistTrack(String name) {
+        return persistTrack(name, null);
+    }
+
+    private Track persistTrack(String name, Level energy) {
         Artist lead = artistRepository.save(new Artist("Search Lead", null, null, null));
         Artist coLead = artistRepository.save(new Artist("Search Co-Lead", null, null, null));
         Album album = albumRepository.save(new Album(List.of(lead, coLead), "Search Album", null, null, null, 1961, 1));
-        return trackRepository.save(new Track(album, null, name, null, null, null, null, null, null, null, null, null));
+        return trackRepository.save(new Track(album, null, name, null, null, null, null, energy, null, null, null, null));
     }
 }
