@@ -75,8 +75,10 @@ public class SemanticSearchTool extends JazzTool {
             NAME,
             "Semantically rank track editorial content blocks against a query, scoped to candidateIds "
                 + "(track ids) and ONE content category per call (make separate calls for more than one "
-                + "category). Use this after GRAPH_FILTER to write from real text instead of inventing it, "
-                + "or standalone with a candidate set you already have. An empty candidateIds list returns "
+                + "category). Use this after GRAPH_FILTER to decide between candidates on what their logs "
+                + "actually say, or standalone with a candidate set you already have — it returns "
+                + "passages, not whole logs, so read the track you end up choosing with "
+                + "EDITORIAL_CONTENT before recommending it. An empty candidateIds list returns "
                 + "no matches without erroring. energy/accessibility/moodIntensity are optional extra "
                 + "filters on the track. albumId/artistId (resolve the id first with "
                 + "RESOLVE_JAZZLOGS_ENTITY) optionally narrow matches to one album's or artist's own "

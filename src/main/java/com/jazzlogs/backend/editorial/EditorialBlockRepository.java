@@ -7,14 +7,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-/** Backs {@code EditorialContentTool} and {@code SemanticSearchTool} (via {@code SemanticSearchService}). */
+/** Backs {@code SemanticSearchTool} (via {@code SemanticSearchService}) and the HOOK preview in {@code EditorialService}. */
 public interface EditorialBlockRepository extends JpaRepository<EditorialBlock, UUID> {
-
-    /** A track's whole log, in reading order — what EDITORIAL_CONTENT returns; empty if the track has no log yet. */
-    List<EditorialBlock> findByTrackEditorialTrackIdOrderByPositionAsc(UUID trackId);
-
-    /** Same as {@link #findByTrackEditorialTrackIdOrderByPositionAsc}, narrowed to specific {@code categories}. */
-    List<EditorialBlock> findByTrackEditorialTrackIdAndContentCategoryInOrderByPositionAsc(UUID trackId, List<BlockContentCategory> categories);
 
     /** {@code editorialId} is a {@code TrackEditorial}'s own id. */
     List<EditorialBlock> findByTrackEditorialIdAndContentCategoryInOrderByPositionAsc(UUID editorialId, List<BlockContentCategory> categories);
