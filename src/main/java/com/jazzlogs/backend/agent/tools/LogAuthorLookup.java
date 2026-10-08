@@ -2,7 +2,6 @@ package com.jazzlogs.backend.agent.tools;
 
 import java.util.Collection;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -33,9 +32,5 @@ public class LogAuthorLookup {
         }
         return trackEditorialRepository.findAuthorsByTrackIds(trackIds).stream()
             .collect(Collectors.toMap(LogAuthorRow::getTrackId, LogAuthorRow::getByline));
-    }
-
-    public Optional<JazzlogsCharacter> byEditorialId(UUID editorialId) {
-        return trackEditorialRepository.findBylineById(editorialId);
     }
 }

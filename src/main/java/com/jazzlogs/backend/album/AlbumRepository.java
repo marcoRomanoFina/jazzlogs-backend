@@ -113,8 +113,7 @@ public interface AlbumRepository extends JpaRepository<Album, UUID>, SavedItemRe
                 WHEN al.normalized_name LIKE :normalizedQuery || '%' THEN 'PREFIX'
                 WHEN al.normalized_name LIKE '%' || :normalizedQuery || '%' THEN 'CONTAINS'
                 ELSE 'FUZZY'
-            END AS matchType,
-            NULL::uuid AS editorialId
+            END AS matchType
         FROM albums al
         WHERE al.normalized_name = :normalizedQuery
            OR al.normalized_name LIKE :normalizedQuery || '%'
@@ -128,7 +127,7 @@ public interface AlbumRepository extends JpaRepository<Album, UUID>, SavedItemRe
                 ELSE 3
             END,
             similarity(al.normalized_name, :normalizedQuery) DESC
-        LIMIT 20
+        LIMIT :limit
         """, nativeQuery = true)
-    List<CandidateRow> search(@Param("normalizedQuery") String normalizedQuery);
+    List<CandidateRow> search(@Param("normalizedQuery") String normalizedQuery, @Param("limit") int limit);
 }

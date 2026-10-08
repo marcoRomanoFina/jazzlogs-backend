@@ -106,11 +106,9 @@ public interface TrackRepository extends JpaRepository<Track, UUID>, SavedItemRe
                 WHEN t.normalized_name LIKE :normalizedQuery || '%' THEN 'PREFIX'
                 WHEN t.normalized_name LIKE '%' || :normalizedQuery || '%' THEN 'CONTAINS'
                 ELSE 'FUZZY'
-            END AS matchType,
-            ted.id AS editorialId
+            END AS matchType
         FROM tracks t
         JOIN albums al ON al.id = t.album_id
-        LEFT JOIN track_editorials ted ON ted.track_id = t.id
         WHERE t.normalized_name = :normalizedQuery
            OR t.normalized_name LIKE :normalizedQuery || '%'
            OR t.normalized_name LIKE '%' || :normalizedQuery || '%'
@@ -123,7 +121,7 @@ public interface TrackRepository extends JpaRepository<Track, UUID>, SavedItemRe
                 ELSE 3
             END,
             similarity(t.normalized_name, :normalizedQuery) DESC
-        LIMIT 20
+        LIMIT :limit
         """, nativeQuery = true)
-    List<CandidateRow> search(@Param("normalizedQuery") String normalizedQuery);
+    List<CandidateRow> search(@Param("normalizedQuery") String normalizedQuery, @Param("limit") int limit);
 }

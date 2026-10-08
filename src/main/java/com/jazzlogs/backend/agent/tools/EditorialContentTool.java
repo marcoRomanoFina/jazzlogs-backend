@@ -19,11 +19,10 @@ import com.jazzlogs.backend.editorial.EditorialBlockRepository;
 import com.jazzlogs.backend.editorial.EditorialBlockType;
 
 /**
- * Full/filtered text of one editorial's blocks — what the agent calls once
- * it already has a concrete editorialId (from RESOLVE_JAZZLOGS_ENTITY) and
- * needs real substance to write from, not just a name. No JOIN to
- * album/track/artist_editorials: editorialId already identifies the
- * editorials row directly, see {@link EditorialBlockRepository}.
+ * Full/filtered text of one track's log — what the agent calls once it has a
+ * track id (from any other tool) and needs real substance to write from, not
+ * just a name. Keyed by the track, not by the log's own id: a track has at
+ * most one log, so the agent only ever has to carry one id per track.
  */
 @Component
 public class EditorialContentTool extends JazzTool {
@@ -33,13 +32,13 @@ public class EditorialContentTool extends JazzTool {
     private static final Map<String, Object> SCHEMA = Map.of(
         "type", "object",
         "properties", Map.of(
-            "editorialId", Map.of("type", "string"),
+            "trackId", Map.of("type", "string"),
             "categories", Map.of(
                 "type", "array",
                 "items", Map.of("type", "string", "enum", categoryNames())
             )
         ),
-        "required", List.of("editorialId")
+        "required", List.of("trackId")
     );
 
     private final JsonMapper objectMapper;
@@ -51,13 +50,12 @@ public class EditorialContentTool extends JazzTool {
     ) {
         super(
             NAME,
-            "Fetch the full or filtered text content of an editorial's blocks, given an editorialId. "
-                + "editorialId is NOT the same id as the album/track/artist itself — an entityId from "
-                + "GRAPH_FILTER or SEMANTIC_SEARCH is never a valid editorialId, do not reuse one here. "
-                + "The only source for a real editorialId is RESOLVE_JAZZLOGS_ENTITY's editorialId field "
-                + "— call that tool with the entity's name if you don't already have one from earlier in "
-                + "this conversation. Use this to get real substance to write from before answering — "
-                + "never invent editorial content, and never guess or reuse an unrelated id here.",
+            "Fetch the text of a track's log — all of its blocks, or only some categories — given the "
+                + "track's id: the entityId of a TRACK from GRAPH_FILTER, SEMANTIC_SEARCH, or "
+                + "RESOLVE_JAZZLOGS_ENTITY. Also says which narrator wrote the log (writtenBy). Use this "
+                + "to get real substance to write from before answering — never invent editorial "
+                + "content. A track with no log yet returns no blocks and a null writtenBy; an album or "
+                + "artist id is not valid here.",
             "Leyendo la editorial"
         );
         this.editorialBlockRepository = editorialBlockRepository;
@@ -70,20 +68,20 @@ public class EditorialContentTool extends JazzTool {
         return SCHEMA;
     }
 
-    /** Fetches an editorial's blocks, optionally filtered to specific content categories. */
+    /** Fetches a track's log blocks, optionally filtered to specific content categories. */
     @Override
     public ToolExecutionResult execute(ToolCallRequest call, UUID userId) {
         Args args = parseArgs(call.argumentsJson());
-        UUID editorialId = requireEditorialId(args.editorialId());
+        UUID trackId = requireTrackId(args.trackId());
         List<BlockContentCategory> categories = parseEnumList(args.categories(), BlockContentCategory.class, "category");
 
         List<EditorialBlock> blocks = categories.isEmpty()
-            ? editorialBlockRepository.findByTrackEditorialIdOrderByPositionAsc(editorialId)
-            : editorialBlockRepository.findByTrackEditorialIdAndContentCategoryInOrderByPositionAsc(editorialId, categories);
+            ? editorialBlockRepository.findByTrackEditorialTrackIdOrderByPositionAsc(trackId)
+            : editorialBlockRepository.findByTrackEditorialTrackIdAndContentCategoryInOrderByPositionAsc(trackId, categories);
 
         List<Block> blockDtos = blocks.stream().map(EditorialContentTool::toBlock).toList();
-        JazzlogsCharacter writtenBy = logAuthorLookup.byEditorialId(editorialId).orElse(null);
-        Output output = new Output(buildContent(editorialId, blockDtos), new Metadata(editorialId, writtenBy, blockDtos));
+        JazzlogsCharacter writtenBy = logAuthorLookup.byTrackIds(List.of(trackId)).get(trackId);
+        Output output = new Output(buildContent(trackId, blockDtos), new Metadata(trackId, writtenBy, blockDtos));
         return new ToolExecutionResult(writeJson(output), true);
     }
 
@@ -96,15 +94,15 @@ public class EditorialContentTool extends JazzTool {
         }
     }
 
-    /** Rejects a missing/blank/malformed editorialId. */
-    private UUID requireEditorialId(String raw) {
+    /** Rejects a missing/blank/malformed trackId. */
+    private UUID requireTrackId(String raw) {
         if (raw == null || raw.isBlank()) {
-            throw new IllegalArgumentException("editorialId must not be blank");
+            throw new IllegalArgumentException("trackId must not be blank");
         }
         try {
             return UUID.fromString(raw);
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("editorialId is not a valid id: " + raw);
+            throw new IllegalArgumentException("trackId is not a valid id: " + raw);
         }
     }
 
@@ -114,11 +112,11 @@ public class EditorialContentTool extends JazzTool {
     }
 
     /** The conversational summary line the model reads alongside the structured blocks. */
-    private String buildContent(UUID editorialId, List<Block> blocks) {
+    private String buildContent(UUID trackId, List<Block> blocks) {
         if (blocks.isEmpty()) {
-            return "No blocks found for editorial " + editorialId + ".";
+            return "No log blocks found for track " + trackId + ".";
         }
-        return "Retrieved " + blocks.size() + " block(s) for editorial " + editorialId + ".";
+        return "Retrieved " + blocks.size() + " log block(s) for track " + trackId + ".";
     }
 
     /** Serializes the tool's output — a failure here is our bug, not the model's, hence {@link IllegalStateException}. */
@@ -136,7 +134,7 @@ public class EditorialContentTool extends JazzTool {
     }
 
     /** The model's raw tool-call arguments, before validation. */
-    private record Args(String editorialId, List<String> categories) {
+    private record Args(String trackId, List<String> categories) {
     }
 
     /** One editorial block, projected from {@link EditorialBlock}. */
@@ -144,7 +142,7 @@ public class EditorialContentTool extends JazzTool {
     }
 
     /** The tool's structured payload, alongside {@link #buildContent}'s summary. */
-    private record Metadata(UUID editorialId, JazzlogsCharacter writtenBy, List<Block> blocks) {
+    private record Metadata(UUID trackId, JazzlogsCharacter writtenBy, List<Block> blocks) {
     }
 
     /** The tool's full JSON result shape — conversational summary plus structured metadata. */

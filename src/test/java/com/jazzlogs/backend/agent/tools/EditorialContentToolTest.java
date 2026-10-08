@@ -6,6 +6,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -22,6 +23,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import com.jazzlogs.backend.agent.ToolCallRequest;
 import com.jazzlogs.backend.agent.ToolExecutionResult;
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.editorial.BlockContentCategory;
 import com.jazzlogs.backend.editorial.EditorialBlock;
 import com.jazzlogs.backend.editorial.EditorialBlockRepository;
@@ -49,67 +51,79 @@ class EditorialContentToolTest {
     }
 
     @Test
-    void blankEditorialId_throws() {
-        ToolCallRequest call = callWith("{\"editorialId\":\"\"}");
+    void blankTrackId_throws() {
+        ToolCallRequest call = callWith("{\"trackId\":\"\"}");
 
         assertThatThrownBy(() -> tool.execute(call, USER_ID)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
-    void malformedEditorialId_throws() {
-        ToolCallRequest call = callWith("{\"editorialId\":\"not-a-uuid\"}");
+    void malformedTrackId_throws() {
+        ToolCallRequest call = callWith("{\"trackId\":\"not-a-uuid\"}");
 
         assertThatThrownBy(() -> tool.execute(call, USER_ID)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void invalidCategory_throws() {
-        UUID editorialId = UUID.randomUUID();
-        ToolCallRequest call = callWith("{\"editorialId\":\"" + editorialId + "\",\"categories\":[\"NOT_REAL\"]}");
+        UUID trackId = UUID.randomUUID();
+        ToolCallRequest call = callWith("{\"trackId\":\"" + trackId + "\",\"categories\":[\"NOT_REAL\"]}");
 
         assertThatThrownBy(() -> tool.execute(call, USER_ID)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void noCategories_fetchesAllBlocksOrderedByPosition() throws Exception {
-        UUID editorialId = UUID.randomUUID();
+        UUID trackId = UUID.randomUUID();
         EditorialBlock block = block(0, "text 1", BlockContentCategory.CONTEXT);
-        when(editorialBlockRepository.findByTrackEditorialIdOrderByPositionAsc(editorialId)).thenReturn(List.of(block));
+        when(editorialBlockRepository.findByTrackEditorialTrackIdOrderByPositionAsc(trackId)).thenReturn(List.of(block));
 
-        ToolExecutionResult result = tool.execute(callWith("{\"editorialId\":\"" + editorialId + "\"}"), USER_ID);
+        ToolExecutionResult result = tool.execute(callWith("{\"trackId\":\"" + trackId + "\"}"), USER_ID);
 
         JsonNode metadata = JSON.readTree(result.payload()).get("metadata");
-        assertThat(metadata.get("editorialId").asText()).isEqualTo(editorialId.toString());
+        assertThat(metadata.get("trackId").asText()).isEqualTo(trackId.toString());
         assertThat(metadata.get("blocks")).hasSize(1);
         assertThat(metadata.get("blocks").get(0).get("contentCategory").asText()).isEqualTo("CONTEXT");
     }
 
     @Test
     void withCategories_filtersByContentCategory() throws Exception {
-        UUID editorialId = UUID.randomUUID();
+        UUID trackId = UUID.randomUUID();
         EditorialBlock block = block(0, "a story", BlockContentCategory.QUOTE);
-        when(editorialBlockRepository.findByTrackEditorialIdAndContentCategoryInOrderByPositionAsc(editorialId, List.of(BlockContentCategory.QUOTE)))
+        when(editorialBlockRepository.findByTrackEditorialTrackIdAndContentCategoryInOrderByPositionAsc(trackId, List.of(BlockContentCategory.QUOTE)))
             .thenReturn(List.of(block));
 
         ToolExecutionResult result = tool.execute(callWith(
-            "{\"editorialId\":\"" + editorialId + "\",\"categories\":[\"QUOTE\"]}"
+            "{\"trackId\":\"" + trackId + "\",\"categories\":[\"QUOTE\"]}"
         ), USER_ID);
 
         JsonNode metadata = JSON.readTree(result.payload()).get("metadata");
         assertThat(metadata.get("blocks")).hasSize(1);
-        verify(editorialBlockRepository).findByTrackEditorialIdAndContentCategoryInOrderByPositionAsc(editorialId, List.of(BlockContentCategory.QUOTE));
+        verify(editorialBlockRepository).findByTrackEditorialTrackIdAndContentCategoryInOrderByPositionAsc(trackId, List.of(BlockContentCategory.QUOTE));
     }
 
     @Test
     void noBlocksFound_hasPlainTextContent() throws Exception {
-        UUID editorialId = UUID.randomUUID();
-        when(editorialBlockRepository.findByTrackEditorialIdOrderByPositionAsc(editorialId)).thenReturn(List.of());
+        UUID trackId = UUID.randomUUID();
+        when(editorialBlockRepository.findByTrackEditorialTrackIdOrderByPositionAsc(trackId)).thenReturn(List.of());
 
-        ToolExecutionResult result = tool.execute(callWith("{\"editorialId\":\"" + editorialId + "\"}"), USER_ID);
+        ToolExecutionResult result = tool.execute(callWith("{\"trackId\":\"" + trackId + "\"}"), USER_ID);
 
         JsonNode json = JSON.readTree(result.payload());
-        assertThat(json.get("content").asText()).contains("No blocks found");
+        assertThat(json.get("content").asText()).contains("No log blocks found");
         assertThat(json.get("metadata").get("blocks")).isEmpty();
+    }
+
+    @Test
+    void saysWhoWroteTheLog() throws Exception {
+        UUID trackId = UUID.randomUUID();
+        EditorialBlock block = block(0, "text 1", BlockContentCategory.CONTEXT);
+        when(editorialBlockRepository.findByTrackEditorialTrackIdOrderByPositionAsc(trackId)).thenReturn(List.of(block));
+        when(logAuthorLookup.byTrackIds(List.of(trackId))).thenReturn(Map.of(trackId, JazzlogsCharacter.ALICE));
+
+        ToolExecutionResult result = tool.execute(callWith("{\"trackId\":\"" + trackId + "\"}"), USER_ID);
+
+        assertThat(JSON.readTree(result.payload()).get("metadata").get("writtenBy").asText()).isEqualTo("ALICE");
     }
 
     private static ToolCallRequest callWith(String argumentsJson) {
@@ -117,7 +131,7 @@ class EditorialContentToolTest {
     }
 
     // editorial is null here on purpose: EditorialContentTool never reads
-    // block.getEditorial() — the editorialId in its output comes straight
+    // block.getEditorial() — the trackId in its output comes straight
     // from the tool's own input, not from the block.
     private static EditorialBlock block(int position, String text, BlockContentCategory category) {
         EditorialBlock block = new EditorialBlock(null, position, EditorialBlockType.PARA, null, text, category, null, null);

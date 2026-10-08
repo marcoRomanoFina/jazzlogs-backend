@@ -37,9 +37,6 @@ public interface TrackEditorialRepository extends LikeableRepository<TrackEditor
         JazzlogsCharacter getByline();
     }
 
-    @Query("SELECT te.byline FROM TrackEditorial te WHERE te.id = :id")
-    Optional<JazzlogsCharacter> findBylineById(@Param("id") UUID editorialId);
-
     // Atomic UPDATE, not read-modify-save — two concurrent likes must not race
     // and lose an increment.
     @Modifying

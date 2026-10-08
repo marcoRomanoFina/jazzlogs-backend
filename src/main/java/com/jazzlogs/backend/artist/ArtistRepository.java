@@ -72,8 +72,7 @@ public interface ArtistRepository extends JpaRepository<Artist, UUID>, SavedItem
                 WHEN ar.normalized_name LIKE :normalizedQuery || '%' THEN 'PREFIX'
                 WHEN ar.normalized_name LIKE '%' || :normalizedQuery || '%' THEN 'CONTAINS'
                 ELSE 'FUZZY'
-            END AS matchType,
-            NULL::uuid AS editorialId
+            END AS matchType
         FROM artists ar
         WHERE ar.normalized_name = :normalizedQuery
            OR ar.normalized_name LIKE :normalizedQuery || '%'
@@ -87,7 +86,7 @@ public interface ArtistRepository extends JpaRepository<Artist, UUID>, SavedItem
                 ELSE 3
             END,
             similarity(ar.normalized_name, :normalizedQuery) DESC
-        LIMIT 20
+        LIMIT :limit
         """, nativeQuery = true)
-    List<CandidateRow> search(@Param("normalizedQuery") String normalizedQuery);
+    List<CandidateRow> search(@Param("normalizedQuery") String normalizedQuery, @Param("limit") int limit);
 }
