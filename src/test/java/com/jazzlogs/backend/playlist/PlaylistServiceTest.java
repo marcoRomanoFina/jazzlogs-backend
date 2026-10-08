@@ -14,6 +14,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import jakarta.persistence.EntityManager;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -30,6 +32,7 @@ import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.album.AlbumRepository;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
+import com.jazzlogs.backend.artist.dto.ArtistSummaryDto;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.like.LikeService;
@@ -47,7 +50,7 @@ import com.jazzlogs.backend.playlist.dto.PlaylistTrackDetailDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistUpsertRequest;
 import com.jazzlogs.backend.saveditem.SaveableEntityType;
 import com.jazzlogs.backend.saveditem.SavedItemService;
-import com.jazzlogs.backend.series.SeriesVoice;
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.storage.ImageStorageService;
 import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackRepository;
@@ -66,6 +69,9 @@ class PlaylistServiceTest {
 
     @Autowired
     private PlaylistService playlistService;
+
+    @Autowired
+    private EntityManager entityManager;
 
     @Autowired
     private PlaylistTrackRepository playlistTrackRepository;
@@ -274,7 +280,7 @@ class PlaylistServiceTest {
     @Test
     void create_persistsType() {
         PlaylistUpsertRequest request = new PlaylistUpsertRequest(
-            "The Long Road", null, null, null, null, PlaylistType.JOURNEY, SeriesVoice.MARK, List.of(), List.of(), List.of(), List.of()
+            "The Long Road", null, null, null, null, PlaylistType.JOURNEY, JazzlogsCharacter.MARK, List.of(), List.of(), List.of(), List.of()
         );
 
         Playlist created = playlistService.create(request);
@@ -285,12 +291,12 @@ class PlaylistServiceTest {
     @Test
     void create_persistsByline() {
         PlaylistUpsertRequest request = new PlaylistUpsertRequest(
-            "Byline Test", null, null, null, null, PlaylistType.STANDARD, SeriesVoice.LAURA, List.of(), List.of(), List.of(), List.of()
+            "Byline Test", null, null, null, null, PlaylistType.STANDARD, JazzlogsCharacter.LAURA, List.of(), List.of(), List.of(), List.of()
         );
 
         Playlist created = playlistService.create(request);
 
-        assertThat(playlistRepository.findById(created.getId()).orElseThrow().getByline()).isEqualTo(SeriesVoice.LAURA);
+        assertThat(playlistRepository.findById(created.getId()).orElseThrow().getByline()).isEqualTo(JazzlogsCharacter.LAURA);
     }
 
     // No "returns empty when nothing is published" test here — this table
@@ -397,7 +403,7 @@ class PlaylistServiceTest {
     @Test
     void replaceTags_setsFeaturedInstrumentsToo() {
         Playlist created = playlistService.create(new PlaylistUpsertRequest(
-            "instrument-tags", null, null, null, null, PlaylistType.STANDARD, SeriesVoice.MARK,
+            "instrument-tags", null, null, null, null, PlaylistType.STANDARD, JazzlogsCharacter.MARK,
             List.of(), List.of(), List.of(), List.of("PIANO", "DRUMS")
         ));
 
@@ -412,6 +418,33 @@ class PlaylistServiceTest {
         PlaylistDetailDto detail = playlistService.getPlaylistDetail(playlistId, null, true);
 
         assertThat(detail.featuredInstruments()).containsExactly(new VocabularyTag("PIANO", "Piano"));
+    }
+
+    /**
+     * The tracklist query fetch-joins each album's artists — a collection, so
+     * a co-led album yields one SQL row per artist. Flushing and clearing
+     * first is what makes this exercise that query for real instead of
+     * reading the fixtures back out of the persistence context.
+     */
+    @Test
+    void getPlaylistDetail_listsATrackOnceWithAllItsAlbumsArtistsInCreditedOrder() {
+        UUID playlistId = persistPlaylist("co-led-album-detail");
+        Artist first = artistRepository.save(new Artist("Zed First Credited", null, null, null));
+        Artist second = artistRepository.save(new Artist("Abe Second Credited", null, null, null));
+        Album coLed = albumRepository.save(new Album(List.of(first, second), "Co-Led Album", null, null, null, 1961, 1));
+        Track coLedTrack = persistTrack(coLed, "Co-Led Track");
+        Track soloTrack = persistTrack(persistAlbum(persistArtist()), "Solo Track");
+        playlistService.addTrack(playlistId, coLedTrack.getId(), "One", "note");
+        playlistService.addTrack(playlistId, soloTrack.getId(), "Two", "note");
+        entityManager.flush();
+        entityManager.clear();
+
+        PlaylistDetailDto detail = playlistService.getPlaylistDetail(playlistId, null, true);
+
+        assertThat(detail.tracks()).extracting(PlaylistTrackDetailDto::trackId).containsExactly(coLedTrack.getId(), soloTrack.getId());
+        assertThat(detail.tracks().get(0).artists()).extracting(ArtistSummaryDto::name)
+            .containsExactly("Zed First Credited", "Abe Second Credited");
+        assertThat(detail.tracks().get(1).artists()).hasSize(1);
     }
 
     /** The every-type overload — same query shape, just no type filter. */
@@ -721,7 +754,7 @@ class PlaylistServiceTest {
 
     private UUID persistPlaylist(String title, PlaylistType type, boolean published) {
         PlaylistUpsertRequest request = new PlaylistUpsertRequest(
-            title, null, null, null, null, type, SeriesVoice.MARK, List.of(), List.of(), List.of(), List.of()
+            title, null, null, null, null, type, JazzlogsCharacter.MARK, List.of(), List.of(), List.of(), List.of()
         );
         UUID id = playlistService.create(request).getId();
         if (published) {
@@ -732,7 +765,7 @@ class PlaylistServiceTest {
 
     private PlaylistUpsertRequest upsertRequestWithTags(String title, List<String> styleCodes) {
         return new PlaylistUpsertRequest(
-            title, null, null, null, null, PlaylistType.STANDARD, SeriesVoice.MARK, styleCodes, List.of(), List.of(), List.of()
+            title, null, null, null, null, PlaylistType.STANDARD, JazzlogsCharacter.MARK, styleCodes, List.of(), List.of(), List.of()
         );
     }
 

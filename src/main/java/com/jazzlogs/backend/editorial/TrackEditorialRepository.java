@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.like.LikeableRepository;
 
 public interface TrackEditorialRepository extends LikeableRepository<TrackEditorial> {
@@ -64,7 +65,7 @@ public interface TrackEditorialRepository extends LikeableRepository<TrackEditor
     )
     Page<TrackEditorialCatalogueRow> searchCatalogue(
         @Param("pattern") String pattern,
-        @Param("byline") EditorialByline byline,
+        @Param("byline") JazzlogsCharacter byline,
         Pageable pageable
     );
 
@@ -118,5 +119,5 @@ public interface TrackEditorialRepository extends LikeableRepository<TrackEditor
         WHERE te.byline = :byline
         ORDER BY te.createdAt DESC
         """)
-    List<EditorialTrackSummaryRow> findRecentByByline(@Param("byline") EditorialByline byline, Pageable pageable);
+    List<EditorialTrackSummaryRow> findRecentByByline(@Param("byline") JazzlogsCharacter byline, Pageable pageable);
 }

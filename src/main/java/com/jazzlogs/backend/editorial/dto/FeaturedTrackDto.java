@@ -3,7 +3,7 @@ package com.jazzlogs.backend.editorial.dto;
 import java.time.Instant;
 import java.util.UUID;
 
-import com.jazzlogs.backend.editorial.EditorialByline;
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 
 /**
  * One track in the archive's curated "Featured Tracks" — see {@code
@@ -29,7 +29,7 @@ public record FeaturedTrackDto(
     String title,
     String logNumber,
     String dek,
-    EditorialByline byline,
+    JazzlogsCharacter byline,
     UUID trackId,
     String trackName,
     String imageUrl,

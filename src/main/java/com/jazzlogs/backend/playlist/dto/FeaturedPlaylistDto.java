@@ -6,7 +6,7 @@ import java.util.UUID;
 
 import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.playlist.PlaylistType;
-import com.jazzlogs.backend.series.SeriesVoice;
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 
 // Same fields as PlaylistDetailDto, full track list included (unlike the
 // lean PlaylistSummaryDto every other playlist listing uses) — see
@@ -20,7 +20,7 @@ public record FeaturedPlaylistDto(
     String coverImageUrl,
     String spotifyUrl,
     PlaylistType type,
-    SeriesVoice byline,
+    JazzlogsCharacter byline,
     boolean published,
     int likeCount,
     boolean likedByCurrentUser,

@@ -3,6 +3,8 @@ package com.jazzlogs.backend.editorial;
 import java.time.Instant;
 import java.util.UUID;
 
+import com.jazzlogs.backend.character.JazzlogsCharacter;
+
 /**
  * What {@link TrackEditorialRepository#findRecentByByline} actually selects
  * — everything {@link com.jazzlogs.backend.editorial.dto.EditorialTrackSummaryDto}
@@ -14,7 +16,7 @@ public record EditorialTrackSummaryRow(
     String title,
     String logNumber,
     String dek,
-    EditorialByline byline,
+    JazzlogsCharacter byline,
     UUID trackId,
     String trackName,
     String coverImageUrl,

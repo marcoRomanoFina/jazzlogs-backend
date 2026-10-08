@@ -3,7 +3,7 @@ package com.jazzlogs.backend.editorial.dto;
 import java.time.Instant;
 import java.util.UUID;
 
-import com.jazzlogs.backend.editorial.EditorialByline;
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 
 /**
  * One row in a byline's most recent editorials — same lean card shape as
@@ -28,7 +28,7 @@ public record EditorialTrackSummaryDto(
     String title,
     String logNumber,
     String dek,
-    EditorialByline byline,
+    JazzlogsCharacter byline,
     UUID trackId,
     String trackName,
     String imageUrl,

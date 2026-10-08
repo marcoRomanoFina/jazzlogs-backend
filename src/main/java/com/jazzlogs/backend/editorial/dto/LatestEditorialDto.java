@@ -3,7 +3,7 @@ package com.jazzlogs.backend.editorial.dto;
 import java.time.Instant;
 import java.util.UUID;
 
-import com.jazzlogs.backend.editorial.EditorialByline;
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 
 /**
  * The newest published editorial, with enough information for a prominent
@@ -30,7 +30,7 @@ public record LatestEditorialDto(
     String title,
     String logNumber,
     String dek,
-    EditorialByline byline,
+    JazzlogsCharacter byline,
     String coverImageUrl,
     String principalImageUrl,
     Instant createdAt,

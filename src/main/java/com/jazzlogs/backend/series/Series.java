@@ -16,6 +16,8 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import com.jazzlogs.backend.character.JazzlogsCharacter;
+
 // Audio-series (podcast-style editorial content) — NOT a subclass of Editorial.
 // Out of the Neo4j graph by design (no recommendation-agent signal yet).
 @Entity
@@ -63,7 +65,7 @@ public class Series {
     // difference (same reasoning as Playlist.type).
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private SeriesVoice voice;
+    private JazzlogsCharacter voice;
 
     // Denormalized, same contract as Playlist/Editorial/Note.likeCount — mutated
     // only via SeriesRepository's atomic increment/decrement UPDATE queries.
@@ -83,7 +85,7 @@ public class Series {
     // constructor param, see SeriesService.publish/unpublish. coverImageUrl
     // isn't one either — it's only ever set via updateCoverImageUrl, after an
     // upload (see SeriesService.setCoverImage).
-    public Series(String title, String dek, String description, SeriesVoice voice) {
+    public Series(String title, String dek, String description, JazzlogsCharacter voice) {
         this.title = title;
         this.dek = dek;
         this.description = description;
@@ -91,7 +93,7 @@ public class Series {
         this.status = SeriesStatus.DRAFT;
     }
 
-    public void update(String title, String dek, String description, SeriesVoice voice) {
+    public void update(String title, String dek, String description, JazzlogsCharacter voice) {
         this.title = title;
         this.dek = dek;
         this.description = description;

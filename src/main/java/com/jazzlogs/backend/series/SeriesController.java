@@ -27,6 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.series.dto.FeaturedSeriesDto;
 import com.jazzlogs.backend.series.dto.ReorderSeriesChaptersRequest;
 import com.jazzlogs.backend.series.dto.SeriesChapterDetailDto;
@@ -75,7 +76,7 @@ public class SeriesController {
      */
     @GetMapping("/catalogue")
     public Page<SeriesSummaryDto> getCatalogue(
-        @RequestParam(required = false) SeriesVoice voice,
+        @RequestParam(required = false) JazzlogsCharacter voice,
         @PageableDefault(size = 12, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
         @AuthenticationPrincipal Jwt jwt
     ) {

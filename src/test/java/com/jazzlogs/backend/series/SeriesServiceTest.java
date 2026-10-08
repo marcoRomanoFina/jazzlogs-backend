@@ -30,6 +30,7 @@ import com.jazzlogs.backend.album.AlbumRepository;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
 import com.jazzlogs.backend.artist.dto.ArtistSummaryDto;
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.listen.ListenService;
@@ -92,7 +93,7 @@ class SeriesServiceTest {
 
     @Test
     void create_rejectsDuplicateTitle() {
-        SeriesUpsertRequest request = new SeriesUpsertRequest("Behind The Bandstand", null, null, SeriesVoice.MARK, null, null, null, null);
+        SeriesUpsertRequest request = new SeriesUpsertRequest("Behind The Bandstand", null, null, JazzlogsCharacter.MARK, null, null, null, null);
         seriesService.create(request);
 
         ResponseStatusException ex = catchThrowableOfType(ResponseStatusException.class, () -> seriesService.create(request));
@@ -101,13 +102,13 @@ class SeriesServiceTest {
 
     @Test
     void update_rejectsRenamingToAnotherSeriesTitle() {
-        seriesService.create(new SeriesUpsertRequest("Behind The Bandstand", null, null, SeriesVoice.MARK, null, null, null, null));
+        seriesService.create(new SeriesUpsertRequest("Behind The Bandstand", null, null, JazzlogsCharacter.MARK, null, null, null, null));
         UUID otherId = seriesService.create(
-            new SeriesUpsertRequest("Standards Explained", null, null, SeriesVoice.LAURA, null, null, null, null)
+            new SeriesUpsertRequest("Standards Explained", null, null, JazzlogsCharacter.LAURA, null, null, null, null)
         ).id();
 
         ResponseStatusException ex = catchThrowableOfType(ResponseStatusException.class,
-            () -> seriesService.update(otherId, new SeriesUpsertRequest("Behind The Bandstand", null, null, SeriesVoice.LAURA, null, null, null, null)));
+            () -> seriesService.update(otherId, new SeriesUpsertRequest("Behind The Bandstand", null, null, JazzlogsCharacter.LAURA, null, null, null, null)));
         assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
     }
 
@@ -115,11 +116,11 @@ class SeriesServiceTest {
     @Test
     void update_allowsSavingUnderItsOwnUnchangedTitle() {
         UUID seriesId = seriesService.create(
-            new SeriesUpsertRequest("Behind The Bandstand", null, null, SeriesVoice.MARK, null, null, null, null)
+            new SeriesUpsertRequest("Behind The Bandstand", null, null, JazzlogsCharacter.MARK, null, null, null, null)
         ).id();
 
         SeriesDetailDto updated = seriesService.update(
-            seriesId, new SeriesUpsertRequest("Behind The Bandstand", null, null, SeriesVoice.MARK, null, null, null, null)
+            seriesId, new SeriesUpsertRequest("Behind The Bandstand", null, null, JazzlogsCharacter.MARK, null, null, null, null)
         );
 
         assertThat(updated.title()).isEqualTo("Behind The Bandstand");
@@ -129,10 +130,10 @@ class SeriesServiceTest {
 
     @Test
     void getCatalogue_returnsOnlyTheRequestedVoice() {
-        persistSeries("Catalogue Mark", SeriesVoice.MARK, true);
-        persistSeries("Catalogue Laura", SeriesVoice.LAURA, true);
+        persistSeries("Catalogue Mark", JazzlogsCharacter.MARK, true);
+        persistSeries("Catalogue Laura", JazzlogsCharacter.LAURA, true);
 
-        Page<SeriesSummaryDto> page = seriesService.getCatalogue(SeriesVoice.MARK, false, PageRequest.of(0, 50, CATALOGUE_SORT));
+        Page<SeriesSummaryDto> page = seriesService.getCatalogue(JazzlogsCharacter.MARK, false, PageRequest.of(0, 50, CATALOGUE_SORT));
 
         assertThat(page.getContent()).extracting(SeriesSummaryDto::title)
             .contains("Catalogue Mark")
@@ -141,22 +142,22 @@ class SeriesServiceTest {
 
     @Test
     void getCatalogue_excludesDraftsUnlessIncludeUnpublished() {
-        UUID publishedId = persistSeries("Catalogue Published", SeriesVoice.JAMES, true);
-        UUID draftId = persistSeries("Catalogue Draft", SeriesVoice.JAMES, false);
+        UUID publishedId = persistSeries("Catalogue Published", JazzlogsCharacter.JAMES, true);
+        UUID draftId = persistSeries("Catalogue Draft", JazzlogsCharacter.JAMES, false);
 
-        Page<SeriesSummaryDto> nonAdminPage = seriesService.getCatalogue(SeriesVoice.JAMES, false, PageRequest.of(0, 50, CATALOGUE_SORT));
+        Page<SeriesSummaryDto> nonAdminPage = seriesService.getCatalogue(JazzlogsCharacter.JAMES, false, PageRequest.of(0, 50, CATALOGUE_SORT));
         assertThat(nonAdminPage.getContent()).extracting(SeriesSummaryDto::id).contains(publishedId).doesNotContain(draftId);
 
-        Page<SeriesSummaryDto> adminPage = seriesService.getCatalogue(SeriesVoice.JAMES, true, PageRequest.of(0, 50, CATALOGUE_SORT));
+        Page<SeriesSummaryDto> adminPage = seriesService.getCatalogue(JazzlogsCharacter.JAMES, true, PageRequest.of(0, 50, CATALOGUE_SORT));
         assertThat(adminPage.getContent()).extracting(SeriesSummaryDto::id).contains(publishedId, draftId);
     }
 
     @Test
     void getCatalogue_ordersNewestFirst() {
-        UUID olderId = persistSeries("Catalogue Older", SeriesVoice.ALICE, true);
-        UUID newerId = persistSeries("Catalogue Newer", SeriesVoice.ALICE, true);
+        UUID olderId = persistSeries("Catalogue Older", JazzlogsCharacter.ALICE, true);
+        UUID newerId = persistSeries("Catalogue Newer", JazzlogsCharacter.ALICE, true);
 
-        Page<SeriesSummaryDto> page = seriesService.getCatalogue(SeriesVoice.ALICE, false, PageRequest.of(0, 50, CATALOGUE_SORT));
+        Page<SeriesSummaryDto> page = seriesService.getCatalogue(JazzlogsCharacter.ALICE, false, PageRequest.of(0, 50, CATALOGUE_SORT));
 
         List<UUID> ids = page.getContent().stream().map(SeriesSummaryDto::id).toList();
         assertThat(ids.indexOf(newerId)).isLessThan(ids.indexOf(olderId));
@@ -165,8 +166,8 @@ class SeriesServiceTest {
     /** The no-voice-filter overload — same query shape, just every voice mixed together. */
     @Test
     void getCatalogue_withoutAVoiceFilter_mixesEveryVoice() {
-        UUID markId = persistSeries("Mixed Catalogue Mark", SeriesVoice.MARK, true);
-        UUID adamId = persistSeries("Mixed Catalogue Adam", SeriesVoice.ADAM, true);
+        UUID markId = persistSeries("Mixed Catalogue Mark", JazzlogsCharacter.MARK, true);
+        UUID adamId = persistSeries("Mixed Catalogue Adam", JazzlogsCharacter.ADAM, true);
 
         Page<SeriesSummaryDto> page = seriesService.getCatalogue(null, false, PageRequest.of(0, 50, CATALOGUE_SORT));
 
@@ -175,8 +176,8 @@ class SeriesServiceTest {
 
     @Test
     void getCatalogue_withoutAVoiceFilter_excludesDraftsUnlessIncludeUnpublished() {
-        UUID publishedId = persistSeries("Mixed Catalogue Published", SeriesVoice.MARK, true);
-        UUID draftId = persistSeries("Mixed Catalogue Draft", SeriesVoice.ADAM, false);
+        UUID publishedId = persistSeries("Mixed Catalogue Published", JazzlogsCharacter.MARK, true);
+        UUID draftId = persistSeries("Mixed Catalogue Draft", JazzlogsCharacter.ADAM, false);
 
         Page<SeriesSummaryDto> nonAdminPage = seriesService.getCatalogue(null, false, PageRequest.of(0, 50, CATALOGUE_SORT));
         assertThat(nonAdminPage.getContent()).extracting(SeriesSummaryDto::id).contains(publishedId).doesNotContain(draftId);
@@ -188,7 +189,7 @@ class SeriesServiceTest {
     /** styleTags/moodTags/contextTags come from batch queries for the whole page — see GraphService.getSeriesStylesBatch. */
     @Test
     void getCatalogue_attachesBatchedTags() {
-        UUID seriesId = persistSeries("Tagged Catalogue Series", SeriesVoice.MARK, true);
+        UUID seriesId = persistSeries("Tagged Catalogue Series", JazzlogsCharacter.MARK, true);
         when(graphService.getSeriesStylesBatch(any())).thenReturn(Map.of(seriesId, List.of(new VocabularyTag("SWING", "Swing"))));
 
         Page<SeriesSummaryDto> page = seriesService.getCatalogue(null, false, PageRequest.of(0, 50, CATALOGUE_SORT));
@@ -200,7 +201,7 @@ class SeriesServiceTest {
     @Test
     void create_syncsTheNeo4jNodeAndSetsTags() {
         seriesService.create(new SeriesUpsertRequest(
-            "Tagged On Create", null, null, SeriesVoice.MARK, List.of("SWING"), List.of(), List.of(), List.of()
+            "Tagged On Create", null, null, JazzlogsCharacter.MARK, List.of("SWING"), List.of(), List.of(), List.of()
         ));
 
         verify(graphService).syncSeriesNode(any(), eq("Tagged On Create"));
@@ -358,7 +359,7 @@ class SeriesServiceTest {
 
     @Test
     void create_alwaysStartsAsADraft() {
-        SeriesUpsertRequest request = new SeriesUpsertRequest("Draft By Default", null, null, SeriesVoice.MARK, null, null, null, null);
+        SeriesUpsertRequest request = new SeriesUpsertRequest("Draft By Default", null, null, JazzlogsCharacter.MARK, null, null, null, null);
 
         UUID seriesId = seriesService.create(request).id();
 
@@ -626,7 +627,7 @@ class SeriesServiceTest {
 
     @Test
     void publish_marksTheSeriesPublished() {
-        SeriesUpsertRequest request = new SeriesUpsertRequest("To Publish", null, null, SeriesVoice.MARK, null, null, null, null);
+        SeriesUpsertRequest request = new SeriesUpsertRequest("To Publish", null, null, JazzlogsCharacter.MARK, null, null, null, null);
         UUID seriesId = seriesService.create(request).id();
 
         seriesService.publish(seriesId);
@@ -805,10 +806,10 @@ class SeriesServiceTest {
     }
 
     private UUID persistSeries(boolean published) {
-        return persistSeries("Test Series " + UUID.randomUUID(), SeriesVoice.MARK, published);
+        return persistSeries("Test Series " + UUID.randomUUID(), JazzlogsCharacter.MARK, published);
     }
 
-    private UUID persistSeries(String title, SeriesVoice voice, boolean published) {
+    private UUID persistSeries(String title, JazzlogsCharacter voice, boolean published) {
         SeriesUpsertRequest request = new SeriesUpsertRequest(title, null, null, voice, null, null, null, null);
         UUID id = seriesService.create(request).id();
         if (published) {
@@ -825,7 +826,7 @@ class SeriesServiceTest {
     private UUID onboardingSeriesId() {
         return seriesRepository.findByTitle(SeriesService.ONBOARDING_SERIES_TITLE)
             .map(Series::getId)
-            .orElseGet(() -> persistSeries(SeriesService.ONBOARDING_SERIES_TITLE, SeriesVoice.MARK, false));
+            .orElseGet(() -> persistSeries(SeriesService.ONBOARDING_SERIES_TITLE, JazzlogsCharacter.MARK, false));
     }
 
     private User persistUser() {

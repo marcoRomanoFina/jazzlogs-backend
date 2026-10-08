@@ -24,6 +24,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.track.Track;
 
 /**
@@ -58,7 +59,7 @@ public class TrackEditorial {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private EditorialByline byline;
+    private JazzlogsCharacter byline;
 
     // Five images for this editorial's own page layout — upload-only, never
     // set via update(...), only via their own endpoints (see
@@ -98,7 +99,7 @@ public class TrackEditorial {
         this.track = track;
     }
 
-    public void update(String title, String dek, EditorialByline byline, String logNumber) {
+    public void update(String title, String dek, JazzlogsCharacter byline, String logNumber) {
         this.title = title;
         this.dek = dek;
         this.byline = byline;
