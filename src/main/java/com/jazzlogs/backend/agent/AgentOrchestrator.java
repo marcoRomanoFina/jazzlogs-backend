@@ -58,7 +58,7 @@ public class AgentOrchestrator {
      *
      * @param chat        the chat this exchange belongs to
      * @param userMessage the user's new message
-     * @param timezone    IANA zone id for runtime context; null falls back to UTC
+     * @param timezone    IANA zone id for the user's local time; null means that time is unknown
      * @return an emitter streaming {@link AgentEvent}s as the agent produces them
      */
     public SseEmitter runExchange(Chat chat, String userMessage, String timezone) {
