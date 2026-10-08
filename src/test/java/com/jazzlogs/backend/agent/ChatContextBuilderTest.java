@@ -20,6 +20,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import com.openai.models.responses.EasyInputMessage;
 import com.openai.models.responses.ResponseInputItem;
 
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.chat.CatalogItemType;
 import com.jazzlogs.backend.chat.chat.Chat;
 import com.jazzlogs.backend.chat.chatexchange.ChatExchange;
@@ -58,7 +59,7 @@ class ChatContextBuilderTest {
     void setUp() {
         builder = new ChatContextBuilder(chatExchangeRepository, chatRecommendationMemoryRepository, new VocabularyProvider());
         User user = new User(UUID.randomUUID(), "test@example.com");
-        chat = new Chat(user, null);
+        chat = new Chat(user, null, JazzlogsCharacter.MARK);
         ReflectionTestUtils.setField(chat, "id", UUID.randomUUID());
     }
 
@@ -85,7 +86,7 @@ class ChatContextBuilderTest {
     @Test
     void brandNewChatWithNoIdYet_skipsBothRepositoriesEntirely() {
         User user = new User(UUID.randomUUID(), "test@example.com");
-        Chat newChat = new Chat(user, null);
+        Chat newChat = new Chat(user, null, JazzlogsCharacter.MARK);
 
         List<ResponseInputItem> input = builder.buildInput(newChat, "What should I listen to tonight?", null);
 

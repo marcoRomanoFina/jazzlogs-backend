@@ -24,6 +24,7 @@ import com.jazzlogs.backend.chat.chat.ChatService;
 import com.jazzlogs.backend.chat.chat.dto.ChatDto;
 import com.jazzlogs.backend.chat.chatexchange.ChatExchangeService;
 import com.jazzlogs.backend.chat.chatexchange.dto.ChatExchangeDto;
+import com.jazzlogs.backend.chat.chatexchange.dto.CreateChatRequest;
 import com.jazzlogs.backend.chat.chatexchange.dto.SendMessageRequest;
 import com.jazzlogs.backend.user.UserService;
 
@@ -90,14 +91,15 @@ public class ChatController {
      * only learns it from the {@code answer_metadata} SSE event, once the
      * stream actually completes successfully.
      * 
-     * @param request the first message to send — same body {@link #sendMessage}
-     *                takes: {@code userMessage} and an optional {@code timezone}
+     * @param request the first message to send, plus the {@code narrator} the
+     *                user chose to talk to — the only place a chat's narrator
+     *                is ever set
      * @param jwt     the authenticated user's token — the new chat's owner
      * @return an {@link SseEmitter} streaming the agent's progress and final answer
      */
     @PostMapping
-    public SseEmitter createChat(@Valid @RequestBody SendMessageRequest request, @AuthenticationPrincipal Jwt jwt) {
-        Chat chat = chatService.createChat(userService.resolveFromJwt(jwt));
+    public SseEmitter createChat(@Valid @RequestBody CreateChatRequest request, @AuthenticationPrincipal Jwt jwt) {
+        Chat chat = chatService.createChat(userService.resolveFromJwt(jwt), request.narrator());
         return agentOrchestrator.runExchange(chat, request.userMessage(), request.timezone());
     }
 

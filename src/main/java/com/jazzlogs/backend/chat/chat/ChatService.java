@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.chat.chat.dto.ChatDto;
 import com.jazzlogs.backend.user.User;
 
@@ -47,11 +48,12 @@ public class ChatService {
      * {@code ChatExchangeService#persist}, so a failed first agent turn
      * leaves nothing behind.
      * 
-     * @param user the chat's owner
+     * @param user     the chat's owner
+     * @param narrator who the user chose to talk to — fixed for the chat's whole life
      * @return an unsaved {@link Chat}
      */
-    public Chat createChat(User user) {
-        return new Chat(user, null);
+    public Chat createChat(User user, JazzlogsCharacter narrator) {
+        return new Chat(user, null, narrator);
     }
 
     /**
@@ -86,6 +88,6 @@ public class ChatService {
      * @return the corresponding {@link ChatDto}
      */
     private ChatDto toChatDto(Chat chat) {
-        return new ChatDto(chat.getId(), chat.getTitle(), chat.getCreatedAt(), chat.getUpdatedAt(), chat.getLastMessageAt());
+        return new ChatDto(chat.getId(), chat.getTitle(), chat.getNarrator(), chat.getCreatedAt(), chat.getUpdatedAt(), chat.getLastMessageAt());
     }
 }
