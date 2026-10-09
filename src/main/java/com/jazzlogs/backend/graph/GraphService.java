@@ -3,8 +3,9 @@ package com.jazzlogs.backend.graph;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Collection;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -14,7 +15,6 @@ import java.util.stream.Collectors;
 import org.springframework.data.neo4j.core.Neo4jClient;
 import org.springframework.stereotype.Service;
 
-import com.jazzlogs.backend.chat.CatalogItemType;
 
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -770,53 +770,50 @@ public class GraphService {
         });
     }
 
-    // --- graphFilter (agent tool) ---
+    // --- track search (see TrackSearchService) ---
 
     /**
-     * Ranks Track candidates by graph-topology overlap with the given
-     * vocabulary filters, optionally narrowed to one album's/artist's own
-     * tracks via {@code albumId}/{@code artistId} (either or both may be
-     * {@code null} — a pure vocabulary search with no scope). TRACK is the
-     * only entity type this searches: Album/Artist are no longer
-     * independently recommendable, only resolvable as scope (see {@code
-     * ResolveJazzlogsEntityTool}) — this method IS the "search this
-     * album's/artist's tracks" capability that scope feeds into.
+     * The tracks tagged with any of the requested vocabulary codes, optionally
+     * only among one album's tracks, the tracks one artist plays on (leader or
+     * sideman), and/or a given set of tracks. Best tagged first, at most
+     * {@code limit}.
      *
-     * <p>Matching is permissive by design (OR, not AND): a candidate doesn't
-     * need to match every requested dimension, matching at least one is
-     * enough — that's what {@code matchCount > 0} enforces below, nothing
-     * stronger. When no vocabulary was requested at all (every code list
-     * empty) but a scope was, {@code requireVocabMatch} relaxes that so a
-     * pure "tracks from this album" query still returns candidates. Ranking
-     * (by matchCount, i.e. {@code matchedDimensions.size()}) is a separate
-     * concern from eligibility, done right here via {@code ORDER BY
-     * matchCount DESC LIMIT $limit} — {@code GraphFilterService} never
-     * re-sorts or re-clamps what comes back.
+     * <p>Matching is permissive on purpose (OR, not AND): one matched code is
+     * enough to be eligible, and how many matched only decides the order —
+     * with ties broken by name, so the same search always returns the same
+     * tracks. When {@code requestedCodes} holds no code at all, every track in
+     * scope is eligible: that is how "the tracks of this album" is asked.
      *
-     * <p>Each dimension is a pattern comprehension — e.g. {@code
-     * [(tr)-[:BELONGS_TO]->(s:Style) WHERE s.code IN $styleCodes | s.code]}
-     * — collecting the actual codes that matched, not just a 0/1 flag: the
-     * LLM gets to see e.g. "matched Mood=RELAXED" instead of a bare count.
-     * An empty codes list for a dimension naturally yields an empty match
-     * list ({@code s.code IN []} is never true), so "not requested" and
-     * "requested but nothing matched" both fall out without a separate
-     * guard. {@code excludeAlreadyRated} checks RATED_TRACK, not RATED —
-     * that's the Track-level rating relationship (see {@link #rateTrack}).
+     * <p>Instruments are the exception: a track must feature <em>every</em>
+     * requested instrument to be eligible at all. A mood or a style describes
+     * a track loosely, and a near miss is still a candidate; someone asking
+     * for vibraphone is not served by a track without one.
+     *
+     * <p>Each dimension is a pattern comprehension collecting the codes that
+     * actually matched, not a 0/1 flag — the caller gets to say <em>why</em> a
+     * track came back. An empty list for a dimension matches nothing
+     * ({@code code IN []} is never true), so "not requested" needs no guard.
+     *
+     * @param requestedCodes the codes to look for, per dimension; a missing
+     *                       dimension is the same as an empty list
+     * @param onlyAmong      if not {@code null}, the only tracks that may come
+     *                       back — how a condition the graph knows nothing
+     *                       about (see {@code TrackSearchService}) is applied
      */
-    public List<GraphCandidate> findTrackCandidates(
-        List<String> styleCodes, List<String> moodCodes, List<String> contextCodes, List<String> rhythmCodes, List<String> instrumentCodes,
-        UUID albumId, UUID artistId, UUID userId, boolean excludeListened, boolean excludeAlreadyRated, int limit
+    public List<TaggedTrack> findTracksByTags(
+        Map<VocabularyDimension, List<String>> requestedCodes, UUID albumId, UUID artistId, Collection<UUID> onlyAmong, int limit
     ) {
-        boolean requireVocabMatch = !styleCodes.isEmpty() || !moodCodes.isEmpty() || !contextCodes.isEmpty()
-            || !rhythmCodes.isEmpty() || !instrumentCodes.isEmpty();
+        List<String> onlyAmongIds = onlyAmong == null ? null : onlyAmong.stream().map(UUID::toString).toList();
 
-        return read("find Track candidates for graphFilter", () ->
+        boolean anyCodeRequested = requestedCodes.values().stream().anyMatch(codes -> !codes.isEmpty());
+
+        return read("find tracks by tags", () ->
             neo4jClient.query("""
                     MATCH (tr:Track)
-                    WHERE ($excludeListened = false OR NOT EXISTS { (u:User {id: $userId})-[:LISTENED]->(tr) })
-                      AND ($excludeRated = false OR NOT EXISTS { (u:User {id: $userId})-[:RATED_TRACK]->(tr) })
-                      AND ($albumId IS NULL OR EXISTS { (:Album {id: $albumId})-[:CONTAINS]->(tr) })
+                    WHERE ($albumId IS NULL OR EXISTS { (:Album {id: $albumId})-[:CONTAINS]->(tr) })
                       AND ($artistId IS NULL OR EXISTS { (:Artist {id: $artistId})-[:PERFORMED_ON]->(tr) })
+                      AND ($onlyAmongIds IS NULL OR tr.id IN $onlyAmongIds)
+                      AND ALL(code IN $instrumentCodes WHERE EXISTS { (tr)-[:FEATURES_INSTRUMENT]->(:Instrument {code: code}) })
                     WITH tr,
                         [(tr)-[:BELONGS_TO]->(s:Style) WHERE s.code IN $styleCodes | s.code] AS styleMatches,
                         [(tr)-[:EVOKES_MOOD]->(m:Mood) WHERE m.code IN $moodCodes | m.code] AS moodMatches,
@@ -825,65 +822,50 @@ public class GraphService {
                         [(tr)-[:FEATURES_INSTRUMENT]->(i:Instrument) WHERE i.code IN $instrumentCodes | i.code] AS instrumentMatches
                     WITH tr, styleMatches, moodMatches, contextMatches, rhythmMatches, instrumentMatches,
                         (size(styleMatches) + size(moodMatches) + size(contextMatches) + size(rhythmMatches) + size(instrumentMatches)) AS matchCount
-                    WHERE $requireVocabMatch = false OR matchCount > 0
-                    RETURN tr.id AS entityId, tr.name AS entityName, styleMatches, moodMatches, contextMatches, rhythmMatches, instrumentMatches
-                    ORDER BY matchCount DESC
+                    WHERE $anyCodeRequested = false OR matchCount > 0
+                    RETURN tr.id AS trackId, styleMatches, moodMatches, contextMatches, rhythmMatches, instrumentMatches
+                    ORDER BY matchCount DESC, tr.name ASC
                     LIMIT $limit
                     """)
-                .bind(userId.toString()).to("userId")
-                .bind(excludeListened).to("excludeListened")
-                .bind(excludeAlreadyRated).to("excludeRated")
                 .bind(albumId == null ? null : albumId.toString()).to("albumId")
                 .bind(artistId == null ? null : artistId.toString()).to("artistId")
-                .bind(styleCodes).to("styleCodes")
-                .bind(moodCodes).to("moodCodes")
-                .bind(contextCodes).to("contextCodes")
-                .bind(rhythmCodes).to("rhythmCodes")
-                .bind(instrumentCodes).to("instrumentCodes")
-                .bind(requireVocabMatch).to("requireVocabMatch")
+                .bind(onlyAmongIds).to("onlyAmongIds")
+                .bind(requestedCodes.getOrDefault(VocabularyDimension.STYLE, List.of())).to("styleCodes")
+                .bind(requestedCodes.getOrDefault(VocabularyDimension.MOOD, List.of())).to("moodCodes")
+                .bind(requestedCodes.getOrDefault(VocabularyDimension.CONTEXT, List.of())).to("contextCodes")
+                .bind(requestedCodes.getOrDefault(VocabularyDimension.RHYTHM, List.of())).to("rhythmCodes")
+                .bind(requestedCodes.getOrDefault(VocabularyDimension.INSTRUMENT, List.of())).to("instrumentCodes")
+                .bind(anyCodeRequested).to("anyCodeRequested")
                 .bind(limit).to("limit")
                 .fetch()
                 .all()
                 .stream()
-                .map(row -> new GraphCandidate(
-                    CatalogItemType.TRACK,
-                    UUID.fromString((String) row.get("entityId")),
-                    (String) row.get("entityName"),
-                    concatMatches(List.of(
-                        dimensionMatches(VocabularyDimension.STYLE, row.get("styleMatches")),
-                        dimensionMatches(VocabularyDimension.MOOD, row.get("moodMatches")),
-                        dimensionMatches(VocabularyDimension.CONTEXT, row.get("contextMatches")),
-                        dimensionMatches(VocabularyDimension.RHYTHM, row.get("rhythmMatches")),
-                        dimensionMatches(VocabularyDimension.INSTRUMENT, row.get("instrumentMatches"))
-                    ))
-                ))
+                .map(GraphService::toTaggedTrack)
                 .toList());
     }
 
-    // One dimension's raw match-code list off a candidate row, already cast
-    // and paired with which dimension it came from — the only place the
-    // unchecked Object -> List<String> cast happens, so concatMatches below
-    // stays fully typed. rawCodes is always a List<String> in practice: it
-    // comes straight off a Neo4jClient row column bound from a Cypher
-    // list-comprehension (see e.g. findAlbumCandidates' styleMatches).
+    /** One {@link #findTracksByTags} row; keeps only the dimensions that matched something. */
+    private static TaggedTrack toTaggedTrack(Map<String, Object> row) {
+        Map<VocabularyDimension, List<String>> matchedTags = new EnumMap<>(VocabularyDimension.class);
+        putIfMatched(matchedTags, VocabularyDimension.STYLE, row.get("styleMatches"));
+        putIfMatched(matchedTags, VocabularyDimension.MOOD, row.get("moodMatches"));
+        putIfMatched(matchedTags, VocabularyDimension.CONTEXT, row.get("contextMatches"));
+        putIfMatched(matchedTags, VocabularyDimension.RHYTHM, row.get("rhythmMatches"));
+        putIfMatched(matchedTags, VocabularyDimension.INSTRUMENT, row.get("instrumentMatches"));
+        return new TaggedTrack(UUID.fromString((String) row.get("trackId")), matchedTags);
+    }
+
+    /**
+     * The one place the unchecked {@code Object -> List<String>} cast happens:
+     * {@code rawCodes} is a row column bound from a Cypher list comprehension,
+     * always a list of code strings.
+     */
     @SuppressWarnings("unchecked")
-    private static DimensionMatches dimensionMatches(VocabularyDimension dimension, Object rawCodes) {
-        return new DimensionMatches(dimension, (List<String>) rawCodes);
-    }
-
-    private record DimensionMatches(VocabularyDimension dimension, List<String> codes) {
-    }
-
-    // Flattens however many dimensions a candidate row has into one
-    // matchedDimensions list — a plain List rather than varargs so each
-    // finder above can pass exactly the dimensions that apply to its label
-    // (3 for Album/Artist, 4 for Track) without a shared column count.
-    private static List<MatchedDimension> concatMatches(List<DimensionMatches> perDimension) {
-        List<MatchedDimension> matches = new ArrayList<>();
-        for (DimensionMatches entry : perDimension) {
-            entry.codes().forEach(code -> matches.add(new MatchedDimension(entry.dimension(), code)));
+    private static void putIfMatched(Map<VocabularyDimension, List<String>> matchedTags, VocabularyDimension dimension, Object rawCodes) {
+        List<String> codes = (List<String>) rawCodes;
+        if (!codes.isEmpty()) {
+            matchedTags.put(dimension, codes);
         }
-        return matches;
     }
 
     private void write(String description, Runnable action) {

@@ -414,6 +414,37 @@ class EditorialServiceTest {
         assertThat(seenByAnotherUser.get(0).likedByCurrentUser()).isFalse();
     }
 
+    @Test
+    void getCatalogueCardsByTrackId_returnsEachTracksLogCard_andNothingForATrackWithoutOne() {
+        Track withLog = trackRepository.save(new Track(
+            persistAlbum("Carded Track Album"), null, "Carded Track", 562_000, "https://open.spotify.com/track/carded",
+            null, null, null, null, null, null, null
+        ));
+        Track withoutLog = persistTrack("Uncarded Track");
+        editorialService.upsertTrackEditorial(withLog.getId(), new TrackEditorialRequest("Carded Log", "9", "A dek.", JazzlogsCharacter.ALICE, List.of()));
+        entityManager.flush();
+        entityManager.clear();
+
+        var cards = editorialService.getCatalogueCardsByTrackId(List.of(withLog.getId(), withoutLog.getId()), UUID.randomUUID());
+
+        assertThat(cards).containsOnlyKeys(withLog.getId());
+        var card = cards.get(withLog.getId());
+        assertThat(card.trackId()).isEqualTo(withLog.getId());
+        assertThat(card.trackName()).isEqualTo("Carded Track");
+        assertThat(card.title()).isEqualTo("Carded Log");
+        assertThat(card.logNumber()).isEqualTo("9");
+        assertThat(card.byline()).isEqualTo(JazzlogsCharacter.ALICE);
+        assertThat(card.albumName()).isEqualTo(withLog.getAlbum().getName());
+        assertThat(card.durationMs()).isEqualTo(562_000);
+        assertThat(card.spotifyUrl()).isEqualTo("https://open.spotify.com/track/carded");
+        assertThat(card.likedByCurrentUser()).isFalse();
+    }
+
+    @Test
+    void getCatalogueCardsByTrackId_ofNoTracks_isEmpty() {
+        assertThat(editorialService.getCatalogueCardsByTrackId(List.of(), UUID.randomUUID())).isEmpty();
+    }
+
     private Album persistAlbum(String name) {
         Artist artist = artistRepository.save(new Artist(name + " Artist", null, null, null));
         return albumRepository.save(new Album(

@@ -1,5 +1,6 @@
 package com.jazzlogs.backend.track;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -106,11 +107,9 @@ public interface TrackRepository extends JpaRepository<Track, UUID>, SavedItemRe
                 WHEN t.normalized_name LIKE :normalizedQuery || '%' THEN 'PREFIX'
                 WHEN t.normalized_name LIKE '%' || :normalizedQuery || '%' THEN 'CONTAINS'
                 ELSE 'FUZZY'
-            END AS matchType,
-            ted.id AS editorialId
+            END AS matchType
         FROM tracks t
         JOIN albums al ON al.id = t.album_id
-        LEFT JOIN track_editorials ted ON ted.track_id = t.id
         WHERE t.normalized_name = :normalizedQuery
            OR t.normalized_name LIKE :normalizedQuery || '%'
            OR t.normalized_name LIKE '%' || :normalizedQuery || '%'
@@ -123,7 +122,66 @@ public interface TrackRepository extends JpaRepository<Track, UUID>, SavedItemRe
                 ELSE 3
             END,
             similarity(t.normalized_name, :normalizedQuery) DESC
-        LIMIT 20
+        LIMIT :limit
         """, nativeQuery = true)
-    List<CandidateRow> search(@Param("normalizedQuery") String normalizedQuery);
+    List<CandidateRow> search(@Param("normalizedQuery") String normalizedQuery, @Param("limit") int limit);
+
+    /**
+     * The tracks at the given levels whose log was written by the given
+     * narrator; a {@code null} condition is not filtered on. Everything is
+     * passed as an enum name — a native query, so that a null one is a plain
+     * untyped NULL Postgres can compare against.
+     */
+    @Query(value = """
+        SELECT t.id
+        FROM tracks t
+        LEFT JOIN track_editorials te ON te.track_id = t.id
+        WHERE (:energy IS NULL OR t.energy = :energy)
+          AND (:accessibility IS NULL OR t.accessibility = :accessibility)
+          AND (:moodIntensity IS NULL OR t.mood_intensity = :moodIntensity)
+          AND (:writtenBy IS NULL OR te.byline = :writtenBy)
+        """, nativeQuery = true)
+    List<UUID> findIdsByLevelsAndAuthor(
+        @Param("energy") String energy,
+        @Param("accessibility") String accessibility,
+        @Param("moodIntensity") String moodIntensity,
+        @Param("writtenBy") String writtenBy
+    );
+
+    /**
+     * What a search result shows of each track without opening its log: its
+     * name, album, credited artists (joined with ", " in credited order, same
+     * as {@link #search}) and who wrote its log.
+     */
+    @Query(value = """
+        SELECT
+            t.id AS id,
+            t.name AS name,
+            al.name AS albumName,
+            (
+                SELECT string_agg(ar.name, ', ' ORDER BY aa.position)
+                FROM album_artists aa
+                JOIN artists ar ON ar.id = aa.artist_id
+                WHERE aa.album_id = al.id
+            ) AS artistFullName,
+            te.byline AS writtenBy
+        FROM tracks t
+        JOIN albums al ON al.id = t.album_id
+        LEFT JOIN track_editorials te ON te.track_id = t.id
+        WHERE t.id IN (:trackIds)
+        """, nativeQuery = true)
+    List<TrackCardRow> findCards(@Param("trackIds") Collection<UUID> trackIds);
+
+    /** One row from {@link #findCards}; {@code writtenBy} is a {@code JazzlogsCharacter} name, null if the track has no log. */
+    interface TrackCardRow {
+        UUID getId();
+
+        String getName();
+
+        String getAlbumName();
+
+        String getArtistFullName();
+
+        String getWrittenBy();
+    }
 }

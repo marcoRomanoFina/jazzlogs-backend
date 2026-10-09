@@ -1,6 +1,5 @@
 package com.jazzlogs.backend.agent.tools;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -12,18 +11,17 @@ import tools.jackson.databind.json.JsonMapper;
 
 import com.jazzlogs.backend.agent.ToolCallRequest;
 import com.jazzlogs.backend.agent.ToolExecutionResult;
-import com.jazzlogs.backend.character.JazzlogsCharacter;
-import com.jazzlogs.backend.editorial.BlockContentCategory;
-import com.jazzlogs.backend.editorial.EditorialBlock;
-import com.jazzlogs.backend.editorial.EditorialBlockRepository;
-import com.jazzlogs.backend.editorial.EditorialBlockType;
+import com.jazzlogs.backend.agent.tools.TrackLogReader.TrackLog;
 
 /**
- * Full/filtered text of one editorial's blocks — what the agent calls once
- * it already has a concrete editorialId (from RESOLVE_JAZZLOGS_ENTITY) and
- * needs real substance to write from, not just a name. No JOIN to
- * album/track/artist_editorials: editorialId already identifies the
- * editorials row directly, see {@link EditorialBlockRepository}.
+ * One track, whole: its log from first block to last plus everything else
+ * JazzLogs knows about it (see {@link TrackLogReader}). The agent's last step
+ * before recommending — it chooses a track with the other tools, then reads
+ * it here and writes its answer from that. Deliberately unfiltered: a
+ * narrator who has read the entire entry talks about a track better than one
+ * who asked for a single paragraph.
+ * Keyed by the track, not by the log's own id: a track has exactly one log,
+ * so the agent only ever has to carry one id per track.
  */
 @Component
 public class EditorialContentTool extends JazzTool {
@@ -32,36 +30,30 @@ public class EditorialContentTool extends JazzTool {
 
     private static final Map<String, Object> SCHEMA = Map.of(
         "type", "object",
-        "properties", Map.of(
-            "editorialId", Map.of("type", "string"),
-            "categories", Map.of(
-                "type", "array",
-                "items", Map.of("type", "string", "enum", categoryNames())
-            )
-        ),
-        "required", List.of("editorialId")
+        "properties", Map.of("trackId", Map.of("type", "string")),
+        "required", List.of("trackId")
     );
 
     private final JsonMapper objectMapper;
-    private final EditorialBlockRepository editorialBlockRepository;
-    private final LogAuthorLookup logAuthorLookup;
+    private final TrackLogReader trackLogReader;
 
-    public EditorialContentTool(
-        EditorialBlockRepository editorialBlockRepository, LogAuthorLookup logAuthorLookup, JsonMapper objectMapper
-    ) {
+    public EditorialContentTool(TrackLogReader trackLogReader, JsonMapper objectMapper) {
         super(
             NAME,
-            "Fetch the full or filtered text content of an editorial's blocks, given an editorialId. "
-                + "editorialId is NOT the same id as the album/track/artist itself — an entityId from "
-                + "GRAPH_FILTER or SEMANTIC_SEARCH is never a valid editorialId, do not reuse one here. "
-                + "The only source for a real editorialId is RESOLVE_JAZZLOGS_ENTITY's editorialId field "
-                + "— call that tool with the entity's name if you don't already have one from earlier in "
-                + "this conversation. Use this to get real substance to write from before answering — "
-                + "never invent editorial content, and never guess or reuse an unrelated id here.",
+            "Read everything JazzLogs has on one track, given its id — the entityId of a track from "
+                + "FIND_TRACKS or RESOLVE_JAZZLOGS_ENTITY. Returns the track itself "
+                + "(name, artists, album and year, length, vocal profile, energy, accessibility, mood "
+                + "intensity, tempo feel, composition type, its style/mood/context/rhythm/instrument "
+                + "tags, and who plays what on it) and its complete log: title, log number, dek, the "
+                + "narrator who wrote it (writtenBy), and every block of its text in reading order, "
+                + "each labelled with what it covers (contentCategory). This is the last step before "
+                + "recommending: call it once you have decided which track you are recommending, and "
+                + "write your answer from what it returns — never invent editorial content. Do not use "
+                + "it to compare candidates (FIND_TRACKS already gives you what you need for that). Only a track id is valid "
+                + "here: an album or artist id is rejected.",
             "Leyendo la editorial"
         );
-        this.editorialBlockRepository = editorialBlockRepository;
-        this.logAuthorLookup = logAuthorLookup;
+        this.trackLogReader = trackLogReader;
         this.objectMapper = objectMapper;
     }
 
@@ -70,21 +62,18 @@ public class EditorialContentTool extends JazzTool {
         return SCHEMA;
     }
 
-    /** Fetches an editorial's blocks, optionally filtered to specific content categories. */
+    /** Reads a track and its whole log, telling the model apart an id that isn't a track from one that is. */
     @Override
     public ToolExecutionResult execute(ToolCallRequest call, UUID userId) {
-        Args args = parseArgs(call.argumentsJson());
-        UUID editorialId = requireEditorialId(args.editorialId());
-        List<BlockContentCategory> categories = parseEnumList(args.categories(), BlockContentCategory.class, "category");
+        UUID trackId = requireTrackId(parseArgs(call.argumentsJson()).trackId());
 
-        List<EditorialBlock> blocks = categories.isEmpty()
-            ? editorialBlockRepository.findByTrackEditorialIdOrderByPositionAsc(editorialId)
-            : editorialBlockRepository.findByTrackEditorialIdAndContentCategoryInOrderByPositionAsc(editorialId, categories);
+        TrackLog trackLog = trackLogReader.read(trackId).orElseThrow(() -> new IllegalArgumentException(
+            "trackId " + trackId + " is not a track in the JazzLogs catalog. An album or artist id is not valid "
+                + "here — pass the entityId of a TRACK candidate, or resolve the track by name with "
+                + ResolveJazzlogsEntityTool.NAME + "."
+        ));
 
-        List<Block> blockDtos = blocks.stream().map(EditorialContentTool::toBlock).toList();
-        JazzlogsCharacter writtenBy = logAuthorLookup.byEditorialId(editorialId).orElse(null);
-        Output output = new Output(buildContent(editorialId, blockDtos), new Metadata(editorialId, writtenBy, blockDtos));
-        return new ToolExecutionResult(writeJson(output), true);
+        return new ToolExecutionResult(writeJson(new Output(buildContent(trackLog), trackLog)), true);
     }
 
     /** Parses the model's raw JSON args, rejecting malformed JSON. */
@@ -96,29 +85,23 @@ public class EditorialContentTool extends JazzTool {
         }
     }
 
-    /** Rejects a missing/blank/malformed editorialId. */
-    private UUID requireEditorialId(String raw) {
+    /** Rejects a missing/blank/malformed trackId. */
+    private UUID requireTrackId(String raw) {
         if (raw == null || raw.isBlank()) {
-            throw new IllegalArgumentException("editorialId must not be blank");
+            throw new IllegalArgumentException("trackId must not be blank");
         }
         try {
             return UUID.fromString(raw);
         } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("editorialId is not a valid id: " + raw);
+            throw new IllegalArgumentException("trackId is not a valid id: " + raw);
         }
     }
 
-    /** Projects one persistence-layer {@link EditorialBlock} into the tool's output shape. */
-    private static Block toBlock(EditorialBlock block) {
-        return new Block(block.getId(), block.getType(), block.getContentCategory(), block.getSubhead(), block.getText(), block.getPosition());
-    }
-
-    /** The conversational summary line the model reads alongside the structured blocks. */
-    private String buildContent(UUID editorialId, List<Block> blocks) {
-        if (blocks.isEmpty()) {
-            return "No blocks found for editorial " + editorialId + ".";
-        }
-        return "Retrieved " + blocks.size() + " block(s) for editorial " + editorialId + ".";
+    /** The conversational summary line the model reads alongside the structured payload. */
+    private String buildContent(TrackLog trackLog) {
+        return "Log #" + trackLog.log().logNumber() + " \"" + trackLog.log().title() + "\" on the track \""
+            + trackLog.track().entityName() + "\", written by " + trackLog.log().writtenBy() + " — "
+            + trackLog.log().blocks().size() + " block(s).";
     }
 
     /** Serializes the tool's output — a failure here is our bug, not the model's, hence {@link IllegalStateException}. */
@@ -130,24 +113,11 @@ public class EditorialContentTool extends JazzTool {
         }
     }
 
-    /** Every {@link BlockContentCategory} name — exposed to the model as the {@code categories} field's schema enum. */
-    private static List<String> categoryNames() {
-        return Arrays.stream(BlockContentCategory.values()).map(Enum::name).toList();
-    }
-
     /** The model's raw tool-call arguments, before validation. */
-    private record Args(String editorialId, List<String> categories) {
+    private record Args(String trackId) {
     }
 
-    /** One editorial block, projected from {@link EditorialBlock}. */
-    private record Block(UUID id, EditorialBlockType type, BlockContentCategory contentCategory, String subhead, String text, int position) {
-    }
-
-    /** The tool's structured payload, alongside {@link #buildContent}'s summary. */
-    private record Metadata(UUID editorialId, JazzlogsCharacter writtenBy, List<Block> blocks) {
-    }
-
-    /** The tool's full JSON result shape — conversational summary plus structured metadata. */
-    private record Output(String content, Metadata metadata) {
+    /** The tool's full JSON result shape — conversational summary plus the track and its log. */
+    private record Output(String content, TrackLog metadata) {
     }
 }

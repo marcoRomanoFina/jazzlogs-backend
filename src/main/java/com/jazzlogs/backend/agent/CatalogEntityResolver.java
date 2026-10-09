@@ -17,12 +17,12 @@ public interface CatalogEntityResolver {
      *                        lowercase, collapse whitespace) — every implementor
      *                        searches its own {@code normalized_name} column,
      *                        populated the same way on write
-     * @return up to 20 rows (the fuzzy shortlist), already ordered by
+     * @param limit           the most rows to return
+     * @return up to {@code limit} rows, one per entity, already ordered by
      *         matchType priority (EXACT > PREFIX > CONTAINS > FUZZY) then
-     *         score descending — callers shouldn't need to re-sort, only
-     *         dedupe/truncate
+     *         score descending — callers shouldn't need to re-sort
      */
-    List<CandidateRow> search(String normalizedQuery);
+    List<CandidateRow> search(String normalizedQuery, int limit);
 
     interface CandidateRow {
         UUID getId();
@@ -37,12 +37,5 @@ public interface CatalogEntityResolver {
         Double getScore();
 
         String getMatchType();
-
-        /**
-         * What EDITORIAL_CONTENT/EDITORIAL_SEARCH take directly as input.
-         * Always {@code null} for ALBUM/ARTIST rows — only tracks have an
-         * editorial — and nullable for TRACK rows too, if that track has none yet.
-         */
-        UUID getEditorialId();
     }
 }

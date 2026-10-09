@@ -10,6 +10,8 @@ public record TrackEditorialCatalogueRow(
     UUID id,
     UUID trackId,
     String trackName,
+    Integer durationMs,
+    String spotifyUrl,
     String editorialCoverUrl,
     String albumName,
     UUID albumId,

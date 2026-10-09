@@ -2,11 +2,10 @@ package com.jazzlogs.backend.agent.tools;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -35,7 +34,7 @@ import com.jazzlogs.backend.track.TrackRepository;
 // here at all: this is a pure Mockito unit test, no Spring context, no real
 // DB hit regardless of profile. These tests treat CatalogEntityResolver.search
 // as a black box already returning pre-ordered rows, and cover what the tool
-// itself is responsible for: input validation, dedupe/truncate, and the
+// itself is responsible for: input validation, the cap it asks for, and the
 // output shape.
 @ExtendWith(MockitoExtension.class)
 class ResolveJazzlogsEntityToolTest {
@@ -86,25 +85,12 @@ class ResolveJazzlogsEntityToolTest {
     }
 
     @Test
-    void dedupesCandidatesById_andTruncatesToTheCap() throws Exception {
-        UUID id = UUID.randomUUID();
-        List<CatalogEntityResolver.CandidateRow> rows = new ArrayList<>();
-        rows.add(row(id, "Kind of Blue", "Miles Davis", 1.0, "EXACT"));
-        rows.add(row(id, "Kind of Blue", "Miles Davis", 1.0, "EXACT")); // duplicate id
-        for (int i = 0; i < 10; i++) {
-            rows.add(row(UUID.randomUUID(), "Kind of Blue Sessions " + i, "Someone Else", 0.4, "FUZZY"));
-        }
-        when(albumRepository.search("kind of blue")).thenReturn(rows);
+    void asksTheResolverForNoMoreThanTheCap() {
+        when(albumRepository.search("kind of blue", ResolveJazzlogsEntityTool.MAX_CANDIDATES)).thenReturn(List.of());
 
-        ToolExecutionResult result = tool.execute(callWith("{\"entityType\":\"ALBUM\",\"query\":\"Kind of Blue\"}"), USER_ID);
+        tool.execute(callWith("{\"entityType\":\"ALBUM\",\"query\":\"Kind of Blue\"}"), USER_ID);
 
-        // 12 rows in, 1 is a duplicate id (11 distinct) — asserting "fewer
-        // than 11 came back" (not a hardcoded exact count) proves truncation
-        // still kicks in at whatever MAX_CANDIDATES currently is, without
-        // this test going stale the next time that constant changes.
-        JsonNode candidates = JSON.readTree(result.payload()).get("metadata").get("candidates");
-        assertThat(candidates.size()).isLessThan(11);
-        assertThat(result.success()).isTrue();
+        verify(albumRepository).search("kind of blue", ResolveJazzlogsEntityTool.MAX_CANDIDATES);
     }
 
     @Test
@@ -112,7 +98,7 @@ class ResolveJazzlogsEntityToolTest {
         CatalogEntityResolver.CandidateRow exact = row(UUID.randomUUID(), "Kind of Blue", "Miles Davis", 1.0, "EXACT");
         CatalogEntityResolver.CandidateRow prefix = row(UUID.randomUUID(), "Kind of Blueish", "Someone", 0.6, "PREFIX");
         CatalogEntityResolver.CandidateRow fuzzy = row(UUID.randomUUID(), "Kinda Bluesy", "Someone Else", 0.35, "FUZZY");
-        when(albumRepository.search("kind of blue")).thenReturn(List.of(exact, prefix, fuzzy));
+        when(albumRepository.search("kind of blue", ResolveJazzlogsEntityTool.MAX_CANDIDATES)).thenReturn(List.of(exact, prefix, fuzzy));
 
         ToolExecutionResult result = tool.execute(callWith("{\"entityType\":\"ALBUM\",\"query\":\"Kind of Blue\"}"), USER_ID);
 
@@ -130,7 +116,7 @@ class ResolveJazzlogsEntityToolTest {
         // evaluation trips Mockito's "unfinished stubbing" detection — the
         // outer thenReturn is still pending while the inner one runs.
         CatalogEntityResolver.CandidateRow candidate = trackRow(UUID.randomUUID(), "Acknowledgement", "John Coltrane", "A Love Supreme", 1.0, "EXACT");
-        when(trackRepository.search("acknowledgement")).thenReturn(List.of(candidate));
+        when(trackRepository.search("acknowledgement", ResolveJazzlogsEntityTool.MAX_CANDIDATES)).thenReturn(List.of(candidate));
 
         ToolExecutionResult result = tool.execute(callWith("{\"entityType\":\"TRACK\",\"query\":\"Acknowledgement\"}"), USER_ID);
 
@@ -143,7 +129,7 @@ class ResolveJazzlogsEntityToolTest {
         // See trackCandidate_includesAlbumName's comment on why row() is
         // built as its own statement here, not inline in .thenReturn(...).
         CatalogEntityResolver.CandidateRow row = row(UUID.randomUUID(), "Kind of Blue", "Miles Davis", 1.0, "EXACT");
-        when(albumRepository.search("kind of blue")).thenReturn(List.of(row));
+        when(albumRepository.search("kind of blue", ResolveJazzlogsEntityTool.MAX_CANDIDATES)).thenReturn(List.of(row));
 
         ToolExecutionResult result = tool.execute(callWith("{\"entityType\":\"ALBUM\",\"query\":\"Kind of Blue\"}"), USER_ID);
 
@@ -152,23 +138,38 @@ class ResolveJazzlogsEntityToolTest {
     }
 
     @Test
-    void candidate_includesEditorialIdFromTheResolverRow() throws Exception {
-        UUID editorialId = UUID.randomUUID();
-        CatalogEntityResolver.CandidateRow row = row(UUID.randomUUID(), "Kind of Blue", "Miles Davis", 1.0, "EXACT");
-        when(row.getEditorialId()).thenReturn(editorialId);
-        when(albumRepository.search("kind of blue")).thenReturn(List.of(row));
+    void candidate_usesTheSameIdAndNameFieldsAsTheOtherTools() throws Exception {
+        UUID albumId = UUID.randomUUID();
+        CatalogEntityResolver.CandidateRow row = row(albumId, "Kind of Blue", "Miles Davis", 1.0, "EXACT");
+        when(albumRepository.search("kind of blue", ResolveJazzlogsEntityTool.MAX_CANDIDATES)).thenReturn(List.of(row));
 
         ToolExecutionResult result = tool.execute(callWith("{\"entityType\":\"ALBUM\",\"query\":\"Kind of Blue\"}"), USER_ID);
 
+        JsonNode metadata = JSON.readTree(result.payload()).get("metadata");
+        JsonNode candidate = metadata.get("candidates").get(0);
+        assertThat(metadata.get("entityType").asText()).isEqualTo("ALBUM");
+        assertThat(candidate.get("entityId").asText()).isEqualTo(albumId.toString());
+        assertThat(candidate.get("entityName").asText()).isEqualTo("Kind of Blue");
+    }
+
+    @Test
+    void trackCandidate_withNoLog_hasNullWrittenBy() throws Exception {
+        UUID trackId = UUID.randomUUID();
+        CatalogEntityResolver.CandidateRow row = row(trackId, "So What", "Miles Davis", 1.0, "EXACT");
+        when(trackRepository.search("so what", ResolveJazzlogsEntityTool.MAX_CANDIDATES)).thenReturn(List.of(row));
+        when(logAuthorLookup.byTrackIds(List.of(trackId))).thenReturn(Map.of());
+
+        ToolExecutionResult result = tool.execute(callWith("{\"entityType\":\"TRACK\",\"query\":\"So What\"}"), USER_ID);
+
         JsonNode candidate = JSON.readTree(result.payload()).get("metadata").get("candidates").get(0);
-        assertThat(candidate.get("editorialId").asText()).isEqualTo(editorialId.toString());
+        assertThat(candidate.get("writtenBy").isNull()).isTrue();
     }
 
     @Test
     void trackCandidate_saysWhoWroteItsLog() throws Exception {
         UUID trackId = UUID.randomUUID();
         CatalogEntityResolver.CandidateRow row = row(trackId, "So What", "Miles Davis", 1.0, "EXACT");
-        when(trackRepository.search("so what")).thenReturn(List.of(row));
+        when(trackRepository.search("so what", ResolveJazzlogsEntityTool.MAX_CANDIDATES)).thenReturn(List.of(row));
         when(logAuthorLookup.byTrackIds(List.of(trackId))).thenReturn(Map.of(trackId, JazzlogsCharacter.LAURA));
 
         ToolExecutionResult result = tool.execute(callWith("{\"entityType\":\"TRACK\",\"query\":\"So What\"}"), USER_ID);
@@ -178,13 +179,13 @@ class ResolveJazzlogsEntityToolTest {
     }
 
     @Test
-    void noMatches_hasFoundFalse_andPlainTextContent() throws Exception {
-        when(artistRepository.search("nonexistent")).thenReturn(List.of());
+    void noMatches_hasNoCandidates_andPlainTextContent() throws Exception {
+        when(artistRepository.search("nonexistent", ResolveJazzlogsEntityTool.MAX_CANDIDATES)).thenReturn(List.of());
 
         ToolExecutionResult result = tool.execute(callWith("{\"entityType\":\"ARTIST\",\"query\":\"nonexistent\"}"), USER_ID);
 
         JsonNode json = JSON.readTree(result.payload());
-        assertThat(json.get("metadata").get("found").asBoolean()).isFalse();
+        assertThat(json.get("metadata").get("candidates")).isEmpty();
         assertThat(json.get("content").asText()).contains("No JazzLogs entity candidates found");
     }
 
@@ -199,14 +200,11 @@ class ResolveJazzlogsEntityToolTest {
     }
 
     private static CatalogEntityResolver.CandidateRow row(UUID id, String name, String artistFullName, double score, String matchType) {
-        // lenient: a row cut by dedupe/truncation is never projected, so only its id is ever read.
         CatalogEntityResolver.CandidateRow row = mock(CatalogEntityResolver.CandidateRow.class);
         when(row.getId()).thenReturn(id);
-        lenient().when(row.getName()).thenReturn(name);
-        lenient().when(row.getArtistFullName()).thenReturn(artistFullName);
-        lenient().when(row.getScore()).thenReturn(score);
-        lenient().when(row.getMatchType()).thenReturn(matchType);
-        lenient().when(row.getEditorialId()).thenReturn(UUID.randomUUID());
+        when(row.getName()).thenReturn(name);
+        when(row.getArtistFullName()).thenReturn(artistFullName);
+        when(row.getMatchType()).thenReturn(matchType);
         return row;
     }
 

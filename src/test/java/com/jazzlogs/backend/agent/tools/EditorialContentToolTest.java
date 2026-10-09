@@ -2,10 +2,10 @@ package com.jazzlogs.backend.agent.tools;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -13,7 +13,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import tools.jackson.databind.json.JsonMapper;
 
@@ -22,11 +21,18 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import com.jazzlogs.backend.agent.ToolCallRequest;
 import com.jazzlogs.backend.agent.ToolExecutionResult;
+import com.jazzlogs.backend.agent.tools.TrackLogReader.Block;
+import com.jazzlogs.backend.agent.tools.TrackLogReader.Log;
+import com.jazzlogs.backend.agent.tools.TrackLogReader.TrackInfo;
+import com.jazzlogs.backend.agent.tools.TrackLogReader.TrackLog;
+import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.editorial.BlockContentCategory;
-import com.jazzlogs.backend.editorial.EditorialBlock;
-import com.jazzlogs.backend.editorial.EditorialBlockRepository;
 import com.jazzlogs.backend.editorial.EditorialBlockType;
+import com.jazzlogs.backend.graph.TrackPerformerEntry;
 
+// What the reader loads is TrackLogReaderTest's job — here it is a mock, and
+// these cover the tool's own part: validating the id, telling the model when
+// it isn't a track, and the shape of what it hands back.
 @ExtendWith(MockitoExtension.class)
 class EditorialContentToolTest {
 
@@ -36,92 +42,87 @@ class EditorialContentToolTest {
     private static final UUID USER_ID = UUID.randomUUID();
 
     @Mock
-    private LogAuthorLookup logAuthorLookup;
-
-    @Mock
-    private EditorialBlockRepository editorialBlockRepository;
+    private TrackLogReader trackLogReader;
 
     private EditorialContentTool tool;
 
     @BeforeEach
     void setUp() {
-        tool = new EditorialContentTool(editorialBlockRepository, logAuthorLookup, new JsonMapper());
+        tool = new EditorialContentTool(trackLogReader, new JsonMapper());
     }
 
     @Test
-    void blankEditorialId_throws() {
-        ToolCallRequest call = callWith("{\"editorialId\":\"\"}");
+    void blankTrackId_throws() {
+        ToolCallRequest call = callWith("{\"trackId\":\"\"}");
 
         assertThatThrownBy(() -> tool.execute(call, USER_ID)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
-    void malformedEditorialId_throws() {
-        ToolCallRequest call = callWith("{\"editorialId\":\"not-a-uuid\"}");
+    void malformedTrackId_throws() {
+        ToolCallRequest call = callWith("{\"trackId\":\"not-a-uuid\"}");
 
         assertThatThrownBy(() -> tool.execute(call, USER_ID)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
-    void invalidCategory_throws() {
-        UUID editorialId = UUID.randomUUID();
-        ToolCallRequest call = callWith("{\"editorialId\":\"" + editorialId + "\",\"categories\":[\"NOT_REAL\"]}");
+    void idThatIsNotATrack_tellsTheModelWhatToPassInstead() {
+        UUID albumId = UUID.randomUUID();
+        when(trackLogReader.read(albumId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> tool.execute(call, USER_ID)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> tool.execute(callWith("{\"trackId\":\"" + albumId + "\"}"), USER_ID))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("is not a track")
+            .hasMessageContaining("album or artist id");
     }
 
     @Test
-    void noCategories_fetchesAllBlocksOrderedByPosition() throws Exception {
-        UUID editorialId = UUID.randomUUID();
-        EditorialBlock block = block(0, "text 1", BlockContentCategory.CONTEXT);
-        when(editorialBlockRepository.findByTrackEditorialIdOrderByPositionAsc(editorialId)).thenReturn(List.of(block));
+    void returnsTheTrackAndItsWholeLog() throws Exception {
+        UUID trackId = UUID.randomUUID();
+        when(trackLogReader.read(trackId)).thenReturn(Optional.of(trackLog(trackId)));
 
-        ToolExecutionResult result = tool.execute(callWith("{\"editorialId\":\"" + editorialId + "\"}"), USER_ID);
+        ToolExecutionResult result = tool.execute(callWith("{\"trackId\":\"" + trackId + "\"}"), USER_ID);
 
-        JsonNode metadata = JSON.readTree(result.payload()).get("metadata");
-        assertThat(metadata.get("editorialId").asText()).isEqualTo(editorialId.toString());
-        assertThat(metadata.get("blocks")).hasSize(1);
-        assertThat(metadata.get("blocks").get(0).get("contentCategory").asText()).isEqualTo("CONTEXT");
-    }
-
-    @Test
-    void withCategories_filtersByContentCategory() throws Exception {
-        UUID editorialId = UUID.randomUUID();
-        EditorialBlock block = block(0, "a story", BlockContentCategory.QUOTE);
-        when(editorialBlockRepository.findByTrackEditorialIdAndContentCategoryInOrderByPositionAsc(editorialId, List.of(BlockContentCategory.QUOTE)))
-            .thenReturn(List.of(block));
-
-        ToolExecutionResult result = tool.execute(callWith(
-            "{\"editorialId\":\"" + editorialId + "\",\"categories\":[\"QUOTE\"]}"
-        ), USER_ID);
-
-        JsonNode metadata = JSON.readTree(result.payload()).get("metadata");
-        assertThat(metadata.get("blocks")).hasSize(1);
-        verify(editorialBlockRepository).findByTrackEditorialIdAndContentCategoryInOrderByPositionAsc(editorialId, List.of(BlockContentCategory.QUOTE));
-    }
-
-    @Test
-    void noBlocksFound_hasPlainTextContent() throws Exception {
-        UUID editorialId = UUID.randomUUID();
-        when(editorialBlockRepository.findByTrackEditorialIdOrderByPositionAsc(editorialId)).thenReturn(List.of());
-
-        ToolExecutionResult result = tool.execute(callWith("{\"editorialId\":\"" + editorialId + "\"}"), USER_ID);
-
+        assertThat(result.success()).isTrue();
         JsonNode json = JSON.readTree(result.payload());
-        assertThat(json.get("content").asText()).contains("No blocks found");
-        assertThat(json.get("metadata").get("blocks")).isEmpty();
+        assertThat(json.get("content").asText()).contains("Log #42", "So What", "LAURA", "2 block(s)");
+
+        JsonNode track = json.get("metadata").get("track");
+        assertThat(track.get("entityId").asText()).isEqualTo(trackId.toString());
+        assertThat(track.get("entityName").asText()).isEqualTo("So What");
+        assertThat(track.get("artists").get(0).asText()).isEqualTo("Miles Davis");
+        assertThat(track.get("album").asText()).isEqualTo("Kind of Blue");
+        assertThat(track.get("duration").asText()).isEqualTo("9:22");
+        assertThat(track.get("moods").get(0).asText()).isEqualTo("RELAXED");
+        assertThat(track.get("performers").get(0).get("artistName").asText()).isEqualTo("Bill Evans");
+        assertThat(track.get("performers").get(0).get("instruments").get(0).asText()).isEqualTo("PIANO");
+
+        JsonNode log = json.get("metadata").get("log");
+        assertThat(log.get("title").asText()).isEqualTo("The Question and the Answer");
+        assertThat(log.get("writtenBy").asText()).isEqualTo("LAURA");
+        assertThat(log.get("blocks")).hasSize(2);
+        assertThat(log.get("blocks").get(1).get("contentCategory").asText()).isEqualTo("CONTEXT");
+        assertThat(log.get("blocks").get(1).get("text").asText()).isEqualTo("Recorded in 1959.");
     }
 
     private static ToolCallRequest callWith(String argumentsJson) {
         return new ToolCallRequest("call_1", EditorialContentTool.NAME, argumentsJson);
     }
 
-    // editorial is null here on purpose: EditorialContentTool never reads
-    // block.getEditorial() — the editorialId in its output comes straight
-    // from the tool's own input, not from the block.
-    private static EditorialBlock block(int position, String text, BlockContentCategory category) {
-        EditorialBlock block = new EditorialBlock(null, position, EditorialBlockType.PARA, null, text, category, null, null);
-        ReflectionTestUtils.setField(block, "id", UUID.randomUUID());
-        return block;
+    private static TrackLog trackLog(UUID trackId) {
+        TrackInfo track = new TrackInfo(
+            trackId, "So What", List.of("Miles Davis"), UUID.randomUUID(), "Kind of Blue", 1959, 1, "9:22",
+            null, null, null, null, null, null,
+            List.of("MODAL_JAZZ"), List.of("RELAXED"), List.of(), List.of(), List.of("TRUMPET"),
+            List.of(new TrackPerformerEntry(UUID.randomUUID(), "Bill Evans", "SIDEMAN", List.of("PIANO"), false))
+        );
+        Log log = new Log(
+            "The Question and the Answer", "42", "A dek.", JazzlogsCharacter.LAURA, "2026-09-01",
+            List.of(
+                new Block(EditorialBlockType.LEAD, BlockContentCategory.HOOK, null, "Two notes."),
+                new Block(EditorialBlockType.PARA, BlockContentCategory.CONTEXT, "Where it came from", "Recorded in 1959.")
+            )
+        );
+        return new TrackLog(track, log);
     }
 }

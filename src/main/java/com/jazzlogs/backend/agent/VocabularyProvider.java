@@ -1,12 +1,10 @@
 package com.jazzlogs.backend.agent;
 
 import java.util.Arrays;
-import java.util.Locale;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Component;
 
-import com.jazzlogs.backend.editorial.BlockContentCategory;
 import com.jazzlogs.backend.vocabulary.ContextVocabulary;
 import com.jazzlogs.backend.vocabulary.EditorialVocabularyValue;
 import com.jazzlogs.backend.vocabulary.InstrumentVocabulary;
@@ -40,21 +38,7 @@ public class VocabularyProvider {
         return labels(InstrumentVocabulary.values());
     }
 
-    // BlockContentCategory has no EditorialVocabularyValue label — humanize the
-    // enum constant itself (MOOD_AND_ATMOSPHERE -> "Mood And Atmosphere").
-    public String editorialCategories() {
-        return Arrays.stream(BlockContentCategory.values())
-            .map(VocabularyProvider::humanize)
-            .collect(Collectors.joining(", "));
-    }
-
     private static String labels(EditorialVocabularyValue[] values) {
         return Arrays.stream(values).map(EditorialVocabularyValue::getLabel).collect(Collectors.joining(", "));
-    }
-
-    private static String humanize(Enum<?> value) {
-        return Arrays.stream(value.name().split("_"))
-            .map(word -> word.charAt(0) + word.substring(1).toLowerCase(Locale.ROOT))
-            .collect(Collectors.joining(" "));
     }
 }
