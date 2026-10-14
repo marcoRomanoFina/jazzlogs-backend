@@ -17,7 +17,6 @@ import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationHandler;
 import io.micrometer.observation.ObservationRegistry;
 
-import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.chat.chat.Chat;
 import com.jazzlogs.backend.user.User;
 
@@ -47,7 +46,7 @@ class AgentTelemetryTest {
         });
 
         chatId = UUID.randomUUID();
-        chat = new Chat(new User(UUID.randomUUID(), "test@example.com"), null, JazzlogsCharacter.MARK);
+        chat = new Chat(new User(UUID.randomUUID(), "test@example.com"), null);
         ReflectionTestUtils.setField(chat, "id", chatId);
     }
 

@@ -22,7 +22,6 @@ import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.album.AlbumRepository;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
-import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.editorial.BlockContentCategory;
 import com.jazzlogs.backend.editorial.EditorialBlockType;
 import com.jazzlogs.backend.editorial.EditorialService;
@@ -101,7 +100,6 @@ class TrackLogReaderTest {
         assertThat(result.log().title()).isEqualTo("A Reader Test Log");
         assertThat(result.log().logNumber()).isEqualTo("42");
         assertThat(result.log().dek()).isEqualTo("The dek.");
-        assertThat(result.log().writtenBy()).isEqualTo(JazzlogsCharacter.LAURA);
         assertThat(result.log().blocks()).extracting(TrackLogReader.Block::text).containsExactly("The hook.", "The context.");
         assertThat(result.log().blocks()).extracting(TrackLogReader.Block::contentCategory)
             .containsExactly(BlockContentCategory.HOOK, BlockContentCategory.CONTEXT);
@@ -126,7 +124,7 @@ class TrackLogReaderTest {
     private Track persistTrackWithLog() {
         Track track = persistTrack();
         editorialService.upsertTrackEditorial(track.getId(), new TrackEditorialRequest(
-            "A Reader Test Log", "42", "The dek.", JazzlogsCharacter.LAURA,
+            "A Reader Test Log", "42", "The dek.",
             List.of(
                 new BlockRequest(EditorialBlockType.LEAD, null, "The hook.", BlockContentCategory.HOOK),
                 new BlockRequest(EditorialBlockType.PARA, "Where it came from", "The context.", BlockContentCategory.CONTEXT)

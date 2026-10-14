@@ -3,17 +3,15 @@ package com.jazzlogs.backend.editorial.dto;
 import java.time.Instant;
 import java.util.UUID;
 
-import com.jazzlogs.backend.character.JazzlogsCharacter;
 
 /**
- * One row in a byline's most recent editorials — same lean card shape as
+ * One row in the most recent editorials — same lean card shape as
  * {@code FeaturedTrackDto}, no blocks/images beyond the editorial's cover.
  *
  * @param id        the track editorial's own id
  * @param title     the editorial's headline
  * @param logNumber the JazzLogs log number
  * @param dek       short standfirst text
- * @param byline    who wrote it — always the byline that was queried for
  * @param trackId    the track this editorial belongs to
  * @param trackName  the track's own name
  * @param imageUrl   the editorial's cover image
@@ -28,7 +26,6 @@ public record EditorialTrackSummaryDto(
     String title,
     String logNumber,
     String dek,
-    JazzlogsCharacter byline,
     UUID trackId,
     String trackName,
     String imageUrl,

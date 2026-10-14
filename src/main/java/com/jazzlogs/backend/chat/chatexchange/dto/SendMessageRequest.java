@@ -2,8 +2,8 @@ package com.jazzlogs.backend.chat.chatexchange.dto;
 
 import jakarta.validation.constraints.NotBlank;
 
-// Body of POST /chats/{chatId}/messages — any message after a chat's first
-// (see CreateChatRequest for that one, which also carries the narrator).
+// Body of both POST /chats (a chat's first message) and
+// POST /chats/{chatId}/messages (any message after it).
 // There's no finalResponse/winners field: the agent is what produces those,
 // streamed back over SSE, never supplied by the caller (see
 // AgentOrchestrator, ChatExchangeService).

@@ -3,7 +3,6 @@ package com.jazzlogs.backend.editorial.dto;
 import java.time.Instant;
 import java.util.UUID;
 
-import com.jazzlogs.backend.character.JazzlogsCharacter;
 
 /**
  * A log's card: one row in the archive's search/browse listing, and what a
@@ -23,7 +22,6 @@ import com.jazzlogs.backend.character.JazzlogsCharacter;
  * @param title              the editorial's headline
  * @param logNumber          the JazzLogs log number
  * @param dek                short standfirst text
- * @param byline             who wrote it
  * @param createdAt          when this editorial was created
  * @param likeCount          denormalized total, kept in sync via atomic increment/decrement
  * @param likedByCurrentUser computed separately via {@code LikeService}
@@ -41,7 +39,6 @@ public record TrackEditorialCatalogueDto(
     String title,
     String logNumber,
     String dek,
-    JazzlogsCharacter byline,
     Instant createdAt,
     int likeCount,
     boolean likedByCurrentUser

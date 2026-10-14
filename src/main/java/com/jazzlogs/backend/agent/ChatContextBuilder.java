@@ -28,9 +28,8 @@ import lombok.AllArgsConstructor;
 
 /**
  * Assembles the {@code List<ResponseInputItem>} sent to the Responses API
- * for one exchange: a developer message (the fixed instructions, the chat's
- * narrator persona, canonical vocabulary, runtime context, session summary,
- * recommendation history) followed by up to the 3 most recent exchanges as user/assistant
+ * for one exchange: a developer message (the fixed instructions, canonical
+ * vocabulary, runtime context, session summary, recommendation history) followed by up to the 3 most recent exchanges as user/assistant
  * turns, then the new user message. Read-only and side-effect free — this
  * only reads prior state, it never persists anything.
  */
@@ -44,7 +43,6 @@ public class ChatContextBuilder {
     private final ChatExchangeRepository chatExchangeRepository;
     private final ChatRecommendationMemoryRepository chatRecommendationMemoryRepository;
     private final VocabularyProvider vocabularyProvider;
-    private final NarratorPersonas narratorPersonas;
 
     /**
      * Builds one exchange's input: the developer message plus recent history
@@ -77,13 +75,12 @@ public class ChatContextBuilder {
         // Ordered from least to most variable, on purpose: OpenAI caches a prompt by its
         // longest unchanged prefix, so anything that differs between requests also throws
         // away the cache for everything after it. Identical for every request first
-        // (instructions, vocabulary), then one of eight variants (the narrator), then what
-        // changes on every single call (the clock, this chat's memory).
+        // (instructions, vocabulary), then what changes on every single call (the clock,
+        // this chat's memory).
         String developerText = String.join(
             "\n\n",
             AgentPromptTemplates.STATIC_INSTRUCTIONS,
             buildVocabularySection(),
-            narratorPersonas.render(chat.getNarrator()),
             buildRuntimeContextSection(chat, timezone),
             buildSessionSummarySection(memory),
             buildRecommendationHistorySection(memory)

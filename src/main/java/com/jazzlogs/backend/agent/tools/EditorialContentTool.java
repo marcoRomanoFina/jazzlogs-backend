@@ -18,7 +18,7 @@ import com.jazzlogs.backend.agent.tools.TrackLogReader.TrackLog;
  * JazzLogs knows about it (see {@link TrackLogReader}). The agent's last step
  * before recommending — it chooses a track with the other tools, then reads
  * it here and writes its answer from that. Deliberately unfiltered: a
- * narrator who has read the entire entry talks about a track better than one
+ * agent that has read the entire entry talks about a track better than one
  * who asked for a single paragraph.
  * Keyed by the track, not by the log's own id: a track has exactly one log,
  * so the agent only ever has to carry one id per track.
@@ -44,8 +44,8 @@ public class EditorialContentTool extends JazzTool {
                 + "FIND_TRACKS or RESOLVE_JAZZLOGS_ENTITY. Returns the track itself "
                 + "(name, artists, album and year, length, vocal profile, energy, accessibility, mood "
                 + "intensity, tempo feel, composition type, its style/mood/context/rhythm/instrument "
-                + "tags, and who plays what on it) and its complete log: title, log number, dek, the "
-                + "narrator who wrote it (writtenBy), and every block of its text in reading order, "
+                + "tags, and who plays what on it) and its complete log: title, log number, dek, and "
+                + "every block of its text in reading order, "
                 + "each labelled with what it covers (contentCategory). This is the last step before "
                 + "recommending: call it once you have decided which track you are recommending, and "
                 + "write your answer from what it returns — never invent editorial content. Do not use "
@@ -100,7 +100,7 @@ public class EditorialContentTool extends JazzTool {
     /** The conversational summary line the model reads alongside the structured payload. */
     private String buildContent(TrackLog trackLog) {
         return "Log #" + trackLog.log().logNumber() + " \"" + trackLog.log().title() + "\" on the track \""
-            + trackLog.track().entityName() + "\", written by " + trackLog.log().writtenBy() + " — "
+            + trackLog.track().entityName() + "\" — "
             + trackLog.log().blocks().size() + " block(s).";
     }
 

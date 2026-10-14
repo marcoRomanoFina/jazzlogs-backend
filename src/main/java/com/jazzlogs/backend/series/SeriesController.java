@@ -27,7 +27,6 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
-import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.series.dto.FeaturedSeriesDto;
 import com.jazzlogs.backend.series.dto.ReorderSeriesChaptersRequest;
 import com.jazzlogs.backend.series.dto.SeriesChapterDetailDto;
@@ -70,17 +69,13 @@ public class SeriesController {
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No series is featured"));
     }
 
-    /**
-     * The series "Catalogue", newest first — see {@link SeriesService#getCatalogue}.
-     * {@code voice} is optional; omit it for every voice mixed together.
-     */
+    /** The series "Catalogue", newest first — see {@link SeriesService#getCatalogue}. */
     @GetMapping("/catalogue")
     public Page<SeriesSummaryDto> getCatalogue(
-        @RequestParam(required = false) JazzlogsCharacter voice,
         @PageableDefault(size = 12, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
         @AuthenticationPrincipal Jwt jwt
     ) {
-        return seriesService.getCatalogue(voice, isAdmin(jwt), pageable);
+        return seriesService.getCatalogue(isAdmin(jwt), pageable);
     }
 
     /** The app's onboarding/tour series — see {@link SeriesService#getOnboardingSeries}. */

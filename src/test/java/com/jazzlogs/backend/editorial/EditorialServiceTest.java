@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -26,7 +25,6 @@ import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
 import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.album.AlbumRepository;
-import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.editorial.dto.BlockRequest;
 import com.jazzlogs.backend.editorial.dto.EditorialTrackSummaryDto;
 import com.jazzlogs.backend.editorial.dto.FeaturedTrackDto;
@@ -75,25 +73,11 @@ class EditorialServiceTest {
     @MockitoBean
     private EmbeddingService embeddingService;
 
-    /** The byline every fixture here signs with unless a test is about a specific narrator — see {@link #clearRealBylines}. */
-    private static final JazzlogsCharacter PARKED_BYLINE = JazzlogsCharacter.NATALIE;
-
-    // Real, currently-curated editorials in the shared dev DB this suite runs
-    // against can already carry any byline — the byline-specific tests need a
-    // known starting set (none) for the narrators they assert on, so every
-    // existing row is parked on one narrator none of them query for.
-    @BeforeEach
-    void clearRealBylines() {
-        entityManager.createQuery("UPDATE TrackEditorial te SET te.byline = :parked")
-            .setParameter("parked", PARKED_BYLINE)
-            .executeUpdate();
-    }
-
     @Test
     void upsertTrackEditorial_persists() {
         Track track = persistTrack("Test Track");
 
-        TrackEditorialRequest request = new TrackEditorialRequest("A Title", "1", "A dek", PARKED_BYLINE, List.of());
+        TrackEditorialRequest request = new TrackEditorialRequest("A Title", "1", "A dek", List.of());
 
         TrackEditorial saved = editorialService.upsertTrackEditorial(track.getId(), request);
 
@@ -106,13 +90,13 @@ class EditorialServiceTest {
         Track trackA = persistTrack("Unique Title Track A");
         Track trackB = persistTrack("Unique Title Track B");
         editorialService.upsertTrackEditorial(
-            trackA.getId(), new TrackEditorialRequest("Duplicate Title Test", "1", "dek", PARKED_BYLINE, List.of())
+            trackA.getId(), new TrackEditorialRequest("Duplicate Title Test", "1", "dek", List.of())
         );
 
         ResponseStatusException ex = catchThrowableOfType(
             ResponseStatusException.class,
             () -> editorialService.upsertTrackEditorial(
-                trackB.getId(), new TrackEditorialRequest("Duplicate Title Test", "1", "dek", PARKED_BYLINE, List.of())
+                trackB.getId(), new TrackEditorialRequest("Duplicate Title Test", "1", "dek", List.of())
             )
         );
 
@@ -123,11 +107,11 @@ class EditorialServiceTest {
     void upsertTrackEditorial_allowsReSavingWithItsOwnUnchangedTitle() {
         Track track = persistTrack("Resave Title Track");
         editorialService.upsertTrackEditorial(
-            track.getId(), new TrackEditorialRequest("Resave Same Title", "1", "dek", PARKED_BYLINE, List.of())
+            track.getId(), new TrackEditorialRequest("Resave Same Title", "1", "dek", List.of())
         );
 
         TrackEditorial resaved = editorialService.upsertTrackEditorial(
-            track.getId(), new TrackEditorialRequest("Resave Same Title", "1", "new dek", PARKED_BYLINE, List.of())
+            track.getId(), new TrackEditorialRequest("Resave Same Title", "1", "new dek", List.of())
         );
 
         assertThat(resaved.getDek()).isEqualTo("new dek");
@@ -143,7 +127,7 @@ class EditorialServiceTest {
 
         BlockRequest block = new BlockRequest(EditorialBlockType.PARA, null, "Some editorial prose.", BlockContentCategory.CONTEXT);
         TrackEditorial saved = editorialService.upsertTrackEditorial(
-            track.getId(), new TrackEditorialRequest("Metadata Test Editorial", "1", "dek", PARKED_BYLINE, List.of(block))
+            track.getId(), new TrackEditorialRequest("Metadata Test Editorial", "1", "dek", List.of(block))
         );
 
         Map<String, Object> metadata = saved.getBlocks().get(0).getEmbeddingMetadata();
@@ -161,7 +145,7 @@ class EditorialServiceTest {
 
         editorialService.upsertTrackEditorial(
             persistTrack("Count Test Track").getId(),
-            new TrackEditorialRequest("Count Test Editorial", "1", "dek", PARKED_BYLINE, List.of())
+            new TrackEditorialRequest("Count Test Editorial", "1", "dek", List.of())
         );
 
         assertThat(editorialService.countEditorials()).isEqualTo(before + 1);
@@ -171,7 +155,7 @@ class EditorialServiceTest {
     void listEditorials_matchesByEditorialTitleOrTrackName() {
         Track track = persistTrack("Searchable Track Name");
         editorialService.upsertTrackEditorial(
-            track.getId(), new TrackEditorialRequest("A Wholly Different Title", "1", "dek", PARKED_BYLINE, List.of())
+            track.getId(), new TrackEditorialRequest("A Wholly Different Title", "1", "dek", List.of())
         );
 
         Page<TrackEditorialCatalogueDto> byTitle = editorialService.listEditorials(
@@ -193,7 +177,7 @@ class EditorialServiceTest {
             null, null, null, null, null, null
         ));
         TrackEditorial editorial = editorialService.upsertTrackEditorial(
-            track.getId(), new TrackEditorialRequest("Catalogue Test Editorial", "1", "A dek", PARKED_BYLINE, List.of())
+            track.getId(), new TrackEditorialRequest("Catalogue Test Editorial", "1", "A dek", List.of())
         );
         editorial.updateCoverImageUrl("http://img.example/editorial-cover.jpg");
 
@@ -215,26 +199,6 @@ class EditorialServiceTest {
     }
 
     @Test
-    void listEditorials_filtersByBylineAndKeepsPagination() {
-        Track markTrack = persistTrack("Paged Mark Track");
-        Track adamTrack = persistTrack("Paged Adam Track");
-        editorialService.upsertTrackEditorial(
-            markTrack.getId(), new TrackEditorialRequest("Paged Mark Editorial", "1", "dek", JazzlogsCharacter.MARK, List.of())
-        );
-        editorialService.upsertTrackEditorial(
-            adamTrack.getId(), new TrackEditorialRequest("Paged Adam Editorial", "1", "dek", JazzlogsCharacter.ADAM, List.of())
-        );
-
-        Page<TrackEditorialCatalogueDto> page = editorialService.listEditorials(
-            null, JazzlogsCharacter.MARK, PageRequest.of(0, 1), UUID.randomUUID()
-        );
-
-        assertThat(page.getContent()).hasSize(1);
-        assertThat(page.getContent().get(0).byline()).isEqualTo(JazzlogsCharacter.MARK);
-        assertThat(page.getTotalElements()).isEqualTo(1);
-    }
-
-    @Test
     void getFeaturedTracks_returnsOnlyTracksMarkedFeatured() {
         // Clears any real featured track first — this test needs a known
         // starting set, not whatever's actually curated live.
@@ -249,11 +213,11 @@ class EditorialServiceTest {
             album, null, "Not Featured Track", null, null, null, null, null, null, null, null, null
         ));
         TrackEditorial featuredEditorial = editorialService.upsertTrackEditorial(
-            featuredTrack.getId(), new TrackEditorialRequest("Featured Track Editorial", "1", "dek", PARKED_BYLINE, List.of())
+            featuredTrack.getId(), new TrackEditorialRequest("Featured Track Editorial", "1", "dek", List.of())
         );
         featuredEditorial.updateCoverImageUrl("http://img.example/featured-editorial-cover.jpg");
         editorialService.upsertTrackEditorial(
-            otherTrack.getId(), new TrackEditorialRequest("Not Featured Track Editorial", "1", "dek", PARKED_BYLINE, List.of())
+            otherTrack.getId(), new TrackEditorialRequest("Not Featured Track Editorial", "1", "dek", List.of())
         );
 
         trackRepository.markFeatured(featuredTrack.getId());
@@ -273,7 +237,7 @@ class EditorialServiceTest {
     void setTrackEditorialCoverImage_uploadsUnderItsOwnKeyAndPersistsTheReturnedUrl() {
         Track track = persistTrack("Track Image Track");
         editorialService.upsertTrackEditorial(
-            track.getId(), new TrackEditorialRequest("Track Image Editorial", "1", "dek", PARKED_BYLINE, List.of())
+            track.getId(), new TrackEditorialRequest("Track Image Editorial", "1", "dek", List.of())
         );
         MockMultipartFile file = new MockMultipartFile("file", "image.jpg", "image/jpeg", "fake-bytes".getBytes());
         when(imageStorageService.upload("track-editorials/" + track.getId() + "/cover", file))
@@ -301,7 +265,7 @@ class EditorialServiceTest {
     void setTrackEditorialPrincipalSecondaryBannerFooterImages_eachUploadUnderTheirOwnKey() {
         Track track = persistTrack("Track Layout Images Track");
         editorialService.upsertTrackEditorial(
-            track.getId(), new TrackEditorialRequest("Track Layout Images Editorial", "1", "dek", PARKED_BYLINE, List.of())
+            track.getId(), new TrackEditorialRequest("Track Layout Images Editorial", "1", "dek", List.of())
         );
         MockMultipartFile principal = new MockMultipartFile("file", "principal.jpg", "image/jpeg", "principal-bytes".getBytes());
         MockMultipartFile secondary = new MockMultipartFile("file", "secondary.jpg", "image/jpeg", "secondary-bytes".getBytes());
@@ -325,57 +289,18 @@ class EditorialServiceTest {
     }
 
     @Test
-    void getRecentByByline_returnsOnlyThatBylinesEditorials_newestFirst() {
-        Track markOld = persistTrack("Mark Old Track");
-        Track adam = persistTrack("Adam Track");
-        Track markNew = persistTrack("Mark New Track");
-        editorialService.upsertTrackEditorial(
-            markOld.getId(), new TrackEditorialRequest("Mark Old Editorial", "1", "dek", JazzlogsCharacter.MARK, List.of())
-        );
-        editorialService.upsertTrackEditorial(
-            adam.getId(), new TrackEditorialRequest("Adam Editorial", "1", "dek", JazzlogsCharacter.ADAM, List.of())
-        );
-        editorialService.upsertTrackEditorial(
-            markNew.getId(), new TrackEditorialRequest("Mark New Editorial", "1", "dek", JazzlogsCharacter.MARK, List.of())
-        );
-
-        List<EditorialTrackSummaryDto> result = editorialService.getRecentByByline(JazzlogsCharacter.MARK, 10, UUID.randomUUID());
-
-        assertThat(result).extracting(EditorialTrackSummaryDto::title).containsExactly("Mark New Editorial", "Mark Old Editorial");
-        assertThat(result).allSatisfy(dto -> assertThat(dto.byline()).isEqualTo(JazzlogsCharacter.MARK));
-    }
-
-    @Test
-    void getRecentByByline_clampsNAboveTenToTen() {
-        for (int i = 0; i < 11; i++) {
-            Track track = persistTrack("Clamp Track " + i);
-            editorialService.upsertTrackEditorial(
-                track.getId(), new TrackEditorialRequest("Clamp Editorial " + i, "1", "dek", JazzlogsCharacter.LAURA, List.of())
-            );
-        }
-
-        List<EditorialTrackSummaryDto> result = editorialService.getRecentByByline(JazzlogsCharacter.LAURA, 100, UUID.randomUUID());
-
-        assertThat(result).hasSize(10);
-    }
-
-    @Test
-    void getRecentEditorials_clampsNToFifteenAcrossAllBylines() {
+    void getRecentEditorials_clampsNToFifteen_newestFirst() {
         for (int i = 0; i < 16; i++) {
             Track track = persistTrack("Recent Editorial Track " + i);
             editorialService.upsertTrackEditorial(
-                track.getId(), new TrackEditorialRequest(
-                    "Recent Editorial " + i, "1", "dek",
-                    i % 2 == 0 ? JazzlogsCharacter.MARK : JazzlogsCharacter.ADAM, List.of()
-                )
+                track.getId(), new TrackEditorialRequest("Recent Editorial " + i, "1", "dek", List.of())
             );
         }
 
         List<EditorialTrackSummaryDto> result = editorialService.getRecentEditorials(100, UUID.randomUUID());
 
         assertThat(result).hasSize(15);
-        assertThat(result).extracting(EditorialTrackSummaryDto::byline)
-            .contains(JazzlogsCharacter.MARK, JazzlogsCharacter.ADAM);
+        assertThat(result.get(0).title()).isEqualTo("Recent Editorial 15");
     }
 
     @Test
@@ -385,7 +310,7 @@ class EditorialServiceTest {
 
         editorialService.upsertTrackEditorial(
             track.getId(), new TrackEditorialRequest(
-                "Latest Editorial", "42", "A dek", JazzlogsCharacter.MARK,
+                "Latest Editorial", "42", "A dek",
                 List.of(new BlockRequest(EditorialBlockType.LEAD, null, "A hook preview", BlockContentCategory.HOOK))
             )
         );
@@ -397,16 +322,16 @@ class EditorialServiceTest {
     }
 
     @Test
-    void getRecentByByline_reflectsTheRequestingUsersOwnLike_notJustTheRawCount() {
-        Track track = persistTrack("Liked Byline Track");
+    void getRecentEditorials_reflectsTheRequestingUsersOwnLike_notJustTheRawCount() {
+        Track track = persistTrack("Liked Recent Track");
         TrackEditorial saved = editorialService.upsertTrackEditorial(
-            track.getId(), new TrackEditorialRequest("Liked Byline Editorial", "1", "dek", JazzlogsCharacter.BOB, List.of())
+            track.getId(), new TrackEditorialRequest("Liked Recent Editorial", "1", "dek", List.of())
         );
         UUID likingUserId = UUID.randomUUID();
         likeService.addLike(likingUserId, LikeableEntityType.EDITORIAL, saved.getId());
 
-        List<EditorialTrackSummaryDto> likedByRequester = editorialService.getRecentByByline(JazzlogsCharacter.BOB, 10, likingUserId);
-        List<EditorialTrackSummaryDto> seenByAnotherUser = editorialService.getRecentByByline(JazzlogsCharacter.BOB, 10, UUID.randomUUID());
+        List<EditorialTrackSummaryDto> likedByRequester = editorialService.getRecentEditorials(10, likingUserId);
+        List<EditorialTrackSummaryDto> seenByAnotherUser = editorialService.getRecentEditorials(10, UUID.randomUUID());
 
         assertThat(likedByRequester.get(0).likeCount()).isEqualTo(1);
         assertThat(likedByRequester.get(0).likedByCurrentUser()).isTrue();
@@ -421,7 +346,7 @@ class EditorialServiceTest {
             null, null, null, null, null, null, null
         ));
         Track withoutLog = persistTrack("Uncarded Track");
-        editorialService.upsertTrackEditorial(withLog.getId(), new TrackEditorialRequest("Carded Log", "9", "A dek.", JazzlogsCharacter.ALICE, List.of()));
+        editorialService.upsertTrackEditorial(withLog.getId(), new TrackEditorialRequest("Carded Log", "9", "A dek.", List.of()));
         entityManager.flush();
         entityManager.clear();
 
@@ -433,7 +358,6 @@ class EditorialServiceTest {
         assertThat(card.trackName()).isEqualTo("Carded Track");
         assertThat(card.title()).isEqualTo("Carded Log");
         assertThat(card.logNumber()).isEqualTo("9");
-        assertThat(card.byline()).isEqualTo(JazzlogsCharacter.ALICE);
         assertThat(card.albumName()).isEqualTo(withLog.getAlbum().getName());
         assertThat(card.durationMs()).isEqualTo(562_000);
         assertThat(card.spotifyUrl()).isEqualTo("https://open.spotify.com/track/carded");

@@ -127,31 +127,25 @@ public interface TrackRepository extends JpaRepository<Track, UUID>, SavedItemRe
     List<CandidateRow> search(@Param("normalizedQuery") String normalizedQuery, @Param("limit") int limit);
 
     /**
-     * The tracks at the given levels whose log was written by the given
-     * narrator; a {@code null} condition is not filtered on. Everything is
-     * passed as an enum name — a native query, so that a null one is a plain
-     * untyped NULL Postgres can compare against.
+     * The tracks at the given levels; a {@code null} level is not filtered on.
+     * Levels are passed as their enum names — a native query, so that a null
+     * one is a plain untyped NULL Postgres can compare against.
      */
     @Query(value = """
         SELECT t.id
         FROM tracks t
-        LEFT JOIN track_editorials te ON te.track_id = t.id
         WHERE (:energy IS NULL OR t.energy = :energy)
           AND (:accessibility IS NULL OR t.accessibility = :accessibility)
           AND (:moodIntensity IS NULL OR t.mood_intensity = :moodIntensity)
-          AND (:writtenBy IS NULL OR te.byline = :writtenBy)
         """, nativeQuery = true)
-    List<UUID> findIdsByLevelsAndAuthor(
-        @Param("energy") String energy,
-        @Param("accessibility") String accessibility,
-        @Param("moodIntensity") String moodIntensity,
-        @Param("writtenBy") String writtenBy
+    List<UUID> findIdsByLevels(
+        @Param("energy") String energy, @Param("accessibility") String accessibility, @Param("moodIntensity") String moodIntensity
     );
 
     /**
      * What a search result shows of each track without opening its log: its
-     * name, album, credited artists (joined with ", " in credited order, same
-     * as {@link #search}) and who wrote its log.
+     * name, album and credited artists (joined with ", " in credited order,
+     * same as {@link #search}).
      */
     @Query(value = """
         SELECT
@@ -163,16 +157,14 @@ public interface TrackRepository extends JpaRepository<Track, UUID>, SavedItemRe
                 FROM album_artists aa
                 JOIN artists ar ON ar.id = aa.artist_id
                 WHERE aa.album_id = al.id
-            ) AS artistFullName,
-            te.byline AS writtenBy
+            ) AS artistFullName
         FROM tracks t
         JOIN albums al ON al.id = t.album_id
-        LEFT JOIN track_editorials te ON te.track_id = t.id
         WHERE t.id IN (:trackIds)
         """, nativeQuery = true)
     List<TrackCardRow> findCards(@Param("trackIds") Collection<UUID> trackIds);
 
-    /** One row from {@link #findCards}; {@code writtenBy} is a {@code JazzlogsCharacter} name, null if the track has no log. */
+    /** One row from {@link #findCards}. */
     interface TrackCardRow {
         UUID getId();
 
@@ -181,7 +173,5 @@ public interface TrackRepository extends JpaRepository<Track, UUID>, SavedItemRe
         String getAlbumName();
 
         String getArtistFullName();
-
-        String getWrittenBy();
     }
 }

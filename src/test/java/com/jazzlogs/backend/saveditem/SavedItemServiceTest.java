@@ -20,7 +20,6 @@ import com.jazzlogs.backend.listen.ListenService;
 import com.jazzlogs.backend.playlist.Playlist;
 import com.jazzlogs.backend.playlist.PlaylistRepository;
 import com.jazzlogs.backend.playlist.PlaylistType;
-import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackRepository;
 import com.jazzlogs.backend.user.User;
@@ -156,7 +155,7 @@ class SavedItemServiceTest {
     // test doesn't care about and which would require a live Neo4j to succeed.
     private UUID persistPlaylist() {
         Playlist playlist = playlistRepository.save(new Playlist(
-            "Test Playlist", null, null, null, null, PlaylistType.STANDARD, JazzlogsCharacter.MARK
+            "Test Playlist", null, null, null, null, PlaylistType.STANDARD
         ));
         return playlist.getId();
     }

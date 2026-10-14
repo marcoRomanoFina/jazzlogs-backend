@@ -13,7 +13,6 @@ import tools.jackson.databind.json.JsonMapper;
 import com.jazzlogs.backend.agent.ToolCallRequest;
 import com.jazzlogs.backend.agent.ToolExecutionResult;
 import com.jazzlogs.backend.album.Level;
-import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.tracksearch.TrackCandidate;
 import com.jazzlogs.backend.tracksearch.TrackSearchCriteria;
 import com.jazzlogs.backend.tracksearch.TrackSearchService;
@@ -54,11 +53,6 @@ public class FindTracksTool extends JazzTool {
             Map.entry("energy", level("How energetic the track is.")),
             Map.entry("accessibility", level("How easy the track is to get into: HIGH for a newcomer, LOW for demanding listening.")),
             Map.entry("moodIntensity", level("How strongly the track's mood comes across.")),
-            Map.entry("writtenBy", Map.of(
-                "type", "string",
-                "enum", Arrays.stream(JazzlogsCharacter.values()).map(Enum::name).toList(),
-                "description", "Only tracks whose log this narrator wrote — your own name for your own logs."
-            )),
             Map.entry("albumId", Map.of("type", "string", "description", "Only tracks on this album.")),
             Map.entry("artistId", Map.of("type", "string", "description", "Only tracks this artist plays on, as leader or sideman."))
         ),
@@ -73,20 +67,19 @@ public class FindTracksTool extends JazzTool {
             NAME,
             "Find tracks to recommend. Say what you are after in any combination of: lookingFor (a "
                 + "description of the music), vocabulary tags (styles, moods, contexts, rhythms, "
-                + "instruments), levels (energy, accessibility, moodIntensity), a narrator (writtenBy), and "
-                + "a scope (albumId and/or artistId, from RESOLVE_JAZZLOGS_ENTITY) — at least one of them. "
-                + "Tags, levels, narrator and scope decide which tracks are eligible: a track carrying any one of the style, mood, "
+                + "instruments), levels (energy, accessibility, moodIntensity), and a scope (albumId "
+                + "and/or artistId, from RESOLVE_JAZZLOGS_ENTITY) — at least one of them. Tags, levels and "
+                + "scope decide which tracks are eligible: a track carrying any one of the style, mood, "
                 + "context or rhythm tags qualifies, and matchedTags shows which it actually carries. "
                 + "instruments is strict — a track must feature every instrument you list — so list one "
                 + "only when the user wants to hear that instrument. A level is strict too — "
                 + "only tracks at exactly that level — so set one only when the user asked for it in so many "
                 + "words (\"something low-energy\", \"an easy way in\"); never infer it from a mood or "
-                + "the hour, that is what tags and lookingFor are for. writtenBy is for when the "
-                + "conversation is about someone's logs — yours or another narrator's. "
+                + "the hour, that is what tags and lookingFor are for. "
                 + "lookingFor decides the order, and each candidate then comes with closestPassage, the "
                 + "part of its log nearest to what you described. Returns a handful of candidates, best "
-                + "first, each with its entityId, entityName, artist, album, the narrator who wrote its "
-                + "log (writtenBy) and whether the user has already listened to it. A candidate is not "
+                + "first, each with its entityId, entityName, artist, album and whether the user has "
+                + "already listened to it. A candidate is not "
                 + "yet something to write about: read the one you choose with EDITORIAL_CONTENT.",
             "Buscando en el catálogo"
         );
@@ -112,7 +105,6 @@ public class FindTracksTool extends JazzTool {
             parseOptionalLevel(args.energy(), "energy"),
             parseOptionalLevel(args.accessibility(), "accessibility"),
             parseOptionalLevel(args.moodIntensity(), "moodIntensity"),
-            parseOptionalNarrator(args.writtenBy()),
             parseOptionalId(args.albumId(), "albumId"),
             parseOptionalId(args.artistId(), "artistId"),
             args.lookingFor()
@@ -149,15 +141,10 @@ public class FindTracksTool extends JazzTool {
         return raw == null || raw.isBlank() ? null : parseEnumValue(raw, Level.class, kind);
     }
 
-    /** A narrator is optional — missing means "anyone's logs" — but one that is given must be one of the eight. */
-    private static JazzlogsCharacter parseOptionalNarrator(String raw) {
-        return raw == null || raw.isBlank() ? null : parseEnumValue(raw, JazzlogsCharacter.class, "writtenBy");
-    }
-
     /** The summary line the model reads first — on an empty result, it says what to try instead of leaving a dead end. */
     private static String buildContent(List<TrackCandidate> candidates) {
         if (candidates.isEmpty()) {
-            return "No tracks matched. Try fewer or different tags, drop a level, the narrator or the album/artist scope, or describe what you are looking for instead.";
+            return "No tracks matched. Try fewer or different tags, drop a level or the album/artist scope, or describe what you are looking for instead.";
         }
         return "Found " + candidates.size() + " track(s), best match first.";
     }
@@ -194,7 +181,6 @@ public class FindTracksTool extends JazzTool {
         String energy,
         String accessibility,
         String moodIntensity,
-        String writtenBy,
         String albumId,
         String artistId
     ) {

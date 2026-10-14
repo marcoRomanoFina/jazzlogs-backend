@@ -25,7 +25,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jazzlogs.backend.agent.ToolCallRequest;
 import com.jazzlogs.backend.agent.ToolExecutionResult;
 import com.jazzlogs.backend.album.Level;
-import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.editorial.BlockContentCategory;
 import com.jazzlogs.backend.graph.VocabularyDimension;
 import com.jazzlogs.backend.tracksearch.TrackCandidate;
@@ -62,7 +61,7 @@ class FindTracksToolTest {
         when(trackSearchService.search(any(), any())).thenReturn(List.of());
 
         tool.execute(callWith("""
-            {"lookingFor":"late and quiet","moods":["%s"],"instruments":["%s"],"energy":"LOW","writtenBy":"LAURA","albumId":"%s"}
+            {"lookingFor":"late and quiet","moods":["%s"],"instruments":["%s"],"energy":"LOW","albumId":"%s"}
             """.formatted(mood, instrument, albumId)), USER_ID);
 
         ArgumentCaptor<TrackSearchCriteria> criteria = ArgumentCaptor.forClass(TrackSearchCriteria.class);
@@ -73,7 +72,6 @@ class FindTracksToolTest {
         assertThat(criteria.getValue().styles()).isEmpty();
         assertThat(criteria.getValue().energy()).isEqualTo(Level.LOW);
         assertThat(criteria.getValue().accessibility()).isNull();
-        assertThat(criteria.getValue().writtenBy()).isEqualTo(JazzlogsCharacter.LAURA);
         assertThat(criteria.getValue().albumId()).isEqualTo(albumId);
         assertThat(criteria.getValue().artistId()).isNull();
     }
@@ -93,13 +91,6 @@ class FindTracksToolTest {
     }
 
     @Test
-    void narratorThatDoesNotExist_throws() {
-        ToolCallRequest call = callWith("{\"writtenBy\":\"JAZZLOGS\"}");
-
-        assertThatThrownBy(() -> tool.execute(call, USER_ID)).isInstanceOf(IllegalArgumentException.class);
-    }
-
-    @Test
     void malformedScopeId_throws() {
         ToolCallRequest call = callWith("{\"albumId\":\"not-a-uuid\"}");
 
@@ -112,7 +103,7 @@ class FindTracksToolTest {
     void returnsEachCandidateWithWhyItMatched() throws Exception {
         UUID trackId = UUID.randomUUID();
         when(trackSearchService.search(any(), any())).thenReturn(List.of(new TrackCandidate(
-            trackId, "Blue in Green", "Miles Davis", "Kind of Blue", JazzlogsCharacter.LAURA,
+            trackId, "Blue in Green", "Miles Davis", "Kind of Blue",
             Map.of(VocabularyDimension.MOOD, List.of("RELAXED")),
             new Passage(BlockContentCategory.MOOD_AND_ATMOSPHERE, "It barely moves.", 0.71),
             true
@@ -128,7 +119,6 @@ class FindTracksToolTest {
         assertThat(candidate.get("entityName").asText()).isEqualTo("Blue in Green");
         assertThat(candidate.get("artistFullName").asText()).isEqualTo("Miles Davis");
         assertThat(candidate.get("album").asText()).isEqualTo("Kind of Blue");
-        assertThat(candidate.get("writtenBy").asText()).isEqualTo("LAURA");
         assertThat(candidate.get("matchedTags").get("MOOD").get(0).asText()).isEqualTo("RELAXED");
         assertThat(candidate.get("closestPassage").get("text").asText()).isEqualTo("It barely moves.");
         assertThat(candidate.get("closestPassage").get("similarity").asDouble()).isEqualTo(0.71);

@@ -7,7 +7,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -26,7 +25,6 @@ import com.jazzlogs.backend.agent.ToolCallRequest;
 import com.jazzlogs.backend.agent.ToolExecutionResult;
 import com.jazzlogs.backend.album.AlbumRepository;
 import com.jazzlogs.backend.artist.ArtistRepository;
-import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.track.TrackRepository;
 
 // The repository's native pg_trgm query is what actually establishes
@@ -45,9 +43,6 @@ class ResolveJazzlogsEntityToolTest {
     private static final UUID USER_ID = UUID.randomUUID();
 
     @Mock
-    private LogAuthorLookup logAuthorLookup;
-
-    @Mock
     private AlbumRepository albumRepository;
 
     @Mock
@@ -60,7 +55,7 @@ class ResolveJazzlogsEntityToolTest {
 
     @BeforeEach
     void setUp() {
-        tool = new ResolveJazzlogsEntityTool(albumRepository, artistRepository, trackRepository, logAuthorLookup, new JsonMapper());
+        tool = new ResolveJazzlogsEntityTool(albumRepository, artistRepository, trackRepository, new JsonMapper());
     }
 
     @Test
@@ -150,32 +145,6 @@ class ResolveJazzlogsEntityToolTest {
         assertThat(metadata.get("entityType").asText()).isEqualTo("ALBUM");
         assertThat(candidate.get("entityId").asText()).isEqualTo(albumId.toString());
         assertThat(candidate.get("entityName").asText()).isEqualTo("Kind of Blue");
-    }
-
-    @Test
-    void trackCandidate_withNoLog_hasNullWrittenBy() throws Exception {
-        UUID trackId = UUID.randomUUID();
-        CatalogEntityResolver.CandidateRow row = row(trackId, "So What", "Miles Davis", 1.0, "EXACT");
-        when(trackRepository.search("so what", ResolveJazzlogsEntityTool.MAX_CANDIDATES)).thenReturn(List.of(row));
-        when(logAuthorLookup.byTrackIds(List.of(trackId))).thenReturn(Map.of());
-
-        ToolExecutionResult result = tool.execute(callWith("{\"entityType\":\"TRACK\",\"query\":\"So What\"}"), USER_ID);
-
-        JsonNode candidate = JSON.readTree(result.payload()).get("metadata").get("candidates").get(0);
-        assertThat(candidate.get("writtenBy").isNull()).isTrue();
-    }
-
-    @Test
-    void trackCandidate_saysWhoWroteItsLog() throws Exception {
-        UUID trackId = UUID.randomUUID();
-        CatalogEntityResolver.CandidateRow row = row(trackId, "So What", "Miles Davis", 1.0, "EXACT");
-        when(trackRepository.search("so what", ResolveJazzlogsEntityTool.MAX_CANDIDATES)).thenReturn(List.of(row));
-        when(logAuthorLookup.byTrackIds(List.of(trackId))).thenReturn(Map.of(trackId, JazzlogsCharacter.LAURA));
-
-        ToolExecutionResult result = tool.execute(callWith("{\"entityType\":\"TRACK\",\"query\":\"So What\"}"), USER_ID);
-
-        JsonNode candidate = JSON.readTree(result.payload()).get("metadata").get("candidates").get(0);
-        assertThat(candidate.get("writtenBy").asText()).isEqualTo("LAURA");
     }
 
     @Test

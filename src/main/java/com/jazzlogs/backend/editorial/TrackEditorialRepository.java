@@ -11,7 +11,6 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.like.LikeableRepository;
 
 public interface TrackEditorialRepository extends LikeableRepository<TrackEditorial> {
@@ -21,21 +20,6 @@ public interface TrackEditorialRepository extends LikeableRepository<TrackEditor
     Optional<TrackEditorial> findFirstByOrderByCreatedAtDesc();
 
     boolean existsByTrackId(UUID trackId);
-
-    /**
-     * Who signed the log of each of {@code trackIds} — one query for a whole
-     * batch of agent tool candidates. A track with no log yet simply has no
-     * row here.
-     */
-    @Query("SELECT te.track.id AS trackId, te.byline AS byline FROM TrackEditorial te WHERE te.track.id IN :trackIds")
-    List<LogAuthorRow> findAuthorsByTrackIds(@Param("trackIds") Collection<UUID> trackIds);
-
-    /** One row from {@link #findAuthorsByTrackIds}. */
-    interface LogAuthorRow {
-        UUID getTrackId();
-
-        JazzlogsCharacter getByline();
-    }
 
     // Atomic UPDATE, not read-modify-save — two concurrent likes must not race
     // and lose an increment.
@@ -54,7 +38,7 @@ public interface TrackEditorialRepository extends LikeableRepository<TrackEditor
      * The archive's free-form search/browse listing — {@code pattern} is a
      * lowercased {@code "%...%"} substring, matched against either the
      * editorial's own title or its track's name; {@code null} means no
-     * filter. {@code byline} is optional. No {@code type} filter anymore —
+     * filter. No {@code type} filter anymore —
      * track is the only kind of editorial left. {@code artistName} is only
      * the album's first-credited artist ({@code alb.artists[0]}, the
      * {@code @OrderColumn}-indexed element) — a lean card, not the full
@@ -64,25 +48,22 @@ public interface TrackEditorialRepository extends LikeableRepository<TrackEditor
         value = """
             SELECT new com.jazzlogs.backend.editorial.TrackEditorialCatalogueRow(
                 te.id, t.id, t.name, t.durationMs, t.spotifyUrl, te.coverImageUrl, alb.name, alb.id, alb.artists[0].name,
-                te.title, te.logNumber, te.dek, te.byline, te.createdAt, te.likeCount
+                te.title, te.logNumber, te.dek, te.createdAt, te.likeCount
             )
             FROM TrackEditorial te
             JOIN te.track t
             JOIN t.album alb
             WHERE (:pattern IS NULL OR LOWER(te.title) LIKE :pattern OR LOWER(t.name) LIKE :pattern)
-              AND (:byline IS NULL OR te.byline = :byline)
             """,
         countQuery = """
             SELECT COUNT(te)
             FROM TrackEditorial te
             JOIN te.track t
             WHERE (:pattern IS NULL OR LOWER(te.title) LIKE :pattern OR LOWER(t.name) LIKE :pattern)
-              AND (:byline IS NULL OR te.byline = :byline)
             """
     )
     Page<TrackEditorialCatalogueRow> searchCatalogue(
         @Param("pattern") String pattern,
-        @Param("byline") JazzlogsCharacter byline,
         Pageable pageable
     );
 
@@ -93,7 +74,7 @@ public interface TrackEditorialRepository extends LikeableRepository<TrackEditor
     @Query("""
         SELECT new com.jazzlogs.backend.editorial.TrackEditorialCatalogueRow(
             te.id, t.id, t.name, t.durationMs, t.spotifyUrl, te.coverImageUrl, alb.name, alb.id, alb.artists[0].name,
-                te.title, te.logNumber, te.dek, te.byline, te.createdAt, te.likeCount
+                te.title, te.logNumber, te.dek, te.createdAt, te.likeCount
         )
         FROM TrackEditorial te
         JOIN te.track t
@@ -111,7 +92,7 @@ public interface TrackEditorialRepository extends LikeableRepository<TrackEditor
      */
     @Query("""
         SELECT new com.jazzlogs.backend.editorial.FeaturedTrackRow(
-            te.id, te.title, te.logNumber, te.dek, te.byline,
+            te.id, te.title, te.logNumber, te.dek,
             t.id, t.name, te.coverImageUrl, alb.name, alb.artists[0].name, te.createdAt, te.likeCount
         )
         FROM TrackEditorial te
@@ -122,10 +103,10 @@ public interface TrackEditorialRepository extends LikeableRepository<TrackEditor
         """)
     List<FeaturedTrackRow> findFeatured();
 
-    /** The newest editorials across every byline, newest first. */
+    /** The newest editorials, newest first — {@code pageable} caps how many come back, it is not a real page (no count query, no total). */
     @Query("""
         SELECT new com.jazzlogs.backend.editorial.EditorialTrackSummaryRow(
-            te.id, te.title, te.logNumber, te.dek, te.byline,
+            te.id, te.title, te.logNumber, te.dek,
             t.id, t.name, te.coverImageUrl, alb.name, alb.artists[0].name, te.createdAt, te.likeCount
         )
         FROM TrackEditorial te
@@ -134,23 +115,4 @@ public interface TrackEditorialRepository extends LikeableRepository<TrackEditor
         ORDER BY te.createdAt DESC
         """)
     List<EditorialTrackSummaryRow> findRecent(Pageable pageable);
-
-    /**
-     * A byline's most recent editorials, newest first — {@code pageable}
-     * caps how many come back (the server clamps it, see {@code
-     * EditorialService#getRecentByByline}), not a real page (no count
-     * query, no total).
-     */
-    @Query("""
-        SELECT new com.jazzlogs.backend.editorial.EditorialTrackSummaryRow(
-            te.id, te.title, te.logNumber, te.dek, te.byline,
-            t.id, t.name, te.coverImageUrl, alb.name, alb.artists[0].name, te.createdAt, te.likeCount
-        )
-        FROM TrackEditorial te
-        JOIN te.track t
-        JOIN t.album alb
-        WHERE te.byline = :byline
-        ORDER BY te.createdAt DESC
-        """)
-    List<EditorialTrackSummaryRow> findRecentByByline(@Param("byline") JazzlogsCharacter byline, Pageable pageable);
 }

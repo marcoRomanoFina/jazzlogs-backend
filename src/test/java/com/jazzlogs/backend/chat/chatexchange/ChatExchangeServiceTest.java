@@ -28,7 +28,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.jazzlogs.backend.chat.CatalogItemType;
-import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.chat.chat.Chat;
 import com.jazzlogs.backend.chat.chat.ChatRepository;
 import com.jazzlogs.backend.chat.chat.ChatService;
@@ -80,7 +79,7 @@ class ChatExchangeServiceTest {
         chatOwnerId = UUID.randomUUID();
         User owner = new User(UUID.randomUUID(), "test@example.com");
         ReflectionTestUtils.setField(owner, "id", chatOwnerId);
-        chat = new Chat(owner, null, JazzlogsCharacter.MARK);
+        chat = new Chat(owner, null);
     }
 
     // Only the persist() tests below need chatExchangeRepository.save
@@ -326,7 +325,7 @@ class ChatExchangeServiceTest {
     private static TrackEditorialCatalogueDto card(UUID trackId, String trackName, String artistName, String albumName) {
         return new TrackEditorialCatalogueDto(
             UUID.randomUUID(), trackId, trackName, 562_000, "https://open.spotify.com/track/x", null, albumName, UUID.randomUUID(), artistName,
-            trackName + " — the log", "12", "A dek.", JazzlogsCharacter.LAURA, Instant.now(), 3, false
+            trackName + " — the log", "12", "A dek.", Instant.now(), 3, false
         );
     }
 

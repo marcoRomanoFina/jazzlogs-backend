@@ -15,14 +15,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import com.openai.models.responses.EasyInputMessage;
 import com.openai.models.responses.ResponseInputItem;
 
 import com.jazzlogs.backend.chat.CatalogItemType;
-import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.chat.chat.Chat;
 import com.jazzlogs.backend.chat.chatexchange.ChatExchange;
 import com.jazzlogs.backend.chat.chatexchange.ChatExchangeRepository;
@@ -58,14 +56,9 @@ class ChatContextBuilderTest {
 
     @BeforeEach
     void setUp() {
-        builder = new ChatContextBuilder(
-            chatExchangeRepository,
-            chatRecommendationMemoryRepository,
-            new VocabularyProvider(),
-            new NarratorPersonas(new DefaultResourceLoader(), "classpath:agent/narrators-fixture/")
-        );
+        builder = new ChatContextBuilder(chatExchangeRepository, chatRecommendationMemoryRepository, new VocabularyProvider());
         User user = new User(UUID.randomUUID(), "test@example.com");
-        chat = new Chat(user, null, JazzlogsCharacter.MARK);
+        chat = new Chat(user, null);
         ReflectionTestUtils.setField(chat, "id", UUID.randomUUID());
     }
 
@@ -86,31 +79,19 @@ class ChatContextBuilderTest {
         assertThat(textOf(input.get(1))).isEqualTo("What should I listen to tonight?");
     }
 
-    @Test
-    void developerMessage_speaksAsTheChatsOwnNarrator_notAnyOther() {
-        User user = new User(UUID.randomUUID(), "test@example.com");
-        Chat laurasChat = new Chat(user, null, JazzlogsCharacter.LAURA);
-
-        String developerText = textOf(builder.buildInput(laurasChat, "Hi", null).get(0));
-
-        assertThat(developerText).contains("You are Laura, one of the eight JazzLogs narrators");
-        assertThat(developerText).contains("Fixture traits for Laura.");
-        assertThat(developerText).doesNotContain("You are Mark,");
-    }
-
     /** Prompt caching keys on the unchanged prefix — see the ordering comment in buildInput. */
     @Test
     void developerMessage_putsEverythingSharedAcrossChatsBeforeAnythingThatVaries() {
         User user = new User(UUID.randomUUID(), "test@example.com");
-        String marks = textOf(builder.buildInput(new Chat(user, null, JazzlogsCharacter.MARK), "Hi", "UTC").get(0));
-        String lauras = textOf(builder.buildInput(new Chat(user, null, JazzlogsCharacter.LAURA), "Hola", "America/Argentina/Buenos_Aires").get(0));
+        String one = textOf(builder.buildInput(new Chat(user, null), "Hi", "UTC").get(0));
+        String another = textOf(builder.buildInput(new Chat(user, null), "Hola", "America/Argentina/Buenos_Aires").get(0));
 
-        int narratorStartsAt = marks.indexOf("YOUR CHARACTER\nYou are Mark");
-        String sharedPrefix = marks.substring(0, narratorStartsAt);
+        // Everything up to the first thing that depends on the request is the same text, byte for byte.
+        // The section header itself — the fixed instructions also mention RUNTIME CONTEXT by name, earlier on.
+        String sharedPrefix = one.substring(0, one.indexOf("\n\nRUNTIME CONTEXT\n"));
 
-        assertThat(sharedPrefix).contains("FINAL OUTPUT CONTRACT").contains("CANONICAL FILTER VOCABULARY");
-        assertThat(lauras).startsWith(sharedPrefix);
-        assertThat(marks.indexOf("RUNTIME CONTEXT")).isGreaterThan(marks.indexOf("ON OTHER JAZZLOGS FRIENDS"));
+        assertThat(sharedPrefix).contains("ROLE AND VOICE").contains("FINAL OUTPUT CONTRACT").contains("CANONICAL FILTER VOCABULARY");
+        assertThat(another).startsWith(sharedPrefix);
     }
 
     @Test
@@ -136,7 +117,7 @@ class ChatContextBuilderTest {
     @Test
     void brandNewChatWithNoIdYet_skipsBothRepositoriesEntirely() {
         User user = new User(UUID.randomUUID(), "test@example.com");
-        Chat newChat = new Chat(user, null, JazzlogsCharacter.MARK);
+        Chat newChat = new Chat(user, null);
 
         List<ResponseInputItem> input = builder.buildInput(newChat, "What should I listen to tonight?", null);
 

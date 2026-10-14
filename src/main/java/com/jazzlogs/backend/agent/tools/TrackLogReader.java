@@ -12,7 +12,6 @@ import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.album.Level;
 import com.jazzlogs.backend.album.VocalProfile;
 import com.jazzlogs.backend.artist.Artist;
-import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.editorial.BlockContentCategory;
 import com.jazzlogs.backend.editorial.EditorialBlock;
 import com.jazzlogs.backend.editorial.EditorialBlockType;
@@ -92,7 +91,6 @@ public class TrackLogReader {
             editorial.getTitle(),
             editorial.getLogNumber(),
             editorial.getDek(),
-            editorial.getByline(),
             editorial.getCreatedAt().atZone(ZoneOffset.UTC).toLocalDate().toString(),
             editorial.getBlocks().stream().map(TrackLogReader::toBlock).toList()
         );
@@ -151,7 +149,7 @@ public class TrackLogReader {
 
     /** The log's header and body; {@code blocks} are in reading order. */
     public record Log(
-        String title, String logNumber, String dek, JazzlogsCharacter writtenBy, String publishedOn, List<Block> blocks
+        String title, String logNumber, String dek, String publishedOn, List<Block> blocks
     ) {
     }
 

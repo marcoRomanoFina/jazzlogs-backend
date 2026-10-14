@@ -25,7 +25,6 @@ import com.jazzlogs.backend.agent.tools.TrackLogReader.Block;
 import com.jazzlogs.backend.agent.tools.TrackLogReader.Log;
 import com.jazzlogs.backend.agent.tools.TrackLogReader.TrackInfo;
 import com.jazzlogs.backend.agent.tools.TrackLogReader.TrackLog;
-import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.editorial.BlockContentCategory;
 import com.jazzlogs.backend.editorial.EditorialBlockType;
 import com.jazzlogs.backend.graph.TrackPerformerEntry;
@@ -85,7 +84,7 @@ class EditorialContentToolTest {
 
         assertThat(result.success()).isTrue();
         JsonNode json = JSON.readTree(result.payload());
-        assertThat(json.get("content").asText()).contains("Log #42", "So What", "LAURA", "2 block(s)");
+        assertThat(json.get("content").asText()).contains("Log #42", "So What", "2 block(s)");
 
         JsonNode track = json.get("metadata").get("track");
         assertThat(track.get("entityId").asText()).isEqualTo(trackId.toString());
@@ -99,7 +98,6 @@ class EditorialContentToolTest {
 
         JsonNode log = json.get("metadata").get("log");
         assertThat(log.get("title").asText()).isEqualTo("The Question and the Answer");
-        assertThat(log.get("writtenBy").asText()).isEqualTo("LAURA");
         assertThat(log.get("blocks")).hasSize(2);
         assertThat(log.get("blocks").get(1).get("contentCategory").asText()).isEqualTo("CONTEXT");
         assertThat(log.get("blocks").get(1).get("text").asText()).isEqualTo("Recorded in 1959.");
@@ -117,7 +115,7 @@ class EditorialContentToolTest {
             List.of(new TrackPerformerEntry(UUID.randomUUID(), "Bill Evans", "SIDEMAN", List.of("PIANO"), false))
         );
         Log log = new Log(
-            "The Question and the Answer", "42", "A dek.", JazzlogsCharacter.LAURA, "2026-09-01",
+            "The Question and the Answer", "42", "A dek.", "2026-09-01",
             List.of(
                 new Block(EditorialBlockType.LEAD, BlockContentCategory.HOOK, null, "Two notes."),
                 new Block(EditorialBlockType.PARA, BlockContentCategory.CONTEXT, "Where it came from", "Recorded in 1959.")

@@ -9,7 +9,6 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.like.LikeableRepository;
 
 public interface SeriesRepository extends LikeableRepository<Series> {
@@ -26,16 +25,6 @@ public interface SeriesRepository extends LikeableRepository<Series> {
     Optional<Integer> findLikeCount(@Param("id") UUID entityId);
 
     Page<Series> findByStatus(SeriesStatus status, Pageable pageable);
-
-    /**
-     * For {@code SeriesService.getCatalogue}'s voice-filtered path — admin-only,
-     * includes drafts. No other filters (no {@code q}/vocab params, unlike
-     * editorials' catalogue).
-     */
-    Page<Series> findByVoice(JazzlogsCharacter voice, Pageable pageable);
-
-    /** Same as {@link #findByVoice}, but for non-admins — drafts stay invisible. */
-    Page<Series> findByVoiceAndStatus(JazzlogsCharacter voice, SeriesStatus status, Pageable pageable);
 
     /** For {@code SeriesService.getOnboardingSeries} — looked up by its fixed, curated title. */
     Optional<Series> findByTitle(String title);

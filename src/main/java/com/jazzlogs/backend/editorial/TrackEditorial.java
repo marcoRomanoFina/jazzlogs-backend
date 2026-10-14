@@ -8,8 +8,6 @@ import java.util.UUID;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
@@ -24,7 +22,6 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.track.Track;
 
 /**
@@ -50,16 +47,12 @@ public class TrackEditorial {
     private String title;
 
     // Admin-set — the number JazzLogs itself refers to this log by, updated
-    // alongside title/dek/byline via the same upsert.
+    // alongside title/dek via the same upsert.
     @Column(name = "log_number", nullable = false)
     private String logNumber;
 
     @Column(columnDefinition = "TEXT")
     private String dek;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private JazzlogsCharacter byline;
 
     // Five images for this editorial's own page layout — upload-only, never
     // set via update(...), only via their own endpoints (see
@@ -99,10 +92,9 @@ public class TrackEditorial {
         this.track = track;
     }
 
-    public void update(String title, String dek, JazzlogsCharacter byline, String logNumber) {
+    public void update(String title, String dek, String logNumber) {
         this.title = title;
         this.dek = dek;
-        this.byline = byline;
         this.logNumber = logNumber;
     }
 
