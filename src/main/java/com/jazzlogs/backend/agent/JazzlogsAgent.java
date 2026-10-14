@@ -22,6 +22,7 @@ import com.jazzlogs.backend.chat.chat.Chat;
 import com.jazzlogs.backend.chat.chatexchange.CatalogReference;
 import com.jazzlogs.backend.chat.chatexchange.ChatExchangeService;
 import com.jazzlogs.backend.chat.chatexchange.dto.ChatExchangeDto;
+import com.jazzlogs.backend.editorial.dto.TrackEditorialCatalogueDto;
 
 /**
  * The ReAct loop itself: given a chat and the user's new message, repeatedly
@@ -52,6 +53,7 @@ public class JazzlogsAgent implements Agent {
     private final ChatContextBuilder contextBuilder;
     private final OpenAiResponsesStreamClient streamClient;
     private final ChatExchangeService chatExchangeService;
+    private final AgentTelemetry telemetry;
     private final JsonMapper objectMapper;
     /** Runs tool dispatch — blocking I/O, never CPU; same virtual-thread executor {@code AgentOrchestrator} uses for this whole class. */
     private final Executor agentExecutor;
@@ -62,6 +64,7 @@ public class JazzlogsAgent implements Agent {
         ChatContextBuilder contextBuilder,
         OpenAiResponsesStreamClient streamClient,
         ChatExchangeService chatExchangeService,
+        AgentTelemetry telemetry,
         JsonMapper objectMapper,
         Executor agentExecutor,
         List<JazzTool> tools
@@ -69,6 +72,7 @@ public class JazzlogsAgent implements Agent {
         this.contextBuilder = contextBuilder;
         this.streamClient = streamClient;
         this.chatExchangeService = chatExchangeService;
+        this.telemetry = telemetry;
         this.objectMapper = objectMapper;
         this.agentExecutor = agentExecutor;
         this.toolsByName = tools.stream().collect(Collectors.toMap(JazzTool::name, tool -> tool));
@@ -77,11 +81,23 @@ public class JazzlogsAgent implements Agent {
     /**
      * Runs the ReAct loop to completion: iterates until the model closes
      * with a final answer, forcing that close on the last allowed iteration.
+     * The whole exchange is one trace — see {@link AgentTelemetry}.
      *
      * @throws IllegalStateException if the model never closes within {@link #maxIterations}
      */
     @Override
     public void run(EventSink sink, Chat chat, String userMessage, String timezone) throws IOException {
+        try (AgentTelemetry.Exchange trace = telemetry.startExchange(chat, userMessage)) {
+            try {
+                runLoop(sink, chat, userMessage, timezone, trace);
+            } catch (IOException | RuntimeException e) {
+                trace.failed(e);
+                throw e;
+            }
+        }
+    }
+
+    private void runLoop(EventSink sink, Chat chat, String userMessage, String timezone, AgentTelemetry.Exchange trace) throws IOException {
         sink.emit(new AgentEvent.RunStarted(RUN_STARTED_LABEL));
 
         List<ResponseInputItem> nextInput = contextBuilder.buildInput(chat, userMessage, timezone);
@@ -89,7 +105,7 @@ public class JazzlogsAgent implements Agent {
 
         for (int iteration = 1; iteration <= maxIterations; iteration++) {
             boolean forceFinal = iteration == maxIterations;
-            Step turn = streamClient.streamTurn(nextInput, previousResponseId, forceFinal);
+            Step turn = callModel(trace, nextInput, previousResponseId, iteration, forceFinal);
             previousResponseId = turn.responseId();
 
             // Empty toolCalls means the model answered with text instead of
@@ -99,14 +115,30 @@ public class JazzlogsAgent implements Agent {
             // third case to handle here: a turn either requests tool calls,
             // or it closes.
             if (turn.toolCalls().isEmpty()) {
-                finalizeExchange(sink, chat, userMessage, turn);
+                finalizeExchange(sink, chat, userMessage, turn, trace);
                 return;
             }
 
-            nextInput = executeToolCalls(sink, turn, chat.getUserId());
+            nextInput = executeToolCalls(sink, turn, chat.getUserId(), trace);
         }
 
         throw new IllegalStateException("Agent did not converge to a final answer within max iterations");
+    }
+
+    /** One request to the model, recorded as its own span whether it answers or fails. */
+    private Step callModel(
+        AgentTelemetry.Exchange trace, List<ResponseInputItem> input, String previousResponseId, int iteration, boolean forceFinal
+    ) {
+        try (AgentTelemetry.ModelCall call = trace.startModelCall(iteration, forceFinal)) {
+            try {
+                Step step = streamClient.streamTurn(input, previousResponseId, forceFinal);
+                call.completed(step);
+                return step;
+            } catch (RuntimeException e) {
+                call.failed(e);
+                throw e;
+            }
+        }
     }
 
     /**
@@ -117,7 +149,7 @@ public class JazzlogsAgent implements Agent {
      *
      * @return next iteration's input — just these tool outputs, {@code previousResponseId} carries the rest
      */
-    private List<ResponseInputItem> executeToolCalls(EventSink sink, Step turn, UUID userId) throws IOException {
+    private List<ResponseInputItem> executeToolCalls(EventSink sink, Step turn, UUID userId, AgentTelemetry.Exchange trace) throws IOException {
         List<ToolCallRequest> calls = turn.toolCalls();
         List<ToolCallRequest> accepted = calls.size() > maxToolCallsPerTurn ? calls.subList(0, maxToolCallsPerTurn) : calls;
         List<ToolCallRequest> rejected = calls.size() > maxToolCallsPerTurn ? calls.subList(maxToolCallsPerTurn, calls.size()) : List.of();
@@ -127,7 +159,11 @@ public class JazzlogsAgent implements Agent {
         }
 
         List<CompletableFuture<ToolExecutionResult>> futures = accepted.stream()
-            .map(call -> CompletableFuture.supplyAsync(() -> dispatch(call, userId), agentExecutor))
+            .map(call -> {
+                // Opened here, on the exchange's own thread, so the span is tied to this exchange before the work moves elsewhere.
+                AgentTelemetry.ToolCall toolTrace = trace.startToolCall(call);
+                return CompletableFuture.supplyAsync(() -> dispatch(call, userId, toolTrace), agentExecutor);
+            })
             .toList();
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
@@ -159,9 +195,23 @@ public class JazzlogsAgent implements Agent {
      * arguments (a JazzTool's own parsing rejects them with {@link
      * IllegalArgumentException}) become a failed result instead — the model
      * sees why in the function_call_output and can retry with corrected
-     * arguments next turn, instead of the whole exchange dying.
+     * arguments next turn, instead of the whole exchange dying. Anything else
+     * a tool throws is a real failure: recorded on the call's span and rethrown.
      */
-    private ToolExecutionResult dispatch(ToolCallRequest call, UUID userId) {
+    private ToolExecutionResult dispatch(ToolCallRequest call, UUID userId, AgentTelemetry.ToolCall toolTrace) {
+        try (toolTrace) {
+            try {
+                ToolExecutionResult result = execute(call, userId);
+                toolTrace.completed(result);
+                return result;
+            } catch (RuntimeException e) {
+                toolTrace.failed(e);
+                throw e;
+            }
+        }
+    }
+
+    private ToolExecutionResult execute(ToolCallRequest call, UUID userId) {
         JazzTool tool = toolsByName.get(call.name());
         if (tool == null) {
             return new ToolExecutionResult("{\"error\":\"Unknown tool: " + call.name() + "\"}", false);
@@ -184,7 +234,7 @@ public class JazzlogsAgent implements Agent {
     }
 
     /** Parses the model's final answer, persists the exchange, and emits RunFinished. */
-    private void finalizeExchange(EventSink sink, Chat chat, String userMessage, Step turn) throws IOException {
+    private void finalizeExchange(EventSink sink, Chat chat, String userMessage, Step turn, AgentTelemetry.Exchange trace) throws IOException {
         AgentFinalAnswer metadata = parseFinalAnswer(turn.assistantText());
         // null (not empty) tells ChatExchangeService "this is a DIRECT_RESPONSE,
         // don't touch the catalog at all".
@@ -196,6 +246,9 @@ public class JazzlogsAgent implements Agent {
             chat, userMessage, metadata.answerText(), recommendedItems, metadata.suggestedChatTitle(), metadata.updatedSessionSummary()
         );
 
+        List<TrackEditorialCatalogueDto> winners = saved.winners() == null ? List.of() : saved.winners();
+        trace.finished(metadata, saved.chatId(), winners);
+
         // The only way a caller of POST /chats (create-new) learns the
         // chatId it just got — there's no other field in this SSE stream
         // that carries it, and the response itself is just an event stream,
@@ -204,7 +257,7 @@ public class JazzlogsAgent implements Agent {
             saved.chatId(),
             metadata.answerText(),
             metadata.resultType(),
-            saved.winners() == null ? List.of() : saved.winners(),
+            winners,
             metadata.suggestedChatTitle()
         ));
     }

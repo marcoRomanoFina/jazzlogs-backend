@@ -183,6 +183,16 @@ public class OpenAiResponsesStreamClient {
         );
     }
 
+    /** The response's token accounting as a {@link TokenUsage}; {@code usage} can legitimately be absent. */
+    private static TokenUsage usageOf(Response response) {
+        return response.usage()
+            .map(usage -> new TokenUsage(
+                usage.inputTokens(), usage.inputTokensDetails().cachedTokens(),
+                usage.outputTokens(), usage.outputTokensDetails().reasoningTokens()
+            ))
+            .orElse(TokenUsage.NONE);
+    }
+
     /** Reduces a completed {@link Response}'s output items into assistant text plus any tool calls. */
     private Step toStep(Response response) {
         StringBuilder text = new StringBuilder();
@@ -195,7 +205,7 @@ public class OpenAiResponsesStreamClient {
             item.functionCall().ifPresent(call -> toolCalls.add(new ToolCallRequest(call.callId(), call.name(), call.arguments())));
         }
 
-        return new Step(response.id(), text.toString(), toolCalls);
+        return new Step(response.id(), text.toString(), toolCalls, usageOf(response));
     }
 
     /**

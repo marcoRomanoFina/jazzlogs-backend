@@ -12,6 +12,12 @@ import java.util.List;
  *                      the final answer's JSON (see {@link AgentFinalAnswer})
  *                      whenever {@code toolCalls} is empty
  * @param toolCalls     the tool calls the model requested this turn, if any
+ * @param usage         what the call cost in tokens; {@link TokenUsage#NONE} if not reported
  */
-public record Step(String responseId, String assistantText, List<ToolCallRequest> toolCalls) {
+public record Step(String responseId, String assistantText, List<ToolCallRequest> toolCalls, TokenUsage usage) {
+
+    /** A step whose token usage is not known. */
+    public Step(String responseId, String assistantText, List<ToolCallRequest> toolCalls) {
+        this(responseId, assistantText, toolCalls, TokenUsage.NONE);
+    }
 }

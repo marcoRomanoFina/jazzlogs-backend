@@ -1,0 +1,57 @@
+# Tempo's configuration for the local `observability` container in
+# docker-compose.yml. This is the file the grafana/otel-lgtm image ships with,
+# plus one setting (max_attribute_bytes, below) — mounted over the original
+# because the image offers no other way to change it. If the image is
+# upgraded and Tempo stops starting, re-copy its own
+# /otel-lgtm/tempo-config.yaml and re-apply that one line.
+
+server:
+  http_listen_port: 3200
+  grpc_listen_port: 9096
+
+distributor:
+  # The one change from the image's own config (see the header). Tempo cuts
+  # every span attribute to 2048 bytes by default, which truncates exactly
+  # what an agent trace is for: a tool's arguments and its JSON result.
+  max_attribute_bytes: 65536
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: "127.0.0.1:4417"
+        http:
+          endpoint: "127.0.0.1:4418"
+
+memberlist:
+  bind_addr: [127.0.0.1]
+  bind_port: 7947
+
+querier:
+  frontend_worker:
+    frontend_address: 127.0.0.1:9096
+
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /data/tempo/wal
+    local:
+      path: /data/tempo/blocks
+
+metrics_generator:
+  processor:
+    span_metrics:
+      dimensions:
+        - service_name
+        - operation
+        - status_code
+  storage:
+    path: /data/tempo/generator/wal
+    remote_write:
+      - url: http://127.0.0.1:9090/api/v1/write
+        send_exemplars: true
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors: [service-graphs, span-metrics]

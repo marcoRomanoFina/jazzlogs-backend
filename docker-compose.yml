@@ -118,6 +118,9 @@ services:
     ports:
       - "3001:3000"   # Grafana UI
       - "4318:4318"   # OTLP over HTTP
+    volumes:
+      # Only to raise Tempo's span-attribute size limit — see the file's header.
+      - ./docker/observability/tempo-config.yaml:/otel-lgtm/tempo-config.yaml:ro
 
 volumes:
   postgres-data:
