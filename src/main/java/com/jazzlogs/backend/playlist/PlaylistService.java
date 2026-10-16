@@ -86,7 +86,7 @@ public class PlaylistService {
         assertTitleAvailable(request.title(), null);
         Playlist playlist = new Playlist(
             request.title(), request.tagline(), request.description(),
-            request.coverImageUrl(), request.spotifyUrl(), request.type(), request.byline()
+            request.coverImageUrl(), request.spotifyUrl(), request.type()
         );
         Playlist saved = playlistRepository.save(playlist);
         flushOrThrowOnTitleConflict(request.title());
@@ -108,7 +108,7 @@ public class PlaylistService {
         assertTitleAvailable(request.title(), id);
         playlist.update(
             request.title(), request.tagline(), request.description(),
-            request.coverImageUrl(), request.spotifyUrl(), request.type(), request.byline()
+            request.coverImageUrl(), request.spotifyUrl(), request.type()
         );
         flushOrThrowOnTitleConflict(request.title());
         graphService.syncPlaylistNode(playlist.getId(), playlist.getTitle());
@@ -524,7 +524,7 @@ public class PlaylistService {
         return new PlaylistDetailDto(
             playlist.getId(), playlist.getTitle(), playlist.getTagline(), playlist.getDescription(),
             playlist.getCoverImageUrl(), playlist.getPrincipalImageUrl(), playlist.getBannerImageUrl(), playlist.getFooterImageUrl(),
-            playlist.getSpotifyUrl(), playlist.getType(), playlist.getByline(), playlist.isPublished(),
+            playlist.getSpotifyUrl(), playlist.getType(), playlist.isPublished(),
             playlist.getLikeCount(), liked, saved, playlist.getTrackCount(), playlist.getDurationMs(), trackDtos,
             styleTags, moodTags, contextTags, featuredInstruments, playlist.getCreatedAt(), playlist.getUpdatedAt()
         );
@@ -581,7 +581,7 @@ public class PlaylistService {
 
         return new FeaturedPlaylistDto(
             playlist.getId(), playlist.getTitle(), playlist.getTagline(), playlist.getDescription(),
-            playlist.getCoverImageUrl(), playlist.getSpotifyUrl(), playlist.getType(), playlist.getByline(), playlist.isPublished(),
+            playlist.getCoverImageUrl(), playlist.getSpotifyUrl(), playlist.getType(), playlist.isPublished(),
             playlist.getLikeCount(), liked, saved, playlist.getTrackCount(), playlist.getDurationMs(), trackDtos,
             styleTags, moodTags, contextTags, featuredInstruments, playlist.getCreatedAt(), playlist.getUpdatedAt()
         );
@@ -676,7 +676,7 @@ public class PlaylistService {
         return playlists.stream()
             .map(playlist -> new PlaylistSummaryDto(
                 playlist.getId(), playlist.getTitle(), playlist.getTagline(), playlist.getDescription(),
-                playlist.getCoverImageUrl(), playlist.getSpotifyUrl(), playlist.getType(), playlist.getByline(), playlist.isPublished(),
+                playlist.getCoverImageUrl(), playlist.getSpotifyUrl(), playlist.getType(), playlist.isPublished(),
                 playlist.getLikeCount(), likedIds.contains(playlist.getId()), playlist.getTrackCount(), playlist.getDurationMs(),
                 styleTagsByPlaylist.getOrDefault(playlist.getId(), List.of()),
                 moodTagsByPlaylist.getOrDefault(playlist.getId(), List.of()),

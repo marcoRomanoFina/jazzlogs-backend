@@ -24,10 +24,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import io.micrometer.observation.ObservationRegistry;
+
 import tools.jackson.databind.json.JsonMapper;
 
 import com.jazzlogs.backend.agent.tools.JazzTool;
-import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.chat.chat.Chat;
 import com.jazzlogs.backend.chat.chatexchange.ChatExchangeService;
 import com.jazzlogs.backend.chat.chatexchange.dto.ChatExchangeDto;
@@ -81,12 +82,16 @@ class JazzlogsAgentTest {
         // actual concurrency, so a synchronous stand-in keeps them fast and
         // deterministic. See AsyncConfig.agentExecutor for the real one.
         Executor synchronousExecutor = Runnable::run;
-        agent = new JazzlogsAgent(contextBuilder, streamClient, chatExchangeService, new JsonMapper(), synchronousExecutor, List.of(searchTool));
+        // Telemetry against a registry nobody listens to: every call is a no-op, which is all these tests need of it.
+        AgentTelemetry telemetry = new AgentTelemetry(ObservationRegistry.NOOP, "test-model", true);
+        agent = new JazzlogsAgent(
+            contextBuilder, streamClient, chatExchangeService, telemetry, new JsonMapper(), synchronousExecutor, List.of(searchTool)
+        );
         ReflectionTestUtils.setField(agent, "maxIterations", 6);
         ReflectionTestUtils.setField(agent, "maxToolCallsPerTurn", 4);
 
         User user = new User(UUID.randomUUID(), "test@example.com");
-        chat = new Chat(user, null, JazzlogsCharacter.MARK);
+        chat = new Chat(user, null);
         sink = new RecordingSink();
     }
 

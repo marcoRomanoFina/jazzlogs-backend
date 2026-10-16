@@ -25,7 +25,6 @@ import jakarta.persistence.EntityManager;
 
 import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.artist.dto.ArtistSummaryDto;
-import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.graph.GraphService;
 import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.like.LikeService;
@@ -81,7 +80,7 @@ public class SeriesService {
     @Transactional
     public SeriesDetailDto create(SeriesUpsertRequest request) {
         assertTitleAvailable(request.title(), null);
-        Series series = new Series(request.title(), request.dek(), request.description(), request.voice());
+        Series series = new Series(request.title(), request.dek(), request.description());
         Series saved = seriesRepository.save(series);
         flushOrThrowOnTitleConflict(request.title());
         graphService.syncSeriesNode(saved.getId(), saved.getTitle());
@@ -100,7 +99,7 @@ public class SeriesService {
     public SeriesDetailDto update(UUID id, SeriesUpsertRequest request) {
         Series series = getSeriesOrThrow(id);
         assertTitleAvailable(request.title(), id);
-        series.update(request.title(), request.dek(), request.description(), request.voice());
+        series.update(request.title(), request.dek(), request.description());
         flushOrThrowOnTitleConflict(request.title());
         graphService.syncSeriesNode(series.getId(), series.getTitle());
         replaceTags(series, request.styleCodes(), request.moodCodes(), request.contextCodes(), request.instrumentCodes());
@@ -428,7 +427,7 @@ public class SeriesService {
         List<VocabularyTag> featuredInstruments = graphService.getSeriesFeaturedInstruments(series.getId());
         return new FeaturedSeriesDto(
             series.getId(), series.getTitle(), series.getDek(), series.getCoverImageUrl(),
-            series.getStatus(), series.getVoice(), series.getLikeCount(), chapters,
+            series.getStatus(), series.getLikeCount(), chapters,
             styleTags, moodTags, contextTags, featuredInstruments, series.getCreatedAt()
         );
     }
@@ -531,26 +530,17 @@ public class SeriesService {
 
     /**
      * The series "Catalogue" — {@code GET /series/catalogue} — one page,
-     * newest first, optionally narrowed to a single {@code voice}. One
-     * endpoint handles both the filtered and unfiltered case (unlike
-     * Playlist's separate {@code /journeys}/{@code /standard}/{@code
-     * /catalogue}) since series only has this one filter dimension so far.
+     * newest first.
      *
-     * @param voice              narrow to this voice only, or {@code null} for every voice
      * @param includeUnpublished true for admins (drafts included), false otherwise
      * @param pageable           page/size/sort — callers default to createdAt desc
      * @return the matching page
      */
     @Transactional(readOnly = true)
-    public Page<SeriesSummaryDto> getCatalogue(JazzlogsCharacter voice, boolean includeUnpublished, Pageable pageable) {
-        Page<Series> page;
-        if (voice == null) {
-            page = includeUnpublished ? seriesRepository.findAll(pageable) : seriesRepository.findByStatus(SeriesStatus.PUBLISHED, pageable);
-        } else {
-            page = includeUnpublished
-                ? seriesRepository.findByVoice(voice, pageable)
-                : seriesRepository.findByVoiceAndStatus(voice, SeriesStatus.PUBLISHED, pageable);
-        }
+    public Page<SeriesSummaryDto> getCatalogue(boolean includeUnpublished, Pageable pageable) {
+        Page<Series> page = includeUnpublished
+            ? seriesRepository.findAll(pageable)
+            : seriesRepository.findByStatus(SeriesStatus.PUBLISHED, pageable);
         return toSummaryPage(page);
     }
 
@@ -593,7 +583,7 @@ public class SeriesService {
         return new SeriesDetailDto(
             series.getId(), series.getTitle(), series.getDek(), series.getDescription(), series.getCoverImageUrl(),
             series.getPrincipalImageUrl(), series.getBannerImageUrl(), series.getFooterImageUrl(),
-            series.getStatus(), series.getVoice(), series.getLikeCount(), liked, totalListenings, chapterDtos,
+            series.getStatus(), series.getLikeCount(), liked, totalListenings, chapterDtos,
             styleTags, moodTags, contextTags, featuredInstruments, series.getCreatedAt(), series.getUpdatedAt()
         );
     }
@@ -710,7 +700,7 @@ public class SeriesService {
         return seriesList.stream()
             .map(series -> new SeriesSummaryDto(
                 series.getId(), series.getTitle(), series.getDek(), series.getCoverImageUrl(),
-                series.getStatus(), series.getVoice(), series.getLikeCount(),
+                series.getStatus(), series.getLikeCount(),
                 styleTagsBySeries.getOrDefault(series.getId(), List.of()),
                 moodTagsBySeries.getOrDefault(series.getId(), List.of()),
                 contextTagsBySeries.getOrDefault(series.getId(), List.of()),

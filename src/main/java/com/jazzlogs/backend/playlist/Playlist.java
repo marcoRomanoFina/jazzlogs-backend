@@ -16,7 +16,6 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-import com.jazzlogs.backend.character.JazzlogsCharacter;
 
 // Official/editorial playlists curated by JazzLogs — not user playlists
 @Entity
@@ -62,12 +61,6 @@ public class Playlist {
     @Column(nullable = false)
     private PlaylistType type;
 
-    // Which narrator voice is credited on this playlist — same JazzlogsCharacter
-    // enum as Series.voice, pure classification (no behavior difference).
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private JazzlogsCharacter byline;
-
     @Column(name = "like_count", nullable = false)
     private int likeCount;
 
@@ -97,8 +90,7 @@ public class Playlist {
         String description,
         String coverImageUrl,
         String spotifyUrl,
-        PlaylistType type,
-        JazzlogsCharacter byline
+        PlaylistType type
     ) {
         this.title = title;
         this.tagline = tagline;
@@ -106,7 +98,6 @@ public class Playlist {
         this.coverImageUrl = coverImageUrl;
         this.spotifyUrl = spotifyUrl;
         this.type = type;
-        this.byline = byline;
     }
 
     public void update(
@@ -115,8 +106,7 @@ public class Playlist {
         String description,
         String coverImageUrl,
         String spotifyUrl,
-        PlaylistType type,
-        JazzlogsCharacter byline
+        PlaylistType type
     ) {
         this.title = title;
         this.tagline = tagline;
@@ -124,7 +114,6 @@ public class Playlist {
         this.coverImageUrl = coverImageUrl;
         this.spotifyUrl = spotifyUrl;
         this.type = type;
-        this.byline = byline;
     }
 
     public void updateTrackStats(int trackCount, long durationMs) {

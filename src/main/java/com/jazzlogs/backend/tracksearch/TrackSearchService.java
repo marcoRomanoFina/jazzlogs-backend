@@ -14,7 +14,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.pgvector.PGvector;
 
-import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.editorial.BlockContentCategory;
 import com.jazzlogs.backend.editorial.EditorialBlockRepository;
 import com.jazzlogs.backend.editorial.EditorialBlockRepository.ClosestPassageRow;
@@ -34,14 +33,14 @@ import lombok.AllArgsConstructor;
  * each used for what it is good at:
  * <ul>
  *   <li>the <b>graph</b> knows how a track is tagged and who plays on it — it
- *       decides which tracks are <em>eligible</em>, together with what only
- *       Postgres knows about a track — its levels (energy, accessibility,
- *       mood intensity) and who wrote its log — applied as a restriction on
- *       what the graph may return;</li>
+ *       decides which tracks are <em>eligible</em>, together with the track's
+ *       own levels (energy, accessibility, mood intensity), which live in
+ *       Postgres and are applied as a restriction on what the graph may
+ *       return;</li>
  *   <li>the <b>logs</b> know what was actually written about it — a search
  *       phrase is compared against them to decide the <em>order</em>.</li>
  * </ul>
- * So tags, levels, author and scope narrow the catalog down to a pool, and the phrase,
+ * So tags, levels and scope narrow the catalog down to a pool, and the phrase,
  * when there is one, ranks that pool by meaning. With no phrase, the pool
  * keeps the graph's own order (most tags matched first); with only a phrase,
  * the whole catalog is ranked by meaning.
@@ -88,7 +87,7 @@ public class TrackSearchService {
     @Transactional(readOnly = true)
     public List<TrackCandidate> search(TrackSearchCriteria criteria, UUID userId) {
         if (criteria.isEmpty()) {
-            throw new IllegalArgumentException("Nothing to search by: give tags, levels, a narrator, an album or artist, or a phrase to look for");
+            throw new IllegalArgumentException("Nothing to search by: give tags, levels, an album or artist, or a phrase to look for");
         }
         return describe(rank(criteria), userId);
     }
@@ -111,22 +110,18 @@ public class TrackSearchService {
             .toList();
     }
 
-    /**
-     * The eligible tracks, best tagged first: what the graph returns once the
-     * levels and the author, if asked for, have said which tracks it may
-     * choose from.
-     */
+    /** The eligible tracks, best tagged first: what the graph returns once the levels, if any, have said which tracks it may choose from. */
     private List<TaggedTrack> pool(TrackSearchCriteria criteria) {
-        List<UUID> allowed = null;
-        if (criteria.hasLevels() || criteria.hasAuthor()) {
-            allowed = trackRepository.findIdsByLevelsAndAuthor(
-                nameOf(criteria.energy()), nameOf(criteria.accessibility()), nameOf(criteria.moodIntensity()), nameOf(criteria.writtenBy())
+        List<UUID> atTheLevels = null;
+        if (criteria.hasLevels()) {
+            atTheLevels = trackRepository.findIdsByLevels(
+                nameOf(criteria.energy()), nameOf(criteria.accessibility()), nameOf(criteria.moodIntensity())
             );
-            if (allowed.isEmpty()) {
+            if (atTheLevels.isEmpty()) {
                 return List.of();
             }
         }
-        return graphService.findTracksByTags(criteria.tagCodes(), criteria.albumId(), criteria.artistId(), allowed, POOL_SIZE);
+        return graphService.findTracksByTags(criteria.tagCodes(), criteria.albumId(), criteria.artistId(), atTheLevels, POOL_SIZE);
     }
 
     private static String nameOf(Enum<?> value) {
@@ -182,7 +177,6 @@ public class TrackSearchService {
             card.getName(),
             card.getArtistFullName(),
             card.getAlbumName(),
-            card.getWrittenBy() == null ? null : JazzlogsCharacter.valueOf(card.getWrittenBy()),
             track.matchedTags(),
             track.closestPassage(),
             alreadyListened

@@ -28,7 +28,6 @@ import com.jazzlogs.backend.album.AlbumRepository;
 import com.jazzlogs.backend.album.Level;
 import com.jazzlogs.backend.artist.Artist;
 import com.jazzlogs.backend.artist.ArtistRepository;
-import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.editorial.BlockContentCategory;
 import com.jazzlogs.backend.editorial.EditorialBlockType;
 import com.jazzlogs.backend.editorial.EditorialService;
@@ -99,15 +98,15 @@ class TrackSearchServiceTest {
 
     @Test
     void nothingToSearchBy_isRejected() {
-        TrackSearchCriteria empty = new TrackSearchCriteria(null, null, null, null, null, null, null, null, null, null, null, "   ");
+        TrackSearchCriteria empty = new TrackSearchCriteria(null, null, null, null, null, null, null, null, null, null, "   ");
 
         assertThatThrownBy(() -> trackSearchService.search(empty, userId)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void tagsOnly_keepsTheGraphsOrder_andNeverEmbedsAnything() {
-        Track first = persistTrackWithLog("Tagged First", JazzlogsCharacter.LAURA, "plain");
-        Track second = persistTrackWithLog("Tagged Second", JazzlogsCharacter.MARK, "plain");
+        Track first = persistTrackWithLog("Tagged First", "plain");
+        Track second = persistTrackWithLog("Tagged Second", "plain");
         Map<VocabularyDimension, List<String>> relaxed = Map.of(VocabularyDimension.MOOD, List.of("RELAXED"));
         when(graphService.findTracksByTags(any(), eq(null), eq(null), eq(null), anyInt()))
             .thenReturn(List.of(new TaggedTrack(first.getId(), relaxed), new TaggedTrack(second.getId(), relaxed)));
@@ -117,7 +116,6 @@ class TrackSearchServiceTest {
         assertThat(result).extracting(TrackCandidate::entityName).containsExactly("Tagged First", "Tagged Second");
         assertThat(result.get(0).matchedTags()).isEqualTo(relaxed);
         assertThat(result.get(0).closestPassage()).isNull();
-        assertThat(result.get(0).writtenBy()).isEqualTo(JazzlogsCharacter.LAURA);
         assertThat(result.get(0).artistFullName()).isEqualTo("Search Lead, Search Co-Lead");
         assertThat(result.get(0).album()).isEqualTo("Search Album");
         verify(embeddingService, never()).embed(any());
@@ -125,9 +123,9 @@ class TrackSearchServiceTest {
 
     @Test
     void tagsAndPhrase_rankTheTaggedPoolByMeaning() {
-        Track plain = persistTrackWithLog("Tagged Plain", JazzlogsCharacter.MARK, "plain");
-        Track nocturne = persistTrackWithLog("Tagged Nocturne", JazzlogsCharacter.MARK, "a nocturne");
-        Track outsideThePool = persistTrackWithLog("Untagged Nocturne", JazzlogsCharacter.MARK, "a nocturne");
+        Track plain = persistTrackWithLog("Tagged Plain", "plain");
+        Track nocturne = persistTrackWithLog("Tagged Nocturne", "a nocturne");
+        Track outsideThePool = persistTrackWithLog("Untagged Nocturne", "a nocturne");
         Map<VocabularyDimension, List<String>> relaxed = Map.of(VocabularyDimension.MOOD, List.of("RELAXED"));
         // The graph puts the plain one first; meaning should overturn that.
         when(graphService.findTracksByTags(any(), eq(null), eq(null), eq(null), anyInt()))
@@ -145,7 +143,7 @@ class TrackSearchServiceTest {
 
     @Test
     void phraseOnly_ranksTheWholeCatalog_withoutAskingTheGraph() {
-        Track nocturne = persistTrackWithLog("Catalog Nocturne", JazzlogsCharacter.ALICE, "a nocturne");
+        Track nocturne = persistTrackWithLog("Catalog Nocturne", "a nocturne");
 
         List<TrackCandidate> result = trackSearchService.search(moods(PHRASE), userId);
 
@@ -160,7 +158,7 @@ class TrackSearchServiceTest {
     void aLogMatchingInSeveralBlocks_isStillOneCandidate() {
         Track track = persistTrack("Two Nocturnes");
         editorialService.upsertTrackEditorial(track.getId(), new TrackEditorialRequest(
-            "Two Nocturnes Log", "7", "dek", JazzlogsCharacter.BOB,
+            "Two Nocturnes Log", "7", "dek",
             List.of(
                 new BlockRequest(EditorialBlockType.LEAD, null, "first nocturne", BlockContentCategory.HOOK),
                 new BlockRequest(EditorialBlockType.PARA, null, "second nocturne", BlockContentCategory.CONTEXT)
@@ -176,7 +174,7 @@ class TrackSearchServiceTest {
     void quoteBlocks_areNeverWhatATrackMatchesOn() {
         Track track = persistTrack("Quoted Nocturne");
         editorialService.upsertTrackEditorial(track.getId(), new TrackEditorialRequest(
-            "Quoted Nocturne Log", "7", "dek", JazzlogsCharacter.BOB,
+            "Quoted Nocturne Log", "7", "dek",
             List.of(
                 new BlockRequest(EditorialBlockType.QUOTE, null, "a nocturne, said someone", BlockContentCategory.MOOD_AND_ATMOSPHERE),
                 new BlockRequest(EditorialBlockType.PARA, null, "plain", BlockContentCategory.CONTEXT)
@@ -194,13 +192,13 @@ class TrackSearchServiceTest {
 
     @Test
     void scopeOnly_returnsTheScopesTracks() {
-        Track track = persistTrackWithLog("Scoped Track", JazzlogsCharacter.MARK, "plain");
+        Track track = persistTrackWithLog("Scoped Track", "plain");
         UUID albumId = track.getAlbum().getId();
         when(graphService.findTracksByTags(any(), eq(albumId), eq(null), eq(null), anyInt()))
             .thenReturn(List.of(new TaggedTrack(track.getId(), Map.of())));
 
         List<TrackCandidate> result = trackSearchService.search(
-            new TrackSearchCriteria(null, null, null, null, null, null, null, null, null, albumId, null, null), userId
+            new TrackSearchCriteria(null, null, null, null, null, null, null, null, albumId, null, null), userId
         );
 
         assertThat(result).extracting(TrackCandidate::entityName).containsExactly("Scoped Track");
@@ -209,13 +207,13 @@ class TrackSearchServiceTest {
     @Test
     @SuppressWarnings("unchecked")
     void levels_restrictWhatTheGraphMayReturn() {
-        Track quiet = persistTrackWithLog("Low Energy", JazzlogsCharacter.MARK, "plain", Level.LOW);
-        Track loud = persistTrackWithLog("High Energy", JazzlogsCharacter.MARK, "plain", Level.HIGH);
+        Track quiet = persistTrackWithLog("Low Energy", "plain", Level.LOW);
+        Track loud = persistTrackWithLog("High Energy", "plain", Level.HIGH);
         when(graphService.findTracksByTags(any(), eq(null), eq(null), any(), anyInt()))
             .thenReturn(List.of(new TaggedTrack(quiet.getId(), Map.of())));
 
         List<TrackCandidate> result = trackSearchService.search(
-            new TrackSearchCriteria(null, null, null, null, null, Level.LOW, null, null, null, null, null, null), userId
+            new TrackSearchCriteria(null, null, null, null, null, Level.LOW, null, null, null, null, null), userId
         );
 
         assertThat(result).extracting(TrackCandidate::entityName).containsExactly("Low Energy");
@@ -225,27 +223,9 @@ class TrackSearchServiceTest {
     }
 
     @Test
-    @SuppressWarnings("unchecked")
-    void narrator_restrictsTheSearchToTheirLogs() {
-        Track byNatalie = persistTrackWithLog("Natalie's Track", JazzlogsCharacter.NATALIE, "plain");
-        Track byAdam = persistTrackWithLog("Adam's Track", JazzlogsCharacter.ADAM, "plain");
-        when(graphService.findTracksByTags(any(), eq(null), eq(null), any(), anyInt()))
-            .thenReturn(List.of(new TaggedTrack(byNatalie.getId(), Map.of())));
-
-        List<TrackCandidate> result = trackSearchService.search(
-            new TrackSearchCriteria(null, null, null, null, null, null, null, null, JazzlogsCharacter.NATALIE, null, null, null), userId
-        );
-
-        assertThat(result).extracting(TrackCandidate::writtenBy).containsExactly(JazzlogsCharacter.NATALIE);
-        ArgumentCaptor<Collection<UUID>> onlyAmong = ArgumentCaptor.forClass(Collection.class);
-        verify(graphService).findTracksByTags(any(), eq(null), eq(null), onlyAmong.capture(), anyInt());
-        assertThat(onlyAmong.getValue()).contains(byNatalie.getId()).doesNotContain(byAdam.getId());
-    }
-
-    @Test
     void marksWhatTheUserAlreadyListenedTo_withoutHidingIt() {
-        Track heard = persistTrackWithLog("Already Heard", JazzlogsCharacter.MARK, "plain");
-        Track fresh = persistTrackWithLog("Never Heard", JazzlogsCharacter.MARK, "plain");
+        Track heard = persistTrackWithLog("Already Heard", "plain");
+        Track fresh = persistTrackWithLog("Never Heard", "plain");
         listenService.markTrackListened(userId, heard.getId());
         when(graphService.findTracksByTags(any(), eq(null), eq(null), eq(null), anyInt()))
             .thenReturn(List.of(new TaggedTrack(heard.getId(), Map.of()), new TaggedTrack(fresh.getId(), Map.of())));
@@ -257,7 +237,7 @@ class TrackSearchServiceTest {
 
     @Test
     void aTrackTheGraphKnowsButTheCatalogDoesNot_isLeftOut() {
-        Track real = persistTrackWithLog("Still Here", JazzlogsCharacter.MARK, "plain");
+        Track real = persistTrackWithLog("Still Here", "plain");
         when(graphService.findTracksByTags(any(), eq(null), eq(null), eq(null), anyInt()))
             .thenReturn(List.of(new TaggedTrack(UUID.randomUUID(), Map.of()), new TaggedTrack(real.getId(), Map.of())));
 
@@ -267,7 +247,7 @@ class TrackSearchServiceTest {
     }
 
     private static TrackSearchCriteria moods(String lookingFor, MoodVocabulary... moods) {
-        return new TrackSearchCriteria(null, List.of(moods), null, null, null, null, null, null, null, null, null, lookingFor);
+        return new TrackSearchCriteria(null, List.of(moods), null, null, null, null, null, null, null, null, lookingFor);
     }
 
     /** A unit vector along one axis — two different axes are as unrelated as two meanings can be. */
@@ -277,14 +257,14 @@ class TrackSearchServiceTest {
         return vector;
     }
 
-    private Track persistTrackWithLog(String name, JazzlogsCharacter writtenBy, String blockText) {
-        return persistTrackWithLog(name, writtenBy, blockText, null);
+    private Track persistTrackWithLog(String name, String blockText) {
+        return persistTrackWithLog(name, blockText, null);
     }
 
-    private Track persistTrackWithLog(String name, JazzlogsCharacter writtenBy, String blockText, Level energy) {
+    private Track persistTrackWithLog(String name, String blockText, Level energy) {
         Track track = persistTrack(name, energy);
         editorialService.upsertTrackEditorial(track.getId(), new TrackEditorialRequest(
-            name + " Log", "7", "dek", writtenBy,
+            name + " Log", "7", "dek",
             List.of(new BlockRequest(EditorialBlockType.PARA, null, blockText, BlockContentCategory.MOOD_AND_ATMOSPHERE))
         ));
         return track;

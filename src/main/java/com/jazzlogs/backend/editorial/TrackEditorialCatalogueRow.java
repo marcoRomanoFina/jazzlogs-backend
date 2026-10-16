@@ -3,7 +3,6 @@ package com.jazzlogs.backend.editorial;
 import java.time.Instant;
 import java.util.UUID;
 
-import com.jazzlogs.backend.character.JazzlogsCharacter;
 
 /** What {@link TrackEditorialRepository#searchCatalogue} selects — everything the catalogue DTO needs except {@code likedByCurrentUser}. */
 public record TrackEditorialCatalogueRow(
@@ -19,7 +18,6 @@ public record TrackEditorialCatalogueRow(
     String title,
     String logNumber,
     String dek,
-    JazzlogsCharacter byline,
     Instant createdAt,
     int likeCount
 ) {

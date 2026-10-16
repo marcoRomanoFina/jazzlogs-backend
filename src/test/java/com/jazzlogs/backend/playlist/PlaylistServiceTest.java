@@ -50,7 +50,6 @@ import com.jazzlogs.backend.playlist.dto.PlaylistTrackDetailDto;
 import com.jazzlogs.backend.playlist.dto.PlaylistUpsertRequest;
 import com.jazzlogs.backend.saveditem.SaveableEntityType;
 import com.jazzlogs.backend.saveditem.SavedItemService;
-import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.storage.ImageStorageService;
 import com.jazzlogs.backend.track.Track;
 import com.jazzlogs.backend.track.TrackRepository;
@@ -280,30 +279,13 @@ class PlaylistServiceTest {
     @Test
     void create_persistsType() {
         PlaylistUpsertRequest request = new PlaylistUpsertRequest(
-            "The Long Road", null, null, null, null, PlaylistType.JOURNEY, JazzlogsCharacter.MARK, List.of(), List.of(), List.of(), List.of()
+            "The Long Road", null, null, null, null, PlaylistType.JOURNEY, List.of(), List.of(), List.of(), List.of()
         );
 
         Playlist created = playlistService.create(request);
 
         assertThat(playlistRepository.findById(created.getId()).orElseThrow().getType()).isEqualTo(PlaylistType.JOURNEY);
     }
-
-    @Test
-    void create_persistsByline() {
-        PlaylistUpsertRequest request = new PlaylistUpsertRequest(
-            "Byline Test", null, null, null, null, PlaylistType.STANDARD, JazzlogsCharacter.LAURA, List.of(), List.of(), List.of(), List.of()
-        );
-
-        Playlist created = playlistService.create(request);
-
-        assertThat(playlistRepository.findById(created.getId()).orElseThrow().getByline()).isEqualTo(JazzlogsCharacter.LAURA);
-    }
-
-    // No "returns empty when nothing is published" test here — this table
-    // can carry real, deliberately-created data (unlike every other fixture
-    // in this class), so a test can't assume it starts out with zero
-    // JOURNEY playlists. The tests below only ever assert on which playlist
-    // *wins*, never on the table being otherwise empty.
 
     @Test
     void getJourney_ignoresStandardPlaylistsEvenIfNewer() {
@@ -403,7 +385,7 @@ class PlaylistServiceTest {
     @Test
     void replaceTags_setsFeaturedInstrumentsToo() {
         Playlist created = playlistService.create(new PlaylistUpsertRequest(
-            "instrument-tags", null, null, null, null, PlaylistType.STANDARD, JazzlogsCharacter.MARK,
+            "instrument-tags", null, null, null, null, PlaylistType.STANDARD,
             List.of(), List.of(), List.of(), List.of("PIANO", "DRUMS")
         ));
 
@@ -754,7 +736,7 @@ class PlaylistServiceTest {
 
     private UUID persistPlaylist(String title, PlaylistType type, boolean published) {
         PlaylistUpsertRequest request = new PlaylistUpsertRequest(
-            title, null, null, null, null, type, JazzlogsCharacter.MARK, List.of(), List.of(), List.of(), List.of()
+            title, null, null, null, null, type, List.of(), List.of(), List.of(), List.of()
         );
         UUID id = playlistService.create(request).getId();
         if (published) {
@@ -765,7 +747,7 @@ class PlaylistServiceTest {
 
     private PlaylistUpsertRequest upsertRequestWithTags(String title, List<String> styleCodes) {
         return new PlaylistUpsertRequest(
-            title, null, null, null, null, PlaylistType.STANDARD, JazzlogsCharacter.MARK, styleCodes, List.of(), List.of(), List.of()
+            title, null, null, null, null, PlaylistType.STANDARD, styleCodes, List.of(), List.of(), List.of()
         );
     }
 

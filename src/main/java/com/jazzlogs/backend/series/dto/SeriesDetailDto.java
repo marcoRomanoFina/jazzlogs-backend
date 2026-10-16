@@ -6,7 +6,6 @@ import java.util.UUID;
 
 import com.jazzlogs.backend.graph.VocabularyTag;
 import com.jazzlogs.backend.series.SeriesStatus;
-import com.jazzlogs.backend.character.JazzlogsCharacter;
 
 // totalListenings is computed on-demand (COUNT across every chapter's listens,
 // all users) — same criterio as Album's avg rating, never denormalized.
@@ -20,7 +19,6 @@ public record SeriesDetailDto(
     String bannerImageUrl,
     String footerImageUrl,
     SeriesStatus status,
-    JazzlogsCharacter voice,
     int likeCount,
     boolean likedByCurrentUser,
     long totalListenings,

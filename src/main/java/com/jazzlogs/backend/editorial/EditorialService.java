@@ -26,7 +26,6 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.artist.Artist;
-import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.editorial.dto.BlockRequest;
 import com.jazzlogs.backend.editorial.dto.EditorialBlockDto;
 import com.jazzlogs.backend.editorial.dto.EditorialTrackSummaryDto;
@@ -44,7 +43,7 @@ import com.jazzlogs.backend.track.TrackRepository;
 
 import lombok.AllArgsConstructor;
 
-/** Owns a track's editorial content (title/dek/byline/blocks/image) — the only kind of editorial JazzLogs carries. */
+/** Owns a track's editorial content (title/dek/blocks/image) — the only kind of editorial JazzLogs carries. */
 @Service
 @AllArgsConstructor
 public class EditorialService {
@@ -63,7 +62,7 @@ public class EditorialService {
 
         TrackEditorial editorial = trackEditorialRepository.findByTrackId(trackId)
             .orElseGet(() -> new TrackEditorial(track));
-        editorial.update(request.title(), request.dek(), request.byline(), request.logNumber());
+        editorial.update(request.title(), request.dek(), request.logNumber());
         TrackEditorial saved = saveWithUniqueTitle(() -> trackEditorialRepository.save(editorial));
 
         upsertBlocks(saved, request.blocks());
@@ -234,12 +233,11 @@ public class EditorialService {
     @Transactional(readOnly = true)
     public Page<TrackEditorialCatalogueDto> listEditorials(
         String q,
-        JazzlogsCharacter byline,
         Pageable pageable,
         UUID currentUserId
     ) {
         String pattern = (q == null || q.isBlank()) ? null : "%" + q.trim().toLowerCase() + "%";
-        Page<TrackEditorialCatalogueRow> page = trackEditorialRepository.searchCatalogue(pattern, byline, pageable);
+        Page<TrackEditorialCatalogueRow> page = trackEditorialRepository.searchCatalogue(pattern, pageable);
 
         List<UUID> ids = page.getContent().stream().map(TrackEditorialCatalogueRow::id).toList();
         Set<UUID> liked = likeService.hasUserLikedBatch(currentUserId, LikeableEntityType.EDITORIAL, ids);
@@ -269,16 +267,11 @@ public class EditorialService {
         ));
     }
 
-    /** Backward-compatible catalogue listing without an author filter. */
-    public Page<TrackEditorialCatalogueDto> listEditorials(String q, Pageable pageable, UUID currentUserId) {
-        return listEditorials(q, null, pageable, currentUserId);
-    }
-
     private TrackEditorialCatalogueDto toTrackEditorialCatalogueDto(TrackEditorialCatalogueRow row, boolean likedByCurrentUser) {
         return new TrackEditorialCatalogueDto(
             row.id(), row.trackId(), row.trackName(), row.durationMs(), row.spotifyUrl(),
             row.editorialCoverUrl(), row.albumName(), row.albumId(), row.artistName(),
-            row.title(), row.logNumber(), row.dek(), row.byline(), row.createdAt(), row.likeCount(), likedByCurrentUser
+            row.title(), row.logNumber(), row.dek(), row.createdAt(), row.likeCount(), likedByCurrentUser
         );
     }
 
@@ -289,11 +282,10 @@ public class EditorialService {
     }
 
     /** Never exposes more than this many rows, however large {@code n} is asked for — the server has the final word, same as everywhere else this pattern shows up (e.g. TrackSearchService's MAX_CANDIDATES). */
-    private static final int MAX_RECENT_BY_BYLINE = 10;
     private static final int MAX_RECENT_EDITORIALS = 15;
 
     /**
-     * The newest editorials across all bylines, newest first.
+     * The newest editorials, newest first.
      *
      * @param n             how many to return; clamped to {@code [1, MAX_RECENT_EDITORIALS]}
      * @param currentUserId used only to compute each result's {@code likedByCurrentUser}
@@ -326,34 +318,15 @@ public class EditorialService {
 
         return new LatestEditorialDto(
             track.getId(), track.getName(), album.getName(),
-            editorial.getTitle(), editorial.getLogNumber(), editorial.getDek(), editorial.getByline(),
+            editorial.getTitle(), editorial.getLogNumber(), editorial.getDek(),
             editorial.getCoverImageUrl(), editorial.getPrincipalImageUrl(), editorial.getCreatedAt(), editorial.getLikeCount(),
             likedByCurrentUser, hook
         );
     }
 
-    /**
-     * A byline's most recent editorials, newest first.
-     *
-     * @param byline        the narrator to filter by
-     * @param n             how many to return; clamped to {@code [1, MAX_RECENT_BY_BYLINE]}, never rejected
-     * @param currentUserId used only to compute each result's {@code likedByCurrentUser}
-     * @return up to {@code n} editorials, newest first
-     */
-    @Transactional(readOnly = true)
-    public List<EditorialTrackSummaryDto> getRecentByByline(JazzlogsCharacter byline, int n, UUID currentUserId) {
-        int limit = Math.min(Math.max(n, 1), MAX_RECENT_BY_BYLINE);
-        List<EditorialTrackSummaryRow> rows = trackEditorialRepository.findRecentByByline(byline, PageRequest.of(0, limit));
-
-        List<UUID> ids = rows.stream().map(EditorialTrackSummaryRow::id).toList();
-        Set<UUID> liked = likeService.hasUserLikedBatch(currentUserId, LikeableEntityType.EDITORIAL, ids);
-
-        return rows.stream().map(row -> toEditorialTrackSummaryDto(row, liked.contains(row.id()))).toList();
-    }
-
     private EditorialTrackSummaryDto toEditorialTrackSummaryDto(EditorialTrackSummaryRow row, boolean likedByCurrentUser) {
         return new EditorialTrackSummaryDto(
-            row.id(), row.title(), row.logNumber(), row.dek(), row.byline(), row.trackId(),
+            row.id(), row.title(), row.logNumber(), row.dek(), row.trackId(),
             row.trackName(), row.coverImageUrl(), row.albumName(), row.artistName(), row.createdAt(), row.likeCount(),
             likedByCurrentUser
         );
@@ -400,7 +373,7 @@ public class EditorialService {
 
     private FeaturedTrackDto toFeaturedTrackDto(FeaturedTrackRow row, boolean likedByCurrentUser) {
         return new FeaturedTrackDto(
-            row.id(), row.title(), row.logNumber(), row.dek(), row.byline(), row.trackId(),
+            row.id(), row.title(), row.logNumber(), row.dek(), row.trackId(),
             row.trackName(), row.coverImageUrl(), row.albumName(), row.artistName(), row.createdAt(), row.likeCount(),
             likedByCurrentUser
         );
@@ -416,7 +389,7 @@ public class EditorialService {
             && likeService.hasUserLiked(currentUserId, LikeableEntityType.EDITORIAL, editorial.getId());
 
         return new TrackEditorialDto(
-            editorial.getTitle(), editorial.getLogNumber(), editorial.getDek(), editorial.getByline(),
+            editorial.getTitle(), editorial.getLogNumber(), editorial.getDek(),
             editorial.getCoverImageUrl(), editorial.getPrincipalImageUrl(), editorial.getSecondaryImageUrl(),
             editorial.getBannerImageUrl(), editorial.getFooterImageUrl(),
             editorial.getLikeCount(), likedByCurrentUser, editorial.getCreatedAt(),

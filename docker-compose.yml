@@ -106,6 +106,22 @@ services:
       mc mb --ignore-existing local/jazzlogs-audio;
       "
 
+  # Where a local run sends its traces and metrics (see the Observability
+  # section of application.properties): Grafana, Tempo, Prometheus and Loki in
+  # one container, already wired to each other, taking OTLP on 4318 with no
+  # credentials. Meant for development only — nothing is kept across
+  # restarts, on purpose. Grafana is on 3001 because the frontend's dev
+  # server already owns 3000.
+  observability:
+    image: grafana/otel-lgtm:latest
+    container_name: jazzlogs-observability
+    ports:
+      - "3001:3000"   # Grafana UI
+      - "4318:4318"   # OTLP over HTTP
+    volumes:
+      # Only to raise Tempo's span-attribute size limit — see the file's header.
+      - ./docker/observability/tempo-config.yaml:/otel-lgtm/tempo-config.yaml:ro
+
 volumes:
   postgres-data:
   neo4j-data:

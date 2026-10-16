@@ -15,7 +15,6 @@ import com.jazzlogs.backend.agent.ToolExecutionResult;
 import com.jazzlogs.backend.album.Album;
 import com.jazzlogs.backend.album.AlbumRepository;
 import com.jazzlogs.backend.artist.ArtistRepository;
-import com.jazzlogs.backend.character.JazzlogsCharacter;
 import com.jazzlogs.backend.chat.CatalogItemType;
 import com.jazzlogs.backend.track.TrackRepository;
 
@@ -52,13 +51,10 @@ public class ResolveJazzlogsEntityTool extends JazzTool {
     /** Each repository implements {@link CatalogEntityResolver} itself — no separate resolver classes needed. */
     private final Map<CatalogItemType, CatalogEntityResolver> resolversByType;
 
-    private final LogAuthorLookup logAuthorLookup;
-
     public ResolveJazzlogsEntityTool(
         AlbumRepository albumRepository,
         ArtistRepository artistRepository,
         TrackRepository trackRepository,
-        LogAuthorLookup logAuthorLookup,
         JsonMapper objectMapper
     ) {
         super(
@@ -68,13 +64,10 @@ public class ResolveJazzlogsEntityTool extends JazzTool {
                 + "one from an earlier tool result in this conversation. query is matched against the "
                 + "entity's own name only, so pass just that name (\"So What\", not \"So What by Miles "
                 + "Davis\") and tell same-named candidates apart by their artistFullName and album. "
-                + "Candidates come best match first, each with its entityId and entityName. A TRACK "
-                + "candidate also says which narrator wrote its log (writtenBy) — null means that track "
-                + "has no log yet, so EDITORIAL_CONTENT has nothing to return for it.",
+                + "Candidates come best match first, each with its entityId and entityName.",
             "Identificando el álbum/artista"
         );
         this.objectMapper = objectMapper;
-        this.logAuthorLookup = logAuthorLookup;
         this.resolversByType = Map.of(
             CatalogItemType.ALBUM, albumRepository,
             CatalogItemType.ARTIST, artistRepository,
@@ -96,7 +89,8 @@ public class ResolveJazzlogsEntityTool extends JazzTool {
         String normalizedQuery = Album.normalize(query);
 
         List<CatalogEntityResolver.CandidateRow> rows = resolversByType.get(entityType).search(normalizedQuery, MAX_CANDIDATES);
-        List<Candidate> candidates = toCandidates(rows, entityType);
+        // Kept in the order the query ranked them — never re-sorted here.
+        List<Candidate> candidates = rows.stream().map(ResolveJazzlogsEntityTool::toCandidate).toList();
 
         Output output = new Output(buildContent(entityType, query, candidates), new Metadata(entityType, candidates));
         return new ToolExecutionResult(writeJson(output), true);
@@ -119,21 +113,9 @@ public class ResolveJazzlogsEntityTool extends JazzTool {
         return query;
     }
 
-    /**
-     * Keeps the rows in the order the query ranked them — never re-sorts —
-     * and attaches each track's log author.
-     */
-    private List<Candidate> toCandidates(List<CatalogEntityResolver.CandidateRow> rows, CatalogItemType entityType) {
-        // Only a track has a log to be the author of — albums/artists skip the lookup entirely.
-        Map<UUID, JazzlogsCharacter> authors = entityType == CatalogItemType.TRACK
-            ? logAuthorLookup.byTrackIds(rows.stream().map(CatalogEntityResolver.CandidateRow::getId).toList())
-            : Map.of();
-        return rows.stream().map(row -> toCandidate(row, authors.get(row.getId()))).toList();
-    }
-
     /** Projects one resolver row into the tool's output shape. */
-    private Candidate toCandidate(CatalogEntityResolver.CandidateRow row, JazzlogsCharacter writtenBy) {
-        return new Candidate(row.getId(), row.getName(), row.getArtistFullName(), row.getAlbumName(), row.getMatchType(), writtenBy);
+    private static Candidate toCandidate(CatalogEntityResolver.CandidateRow row) {
+        return new Candidate(row.getId(), row.getName(), row.getArtistFullName(), row.getAlbumName(), row.getMatchType());
     }
 
     /** The conversational summary line the model reads alongside the structured candidates. */
@@ -159,12 +141,9 @@ public class ResolveJazzlogsEntityTool extends JazzTool {
 
     /**
      * One ranked candidate, named like FIND_TRACKS's so the model sees one
-     * vocabulary for ids and names. {@code album} and {@code
-     * writtenBy} (who signed its log) are only set for a TRACK.
+     * vocabulary for ids and names. {@code album} is only set for a TRACK.
      */
-    private record Candidate(
-        UUID entityId, String entityName, String artistFullName, String album, String matchType, JazzlogsCharacter writtenBy
-    ) {
+    private record Candidate(UUID entityId, String entityName, String artistFullName, String album, String matchType) {
     }
 
     /** The tool's structured payload, alongside {@link #buildContent}'s summary. */
