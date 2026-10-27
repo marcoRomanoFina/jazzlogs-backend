@@ -2,12 +2,14 @@ package com.jazzlogs.backend.web;
 
 import java.util.Map;
 
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
+import com.jazzlogs.backend.agent.limit.MessageLimitExceededException;
 import com.jazzlogs.backend.graph.GraphWriteException;
 import com.jazzlogs.backend.spotify.SpotifyLookupException;
 import com.openai.errors.OpenAIException;
@@ -46,6 +48,21 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleMaxUploadSizeExceededException(MaxUploadSizeExceededException ex) {
         return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE)
             .body(Map.of("error", "file_too_large", "message", "Uploaded file exceeds the size limit."));
+    }
+
+    /**
+     * {@code resetsAt} lets the frontend say when the user can write again;
+     * {@code error} tells apart their own limit from the whole demo's.
+     */
+    @ExceptionHandler(MessageLimitExceededException.class)
+    public ResponseEntity<Map<String, String>> handleMessageLimitExceededException(MessageLimitExceededException ex) {
+        String error = ex.getScope() == MessageLimitExceededException.Scope.USER
+            ? "message_limit_reached"
+            : "daily_demo_limit_reached";
+
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+            .header(HttpHeaders.RETRY_AFTER, String.valueOf(Math.max(1, ex.getRetryAfter().toSeconds())))
+            .body(Map.of("error", error, "message", ex.getMessage(), "resetsAt", ex.getResetsAt().toString()));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
