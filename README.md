@@ -1,2 +1,160 @@
-# Jazz.logs
-Jazzlogs is an AI-powered assistant that recommends music based on a curated archive of jazz albums, originally shared through daily posts on ig @jazzlogs
+# JazzLogs🎵🎷
+
+JazzLogs is a backend for a jazz-focused music logging and discovery app: users log albums and tracks they've listened to, write reviews and short notes, build "listen later" queues, follow curated playlists and audio series, and get recommendations from a graph built on top of their listening history.
+
+## About this repo
+
+This is a from-scratch rewrite of [jazzlogs](https://github.com/marcoRomanoFina/jazzlogs), an earlier version of the same idea. The core concept and domain (jazz catalog, reviews, recommendations) carry over, but the architecture, data model, and several product decisions were reworked along the way — this repo is the result of redesigning it with cleaner separation of concerns and patterns that scale better as features were added.
+
+## Tech stack
+
+- **Java 21 / Spring Boot 4** — REST API, validation, security
+- **PostgreSQL** — primary data store, source of truth for every write
+- **Neo4j** — recommendation graph, built from listening history and catalog relationships (artists, styles, moods, similar albums)
+- **Supabase Auth** — JWT-based authentication; the backend only validates tokens against Supabase's JWKS, it never issues or stores credentials
+- **Spotify Web API** — catalog metadata lookup (album art, track durations, etc.)
+- **OpenAI API + pgvector** — embeddings for editorial content, stored directly in Postgres
+- **JUnit 5 / AssertJ / Mockito** — testing, including full-context integration tests against an in-memory H2 database
+
+## Architecture notes
+
+A few decisions that shaped most of the codebase:
+
+- **Postgres is the source of truth, Neo4j is a mirror.** Every read that gates access to a feature (e.g. "has this user listened to this album before allowing a review") goes through Postgres only. Neo4j is written to asynchronously, best-effort, purely to feed the recommendation graph — if it's down, the product still works.
+- **Failed graph syncs aren't silently dropped.** A failed Neo4j write is recorded in a `sync_failures` table and retried by a scheduled worker until it succeeds or exceeds a retry limit, instead of just logging and moving on.
+- **Cross-cutting features are modeled generically, not duplicated per entity.** Likes, saved-for-later items, and listens all follow the same shape: a single table keyed by `(user_id, entity_type, entity_id)`, dispatched through `Map<EntityType, Handler>` wiring instead of a switch statement or a separate table per feature per entity. Adding a new likeable or listenable type is a config change, not a new table.
+- **Content that needs ordered, structured entries (playlists, audio series) uses granular per-item operations** (add/remove/reorder) rather than replace-the-whole-list-on-every-save, so partial updates don't require resending everything.
+
+## Features
+
+- **Catalog** — albums, tracks, and artists, enriched from Spotify
+- **Reviews** — half-point ratings, standout tracks, aggregate rating per album
+- **Notes** — short, timestamped text notes on a track, independent from reviews
+- **Playlists** — editorial/curated playlists with per-track curator notes and tag-based discovery (style, mood, context)
+- **Series** — podcast-style audio series with sequential chapters that unlock as the previous one is completed
+- **Likes & Saved Items** — generic like/unlike and a "listen later" queue that work across every content type
+- **Recommendations** — Neo4j-backed graph traversal over artists, styles, moods, and listening history
+
+## Endpoints
+
+All routes except `/public/**` require a `Authorization: Bearer <supabase-jwt>` header. Routes marked **admin** additionally require the `ADMIN` role.
+
+**Catalog**
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/albums/{id}` | album detail: tracks, personnel, tags, rating |
+| POST | `/albums` | **admin** |
+| PATCH | `/albums/{id}` | **admin** — partial update |
+| POST | `/albums/{id}/tracks` | **admin** |
+| POST | `/albums/{id}/tags/{style\|mood\|context}` | **admin** |
+| POST | `/albums/{id}/listen` | mark listened (gates reviews) |
+| GET / POST / DELETE | `/albums/{id}/reviews` | list / upsert / delete |
+| GET | `/albums/{id}/reviews/me`, `/albums/{id}/rating` | |
+| GET | `/artists/{id}` | |
+| POST / PATCH | `/artists`, `/artists/{id}` | **admin** |
+| POST | `/artists/{id}/{instrument\|styles\|contexts\|similar}` | **admin** |
+| PATCH | `/tracks/{id}` | **admin** |
+| POST | `/tracks/{id}/tags/{mood\|context\|rhythm\|instrument}` | **admin** |
+| POST | `/tracks/{id}/listen` | |
+| POST | `/tracks/{id}/ratings` | half-point track rating |
+| GET / POST | `/tracks/{id}/notes`, `/tracks/{id}/notes/me` | |
+| DELETE | `/notes/{id}` | |
+
+**Playlists** (curated, admin-authored)
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/playlists`, `/playlists/{id}` | published-only for non-admins |
+| POST / PUT | `/playlists`, `/playlists/{id}` | **admin** |
+| POST / DELETE | `/playlists/{id}/tracks`, `/playlists/{id}/tracks/{trackId}` | **admin** |
+| PATCH | `/playlists/{id}/tracks/{trackId}` | **admin** — curator note / title |
+| PUT | `/playlists/{id}/tracks/reorder` | **admin** |
+| POST / DELETE | `/playlists/{id}/listened` | |
+
+**Series** (audio series with sequential chapters)
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/series`, `/series/{id}` | published-only for non-admins |
+| POST / PUT | `/series`, `/series/{id}` | **admin** |
+| POST / DELETE / PATCH | `/series/{id}/chapters`, `/series/{id}/chapters/{chapterId}` | **admin** |
+| PUT | `/series/{id}/chapters/reorder` | **admin** |
+| POST | `/series/{id}/chapters/{chapterId}/complete` | rejected if the chapter is still locked |
+
+**Cross-cutting**
+| Method | Path | Notes |
+|---|---|---|
+| POST / DELETE | `/likes` | body: `{ entityType, entityId }` — works for reviews, notes, playlists, series, editorials |
+| GET | `/likes/count`, `/likes/me` | |
+| POST / DELETE / GET | `/saved-items` | "listen later" queue, same generic entity model as likes |
+| GET | `/me` | current user, resolved from the JWT |
+
+
+## Agent tools
+
+The recommendation chat (`POST /chats/{chatId}/messages`) is backed by a plain LLM tool-calling loop against the OpenAI Responses API (`AgentOrchestrator`) — no agent framework, just iterate-until-`submit_final_answer`. Each tool is a `JazzTool` subclass owning both its JSON schema and its execution logic; adding a new one is a new `@Component`, no separate registration step.
+
+| Tool | What it does |
+|---|---|
+| `RESOLVE_JAZZLOGS_ENTITY` | Free-text album/track/artist name → ranked catalog id candidates, via Postgres `pg_trgm` fuzzy search |
+| `EDITORIAL_CONTENT` | Full or filtered text of an editorial's blocks, given an id already resolved |
+| `GRAPH_FILTER` | Ranks candidates of ONE entity type (Album, Track, or Artist — call again for another) by Neo4j graph-topology overlap with style/rhythm/mood/context/instrument filters. Returns which specific dimensions matched per candidate (not just a score) and excludes items the user already listened to or rated by default |
+| `SEMANTIC_SEARCH` | pgvector similarity search over editorial content, scoped to a candidate set of ONE entity type (typically `GRAPH_FILTER`'s output, but works standalone) and ONE content category per call. No shared state between the two — the candidate set is passed explicitly, never fused/reranked server-side |
+| `submit_final_answer` | Not dispatched like the others — intercepted by the orchestrator to close a turn; carries the structured recommendation metadata alongside the model's plain-text answer |
+
+## Running locally
+
+Requirements: Java 21, Maven, a Postgres instance with the `pg_trgm` and
+`vector` extensions available, and a Neo4j instance.
+
+```bash
+docker compose up -d
+./mvnw spring-boot:run
+```
+
+`docker-compose.yml` brings up all three: Postgres on `localhost:5433` (not
+the default 5432 — leaves room for a native, non-Docker Postgres already
+bound there) via the `pgvector/pgvector` image (plain `postgres` doesn't
+bundle the `vector` extension's binaries at all), Neo4j Community Edition on
+the usual `7474`/`7687`, and MinIO (S3-compatible object storage for
+user-uploaded images, e.g. a playlist cover) on `9000`/`9001` — a one-shot
+`createbuckets` service creates its bucket and makes it public-read on
+first `up`, no manual step needed. Flyway builds the whole schema itself on
+first boot — no separate schema import needed, just point `DATABASE_URL` at
+it (see the table below; the defaults in `application-dev.properties`
+already match this compose file's credentials, so `DATABASE_URL`/
+`DATABASE_USERNAME`/`DATABASE_PASSWORD` can be omitted from `.env` entirely
+if running the local stack this way).
+
+Both `application-dev.properties` and `application-prod.properties` read
+`DATABASE_URL`/`DATABASE_USERNAME`/`DATABASE_PASSWORD` the same way — `prod`
+is just what deployment sets automatically (`SPRING_PROFILES_ACTIVE=prod`,
+e.g. Railway) — so pointing either profile at a real production Postgres
+instead of the local compose stack works exactly the same way, just with
+different env var values. An in-memory H2 profile was tried for a while for
+zero-setup local dev, but couldn't run the `pg_trgm`/`pgvector` SQL the
+agent's catalog/editorial search tools depend on, so it was dropped.
+
+Configuration is read from environment variables (see `application.properties`,
+`application-dev.properties` and `application-prod.properties` for the full
+list and defaults):
+
+| Variable | Required | Notes |
+|---|---|---|
+| `SUPABASE_JWKS_URI` | yes | JWKS endpoint used to validate incoming JWTs |
+| `DATABASE_URL` / `DATABASE_USERNAME` / `DATABASE_PASSWORD` | no | defaults to the local compose stack (`localhost:5433`, `postgres`/`postgres`); point these at your production Postgres instead to use that |
+| `NEO4J_URI` / `NEO4J_USERNAME` / `NEO4J_PASSWORD` | password only | defaults to `bolt://localhost:7687` (the local compose stack) |
+| `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | no | defaults to `minioadmin`/a dev-only password; console at `localhost:9001` |
+| `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` | no | catalog enrichment is skipped without these |
+| `OPENAI_API_KEY` | no | editorial embeddings/agent calls are skipped without this |
+
+## Testing
+
+```bash
+./mvnw test
+```
+
+Tests run against the same Postgres as `dev`/`prod` (see `DATABASE_URL`
+above — the local compose stack by default) with the real Spring context.
+`PlaylistTrackSyncFailureTest` in particular writes a real, non-rolled-back
+row to `sync_failures` on every run (it tests a fire-and-forget async path
+that commits on its own thread, outside the test's transaction) — clean that
+table out periodically.

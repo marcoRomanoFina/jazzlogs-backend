@@ -1,0 +1,12 @@
+package com.jazzlogs.backend.syncfailure;
+
+public enum SyncFailureEntityType {
+    LISTENED,
+    TRACK_RATED,
+    PLAYLIST_TRACK_ADDED,
+    PLAYLIST_TRACK_REMOVED,
+    PLAYLIST_TRACKS_REORDERED,
+    PLAYLIST_DELETED,
+    CHAT_RECOMMENDATION_MEMORY_UPDATED,
+    USER_CREATED
+}

@@ -1,0 +1,280 @@
+package com.jazzlogs.backend.artist;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
+import org.springframework.web.server.ResponseStatusException;
+
+import com.jazzlogs.backend.album.Album;
+import com.jazzlogs.backend.album.AlbumRepository;
+import com.jazzlogs.backend.album.dto.ContextTagRequest;
+import com.jazzlogs.backend.album.dto.StyleTagRequest;
+import com.jazzlogs.backend.artist.dto.ArtistTagsDto;
+import com.jazzlogs.backend.artist.dto.ArtistHeaderDto;
+import com.jazzlogs.backend.artist.dto.CreateArtistRequest;
+import com.jazzlogs.backend.artist.dto.AlbumSummaryDto;
+import com.jazzlogs.backend.artist.dto.ArtistSummaryDto;
+import com.jazzlogs.backend.artist.dto.SimilarArtistDto;
+import com.jazzlogs.backend.artist.dto.SimilarArtistRequest;
+import com.jazzlogs.backend.graph.GraphService;
+import com.jazzlogs.backend.graph.SimilarArtistEntry;
+import com.jazzlogs.backend.spotify.SpotifyArtistData;
+import com.jazzlogs.backend.spotify.SpotifyCatalogService;
+import com.jazzlogs.backend.track.dto.InstrumentTagRequest;
+import com.jazzlogs.backend.vocabulary.ContextVocabulary;
+import com.jazzlogs.backend.vocabulary.InstrumentVocabulary;
+import com.jazzlogs.backend.vocabulary.StyleVocabulary;
+import com.jazzlogs.backend.vocabulary.VocabularyCodes;
+
+import lombok.AllArgsConstructor;
+
+@Service
+@AllArgsConstructor
+public class ArtistService {
+
+    private final ArtistRepository artistRepository;
+    private final GraphService graphService;
+    private final SpotifyCatalogService spotifyCatalogService;
+    private final AlbumRepository albumRepository;
+
+    // Upsert on spotifyArtistId when given: re-posting an artist that's
+    // already in the catalog updates it in place (fresh Spotify data)
+    // instead of creating a duplicate. Without a spotifyArtistId, this is
+    // the manual-entry fallback for artists with no Spotify presence at all
+    // (mostly older sidemen) — see createManualArtist.
+    @Transactional
+    public Artist createOrUpdateArtist(CreateArtistRequest request) {
+        if (StringUtils.hasText(request.spotifyArtistId())) {
+            return createOrUpdateFromSpotify(request.spotifyArtistId());
+        }
+        return createManualArtist(request.name());
+    }
+
+    private Artist createOrUpdateFromSpotify(String spotifyArtistId) {
+        SpotifyArtistData data = spotifyCatalogService.fetchArtist(spotifyArtistId);
+
+        Artist artist = artistRepository.findBySpotifyArtistId(spotifyArtistId)
+            .map(existing -> applyToExisting(existing, data))
+            .orElseGet(() -> new Artist(data.name(), spotifyArtistId, data.spotifyUrl(), data.imageUrl()));
+
+        Artist saved = artistRepository.save(artist);
+        graphService.syncArtistNode(saved.getId(), saved.getName());
+        return saved;
+    }
+
+    // No spotifyArtistId means no natural id to upsert on, so a duplicate
+    // name is checked explicitly here instead — re-posting the same name
+    // (any case/whitespace) now rejects rather than creating a second
+    // artist. Editing one after creation isn't supported yet (there's no
+    // PATCH/PUT for a bare name change).
+    private Artist createManualArtist(String name) {
+        if (!StringUtils.hasText(name)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Either spotifyArtistId or name is required");
+        }
+        if (artistRepository.existsByNormalizedName(Album.normalize(name))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "An artist named '" + name + "' already exists");
+        }
+
+        Artist artist = new Artist(name, null, null, null);
+        Artist saved = artistRepository.save(artist);
+        graphService.syncArtistNode(saved.getId(), saved.getName());
+        return saved;
+    }
+
+    private Artist applyToExisting(Artist artist, SpotifyArtistData data) {
+        artist.setName(data.name());
+        artist.setSpotifyUrl(data.spotifyUrl());
+        artist.setImageUrl(data.imageUrl());
+        return artist;
+    }
+
+    public void setPrimaryInstrument(UUID artistId, InstrumentTagRequest request) {
+        getArtistOrThrow(artistId);
+        VocabularyCodes.validate(InstrumentVocabulary.class, request.instrumentCode(), "instrument");
+        graphService.setPrimaryInstrument(artistId, request.instrumentCode());
+    }
+
+    public void replaceStyles(UUID artistId, StyleTagRequest request) {
+        getArtistOrThrow(artistId);
+        request.styleCodes().forEach(code -> VocabularyCodes.validate(StyleVocabulary.class, code, "style"));
+        graphService.replaceArtistStyles(artistId, request.styleCodes());
+    }
+
+    public void replaceContexts(UUID artistId, ContextTagRequest request) {
+        getArtistOrThrow(artistId);
+        request.contextCodes().forEach(code -> VocabularyCodes.validate(ContextVocabulary.class, code, "context"));
+        graphService.replaceArtistContexts(artistId, request.contextCodes());
+    }
+
+    /**
+     * Curates a {@code SIMILAR_TO} edge from this artist to another — see
+     * {@link #getSimilarArtists}, which reads it back. Unidirectional by
+     * default ({@code artistId -> similarArtistId} only); {@code
+     * request.bidirectional()} also creates the reverse edge, since
+     * "similar" is usually mutual but the curated {@code reason} might not
+     * read the same way in reverse.
+     *
+     * @param artistId the artist
+     * @param request  the similar artist, an optional curated reason, and whether to also create the reverse edge
+     * @throws ResponseStatusException 404 if either artist doesn't exist
+     */
+    public void addSimilarArtist(UUID artistId, SimilarArtistRequest request) {
+        getArtistOrThrow(artistId);
+        getArtistOrThrow(request.similarArtistId());
+
+        boolean bidirectional = Boolean.TRUE.equals(request.bidirectional());
+        graphService.addSimilarArtist(artistId, request.similarArtistId(), request.reason(), bidirectional);
+    }
+
+    /**
+     * Removes the {@code SIMILAR_TO} edge from this artist to another — see
+     * {@link #addSimilarArtist}. {@code bidirectional} also removes the
+     * reverse edge, if one exists.
+     *
+     * @param artistId        the artist
+     * @param similarArtistId the similar artist
+     * @param bidirectional   whether to also remove the reverse edge
+     * @throws ResponseStatusException 404 if either artist doesn't exist
+     */
+    public void removeSimilarArtist(UUID artistId, UUID similarArtistId, boolean bidirectional) {
+        getArtistOrThrow(artistId);
+        getArtistOrThrow(similarArtistId);
+        graphService.removeSimilarArtist(artistId, similarArtistId, bidirectional);
+    }
+
+    /**
+     * The artist page's header — the artist's own fields only. Nothing from
+     * Neo4j (instruments/styles/contexts/similar artists/appearances) —
+     * those live on a separate, more expensive endpoint.
+     *
+     * @param artistId the artist to load
+     * @return the artist header
+     * @throws ResponseStatusException 404 if the artist doesn't exist
+     */
+    @Transactional(readOnly = true)
+    public ArtistHeaderDto getArtistHeader(UUID artistId) {
+        Artist artist = getArtistOrThrow(artistId);
+
+        return new ArtistHeaderDto(
+            artist.getId(),
+            artist.getName(),
+            artist.getSpotifyArtistId(),
+            artist.getSpotifyUrl(),
+            artist.getImageUrl()
+        );
+    }
+
+    /**
+     * Albums where this artist appears as a sideman ({@code SIDEMAN_ON}), not
+     * as the leading artist — paginated. The candidate album ids come from
+     * one unpaged Neo4j read ({@link GraphService#getSidemanAlbumIds}) — the
+     * real pagination (and {@code Page}'s total count) happens here in
+     * Postgres, not in Cypher, since that candidate set is small and curated.
+     *
+     * @param artistId the artist
+     * @param pageable page request
+     * @return the matching page, empty if this artist has no sideman albums
+     * @throws ResponseStatusException 404 if the artist doesn't exist
+     */
+    @Transactional(readOnly = true)
+    public Page<AlbumSummaryDto> getSidemanAlbums(UUID artistId, Pageable pageable) {
+        getArtistOrThrow(artistId);
+        return resolveAlbumPage(graphService.getSidemanAlbumIds(artistId), pageable);
+    }
+
+    private Page<AlbumSummaryDto> resolveAlbumPage(List<UUID> albumIds, Pageable pageable) {
+        if (albumIds.isEmpty()) {
+            return Page.empty(pageable);
+        }
+
+        Page<Album> page = albumRepository.findByIdInOrderByReleaseYearAsc(albumIds, pageable);
+
+        List<UUID> pageAlbumIds = page.getContent().stream().map(Album::getId).toList();
+        Map<UUID, List<ArtistSummaryDto>> artistsByAlbumId = albumRepository.findArtistsForAlbums(pageAlbumIds).stream()
+            .collect(Collectors.groupingBy(
+                AlbumRepository.AlbumArtistRow::getAlbumId,
+                LinkedHashMap::new,
+                Collectors.mapping(
+                    row -> new ArtistSummaryDto(row.getArtistId(), row.getName(), row.getImageUrl(), row.getSpotifyUrl()),
+                    Collectors.toList()
+                )
+            ));
+
+        return page.map(album -> new AlbumSummaryDto(
+            album.getId(),
+            album.getName(),
+            album.getImageUrl(),
+            album.getReleaseYear(),
+            album.getTotalTracks(),
+            artistsByAlbumId.getOrDefault(album.getId(), List.of())
+        ));
+    }
+
+    /**
+     * The artist's "similar artists" list ({@code SIMILAR_TO} in Neo4j),
+     * paginated. Same "Neo4j gives the small curated candidate set (plus its
+     * per-artist {@code reason}), Postgres does the real {@code Page}" split
+     * as {@link #getSidemanAlbums} — {@code reason} is merged onto the
+     * page from a map built off that same unpaged Neo4j read, not a second
+     * Neo4j round trip.
+     *
+     * @param artistId the artist
+     * @param pageable page request
+     * @return the matching page, empty if this artist has no similar artists
+     * @throws ResponseStatusException 404 if the artist doesn't exist
+     */
+    @Transactional(readOnly = true)
+    public Page<SimilarArtistDto> getSimilarArtists(UUID artistId, Pageable pageable) {
+        getArtistOrThrow(artistId);
+
+        List<SimilarArtistEntry> entries = graphService.getSimilarArtists(artistId);
+        if (entries.isEmpty()) {
+            return Page.empty(pageable);
+        }
+
+        List<UUID> similarArtistIds = entries.stream().map(SimilarArtistEntry::artistId).toList();
+        Map<UUID, String> reasonsByArtistId = entries.stream()
+            .collect(Collectors.toMap(SimilarArtistEntry::artistId, SimilarArtistEntry::reason));
+
+        Page<Artist> page = artistRepository.findByIdInOrderByNameAsc(similarArtistIds, pageable);
+        return page.map(artist -> new SimilarArtistDto(
+            artist.getId(),
+            artist.getName(),
+            artist.getImageUrl(),
+            reasonsByArtistId.get(artist.getId())
+        ));
+    }
+
+    /**
+     * The artist's Neo4j-derived tags. Similar artists and appearances live
+     * on their own separate endpoints, not here.
+     *
+     * @param artistId the artist
+     * @return the artist's instrument/style/context tags
+     * @throws ResponseStatusException 404 if the artist doesn't exist
+     */
+    @Transactional(readOnly = true)
+    public ArtistTagsDto getArtistTags(UUID artistId) {
+        getArtistOrThrow(artistId);
+
+        return new ArtistTagsDto(
+            graphService.getArtistInstruments(artistId),
+            graphService.getArtistStyles(artistId),
+            graphService.getArtistContexts(artistId)
+        );
+    }
+
+    private Artist getArtistOrThrow(UUID artistId) {
+        return artistRepository.findById(artistId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Artist not found: " + artistId));
+    }
+}

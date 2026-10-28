@@ -1,0 +1,81 @@
+package com.jazzlogs.backend.config;
+
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
+import org.springframework.core.task.SyncTaskExecutor;
+import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+
+/**
+ * Dedicated pool for Neo4jAsyncSyncExecutor — kept separate from any other
+ * async work so a Neo4j slowdown (e.g. Aura in prod) can't starve unrelated
+ * @Async work of threads, and vice versa.
+ */
+@Configuration
+@EnableAsync
+public class AsyncConfig {
+
+    @Profile("!test")
+    @Bean(name = "neo4jSyncExecutor")
+    public Executor neo4jSyncExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(8);
+        executor.setQueueCapacity(200);
+        executor.setThreadNamePrefix("neo4j-sync-");
+        executor.initialize();
+        return executor;
+    }
+
+    // Test-only: runs Neo4jAsyncSyncExecutor.sync's graphWrite on the calling
+    // thread instead of a background pool. That graphWrite is a call into
+    // GraphService, which every test mocks (@MockitoBean) — a real
+    // background thread invoking a Mockito mock while the main test thread
+    // is mid-`when(...)` on some unrelated mock is a genuine race (Mockito's
+    // stubbing bookkeeping isn't safe against that), surfacing as a
+    // nonsensical "cannot stub void method" failure in a completely
+    // different test class. Running synchronously here removes the second
+    // thread entirely, not just makes the race rarer.
+    @Profile("test")
+    @Bean(name = "neo4jSyncExecutor")
+    public Executor neo4jSyncExecutorSync() {
+        return new SyncTaskExecutor();
+    }
+
+    // The default pool for any @Async method that doesn't name an executor
+    // (today: ChatRecommendationMemoryService.syncMemoryUpdate) — "taskExecutor"
+    // is Spring's own convention for this, resolved automatically without
+    // needing @Primary. Without this bean, Spring can't disambiguate between
+    // neo4jSyncExecutor and the auto-configured taskScheduler bean (which also
+    // implements Executor) and silently falls back to an unpooled
+    // SimpleAsyncTaskExecutor (a new thread per call, no queue/cap) instead.
+    @Bean(name = "taskExecutor")
+    public Executor taskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2);
+        executor.setMaxPoolSize(8);
+        executor.setQueueCapacity(200);
+        executor.setThreadNamePrefix("async-");
+        executor.initialize();
+        return executor;
+    }
+
+    // One virtual thread per task, not a bounded ThreadPoolTaskExecutor like
+    // the two above: everything AgentOrchestrator schedules here is blocking
+    // I/O (the OpenAI Responses API call, then per-tool DB/Neo4j/Spotify
+    // calls), never CPU-bound work — exactly what virtual threads are for.
+    // A capped pool would just add queueing delay for no benefit; virtual
+    // threads can have thousands blocked on I/O at once without exhausting
+    // any real OS thread. Injected directly (AgentOrchestrator calls
+    // CompletableFuture.runAsync/supplyAsync manually, not via @Async — a
+    // method returning SseEmitter can't itself be @Async), by parameter name
+    // matching this bean name, same convention as neo4jSyncExecutor/taskExecutor.
+    @Bean(name = "agentExecutor")
+    public Executor agentExecutor() {
+        return Executors.newVirtualThreadPerTaskExecutor();
+    }
+}

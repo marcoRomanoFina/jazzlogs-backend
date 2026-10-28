@@ -1,0 +1,131 @@
+# Local infra this app needs beyond Postgres/Neo4j credentials themselves —
+# see README's "Running locally" section. `docker compose up -d` gets both
+# services going; the app then just needs DATABASE_URL/NEO4J_URI (and the
+# rest of .env) pointed at them.
+#
+# name: pins the project name (and therefore the volume/container prefix)
+# regardless of which directory this file gets run from — without it,
+# `docker compose up` from a differently-named checkout directory would
+# create a second, empty set of volumes instead of reusing these.
+name: jazzlogs
+
+services:
+  postgres:
+    # pgvector/pgvector, not plain postgres — the base image doesn't bundle
+    # the vector extension's binaries at all, so `CREATE EXTENSION vector`
+    # (see docker/postgres/init) has nothing to load either way.
+    image: pgvector/pgvector:pg17
+    container_name: jazzlogs-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      # Host port 5433, not 5432 — leaves room for a native (non-Docker)
+      # Postgres already bound to 5432/localhost on the host.
+      - "5433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  neo4j:
+    image: neo4j:5.26
+    container_name: jazzlogs-neo4j
+    environment:
+      NEO4J_AUTH: ${NEO4J_AUTH:-neo4j/jazzlogs-dev-password}
+      NEO4J_server_memory_heap_initial__size: ${NEO4J_HEAP_INITIAL_SIZE:-512m}
+      NEO4J_server_memory_heap_max__size: ${NEO4J_HEAP_MAX_SIZE:-512m}
+      NEO4J_server_memory_pagecache_size: ${NEO4J_PAGECACHE_SIZE:-512m}
+    ports:
+      - "${NEO4J_HTTP_PORT:-7474}:7474"
+      - "${NEO4J_BOLT_PORT:-7687}:7687"
+    volumes:
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -a bolt://localhost:7687 -u neo4j -p \"$${NEO4J_AUTH#*/}\" \"RETURN 1;\" || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  minio:
+    # S3-compatible object storage — where user-uploaded images (e.g. a
+    # playlist cover) actually live, since those have no Spotify-sourced
+    # imageUrl to fall back on like albums/artists/tracks do.
+    # quay.io/minio/minio and Docker Hub's minio/minio both refuse anonymous
+    # pulls now — MinIO discontinued free community container images
+    # entirely (every tag, not just :latest). bitnamilegacy/minio is a
+    # frozen-but-still-public mirror from before that cutoff — pinned, not
+    # :latest, since bitnamilegacy gets no further pushes at all. Its own
+    # entrypoint starts the server on 9000/9001 without needing `command:`
+    # (unlike the old quay.io image, which printed help and exited without
+    # one).
+    image: bitnamilegacy/minio:2025.7.23-debian-12-r5
+    container_name: jazzlogs-minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-jazzlogs-dev-password}
+    ports:
+      # 9000: the S3 API itself. 9001: the web console (browse buckets at
+      # http://localhost:9001), not used by the app.
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      # Bitnami's image serves /bitnami/minio/data, not the /data the old
+      # image used — mounted anywhere else, MinIO starts empty.
+      - minio-data:/bitnami/minio/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # One-shot: creates the jazzlogs-images bucket (public-read) and the
+  # jazzlogs-audio bucket (private), then exits — so a fresh `docker compose
+  # up` needs no manual `mc` step. Images are public-read so a stored object
+  # is a plain, permanent URL — same shape as every Spotify-sourced imageUrl
+  # already is. Audio stays private on purpose — series may end up gated
+  # behind a subscription, so playback goes through a presigned, short-lived
+  # URL (AudioStorageService.presignPlaybackUrl) instead of a permanent
+  # public one, giving the backend a choke point to add that check later.
+  createbuckets:
+    # mc was withdrawn from quay.io/Docker Hub the same way the server
+    # image was — same bitnamilegacy stopgap as the minio service above.
+    image: bitnamilegacy/minio-client:2025.7.21-debian-12-r3
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-jazzlogs-dev-password};
+      mc mb --ignore-existing local/jazzlogs-images;
+      mc anonymous set download local/jazzlogs-images;
+      mc mb --ignore-existing local/jazzlogs-audio;
+      "
+
+  # Where a local run sends its traces and metrics (see the Observability
+  # section of application.properties): Grafana, Tempo, Prometheus and Loki in
+  # one container, already wired to each other, taking OTLP on 4318 with no
+  # credentials. Meant for development only — nothing is kept across
+  # restarts, on purpose. Grafana is on 3001 because the frontend's dev
+  # server already owns 3000.
+  observability:
+    image: grafana/otel-lgtm:latest
+    container_name: jazzlogs-observability
+    ports:
+      - "3001:3000"   # Grafana UI
+      - "4318:4318"   # OTLP over HTTP
+    volumes:
+      # Only to raise Tempo's span-attribute size limit — see the file's header.
+      - ./docker/observability/tempo-config.yaml:/otel-lgtm/tempo-config.yaml:ro
+
+volumes:
+  postgres-data:
+  neo4j-data:
+  neo4j-logs:
+  minio-data:

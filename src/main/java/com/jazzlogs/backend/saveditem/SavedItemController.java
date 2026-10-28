@@ -1,0 +1,113 @@
+package com.jazzlogs.backend.saveditem;
+
+import java.util.UUID;
+
+import jakarta.validation.Valid;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.jazzlogs.backend.saveditem.dto.SaveItemRequest;
+import com.jazzlogs.backend.saveditem.dto.SavedItemSummary;
+import com.jazzlogs.backend.saveditem.dto.SavedResponse;
+import com.jazzlogs.backend.user.UserService;
+
+import lombok.AllArgsConstructor;
+
+// No @PreAuthorize here — any authenticated role can save/unsave, gated only by
+// the default anyRequest().authenticated() rule in SecurityConfig. DELETE takes
+// query params, not a body, matching LikeController — DELETE-with-body is
+// unreliable across HTTP clients/proxies.
+@RestController
+@RequestMapping("/saved-items")
+@AllArgsConstructor
+public class SavedItemController {
+
+    private final SavedItemService savedItemService;
+    private final UserService userService;
+
+    /**
+     * Saves an entity on the caller's behalf — see {@link SavedItemService#save}.
+     *
+     * @param request which entity to save
+     * @param jwt     the caller
+     * @return 201 if this call created the save, 200 if the caller had already saved it
+     */
+    @PostMapping
+    public ResponseEntity<Void> save(@Valid @RequestBody SaveItemRequest request, @AuthenticationPrincipal Jwt jwt) {
+        boolean created = savedItemService.save(currentUserId(jwt), request.entityType(), request.entityId());
+        return ResponseEntity.status(created ? HttpStatus.CREATED : HttpStatus.OK).build();
+    }
+
+    /**
+     * Unsaves an entity on the caller's behalf — see {@link SavedItemService#remove}.
+     *
+     * @param entityType which kind of entity
+     * @param entityId   that entity's own id
+     * @param jwt        the caller
+     */
+    @DeleteMapping
+    public ResponseEntity<Void> remove(
+        @RequestParam SaveableEntityType entityType,
+        @RequestParam UUID entityId,
+        @AuthenticationPrincipal Jwt jwt
+    ) {
+        savedItemService.remove(currentUserId(jwt), entityType, entityId);
+        return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * The caller's saved items of one type, paginated — see {@link SavedItemService#list}.
+     * type is required — {@code SavedItemService.list} resolves display data
+     * in one batch query for a single entity_type; no "all types" mode. No
+     * sort default either: {@code SavedItemRepository}'s query already
+     * hardcodes {@code ORDER BY created_at DESC}, a Pageable-driven Sort on
+     * top would get appended after it redundantly.
+     *
+     * @param type     which kind of entity to list
+     * @param pageable page request
+     * @param jwt      the caller
+     * @return the matching page
+     */
+    @GetMapping
+    public Page<SavedItemSummary> list(
+        @RequestParam(name = "type") SaveableEntityType type,
+        @PageableDefault Pageable pageable,
+        @AuthenticationPrincipal Jwt jwt
+    ) {
+        return savedItemService.list(currentUserId(jwt), type, pageable);
+    }
+
+    /**
+     * Whether the caller has saved an entity — see {@link SavedItemService#isSaved}.
+     *
+     * @param entityType which kind of entity
+     * @param entityId   that entity's own id
+     * @param jwt        the caller
+     * @return whether the caller has saved it
+     */
+    @GetMapping("/me")
+    public SavedResponse isSaved(
+        @RequestParam SaveableEntityType entityType,
+        @RequestParam UUID entityId,
+        @AuthenticationPrincipal Jwt jwt
+    ) {
+        return new SavedResponse(savedItemService.isSaved(currentUserId(jwt), entityType, entityId));
+    }
+
+    private UUID currentUserId(Jwt jwt) {
+        return userService.resolveFromJwt(jwt).getId();
+    }
+}
