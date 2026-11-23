@@ -54,7 +54,7 @@ public class TrackEditorial {
     @Column(columnDefinition = "TEXT")
     private String dek;
 
-    // Five images for this editorial's own page layout — upload-only, never
+    // Two images for this editorial's own page layout — upload-only, never
     // set via update(...), only via their own endpoints (see
     // EditorialService.setTrackEditorial*Image).
     @Column(name = "cover_image_url")
@@ -62,15 +62,6 @@ public class TrackEditorial {
 
     @Column(name = "principal_image_url")
     private String principalImageUrl;
-
-    @Column(name = "secondary_image_url")
-    private String secondaryImageUrl;
-
-    @Column(name = "banner_image_url")
-    private String bannerImageUrl;
-
-    @Column(name = "footer_image_url")
-    private String footerImageUrl;
 
     @OneToMany(mappedBy = "trackEditorial", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("position ASC")
@@ -104,18 +95,6 @@ public class TrackEditorial {
 
     public void updatePrincipalImageUrl(String principalImageUrl) {
         this.principalImageUrl = principalImageUrl;
-    }
-
-    public void updateSecondaryImageUrl(String secondaryImageUrl) {
-        this.secondaryImageUrl = secondaryImageUrl;
-    }
-
-    public void updateBannerImageUrl(String bannerImageUrl) {
-        this.bannerImageUrl = bannerImageUrl;
-    }
-
-    public void updateFooterImageUrl(String footerImageUrl) {
-        this.footerImageUrl = footerImageUrl;
     }
 
     @PrePersist

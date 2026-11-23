@@ -115,45 +115,6 @@ public class TrackController {
         return ResponseEntity.noContent().build();
     }
 
-    /**
-     * Uploads this track's editorial's secondary image — see {@link EditorialService#setTrackEditorialSecondaryImage}.
-     *
-     * @param id   the track
-     * @param file the image file (jpeg/png/webp only, see {@code ImageStorageService})
-     */
-    @PutMapping(value = "/{id}/editorial/secondary-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> setEditorialSecondaryImage(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
-        editorialService.setTrackEditorialSecondaryImage(id, file);
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * Uploads this track's editorial's banner image — see {@link EditorialService#setTrackEditorialBannerImage}.
-     *
-     * @param id   the track
-     * @param file the image file (jpeg/png/webp only, see {@code ImageStorageService})
-     */
-    @PutMapping(value = "/{id}/editorial/banner-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> setEditorialBannerImage(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
-        editorialService.setTrackEditorialBannerImage(id, file);
-        return ResponseEntity.noContent().build();
-    }
-
-    /**
-     * Uploads this track's editorial's footer image — see {@link EditorialService#setTrackEditorialFooterImage}.
-     *
-     * @param id   the track
-     * @param file the image file (jpeg/png/webp only, see {@code ImageStorageService})
-     */
-    @PutMapping(value = "/{id}/editorial/footer-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> setEditorialFooterImage(@PathVariable UUID id, @RequestParam("file") MultipartFile file) {
-        editorialService.setTrackEditorialFooterImage(id, file);
-        return ResponseEntity.noContent().build();
-    }
-
     @PostMapping("/{id}/performers")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> addPerformer(@PathVariable UUID id, @RequestBody PerformerRequest request) {

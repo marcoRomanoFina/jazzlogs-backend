@@ -262,30 +262,18 @@ class EditorialServiceTest {
     }
 
     @Test
-    void setTrackEditorialPrincipalSecondaryBannerFooterImages_eachUploadUnderTheirOwnKey() {
+    void setTrackEditorialPrincipalImage_uploadsUnderItsOwnKey() {
         Track track = persistTrack("Track Layout Images Track");
         editorialService.upsertTrackEditorial(
             track.getId(), new TrackEditorialRequest("Track Layout Images Editorial", "1", "dek", List.of())
         );
         MockMultipartFile principal = new MockMultipartFile("file", "principal.jpg", "image/jpeg", "principal-bytes".getBytes());
-        MockMultipartFile secondary = new MockMultipartFile("file", "secondary.jpg", "image/jpeg", "secondary-bytes".getBytes());
-        MockMultipartFile banner = new MockMultipartFile("file", "banner.jpg", "image/jpeg", "banner-bytes".getBytes());
-        MockMultipartFile footer = new MockMultipartFile("file", "footer.jpg", "image/jpeg", "footer-bytes".getBytes());
         when(imageStorageService.upload("track-editorials/" + track.getId() + "/principal", principal)).thenReturn("http://img/principal.jpg");
-        when(imageStorageService.upload("track-editorials/" + track.getId() + "/secondary", secondary)).thenReturn("http://img/secondary.jpg");
-        when(imageStorageService.upload("track-editorials/" + track.getId() + "/banner", banner)).thenReturn("http://img/banner.jpg");
-        when(imageStorageService.upload("track-editorials/" + track.getId() + "/footer", footer)).thenReturn("http://img/footer.jpg");
 
         editorialService.setTrackEditorialPrincipalImage(track.getId(), principal);
-        editorialService.setTrackEditorialSecondaryImage(track.getId(), secondary);
-        editorialService.setTrackEditorialBannerImage(track.getId(), banner);
-        editorialService.setTrackEditorialFooterImage(track.getId(), footer);
 
         TrackEditorial reloaded = trackEditorialRepository.findByTrackId(track.getId()).orElseThrow();
         assertThat(reloaded.getPrincipalImageUrl()).isEqualTo("http://img/principal.jpg");
-        assertThat(reloaded.getSecondaryImageUrl()).isEqualTo("http://img/secondary.jpg");
-        assertThat(reloaded.getBannerImageUrl()).isEqualTo("http://img/banner.jpg");
-        assertThat(reloaded.getFooterImageUrl()).isEqualTo("http://img/footer.jpg");
     }
 
     @Test
