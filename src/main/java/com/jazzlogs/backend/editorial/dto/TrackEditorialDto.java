@@ -17,9 +17,6 @@ import java.util.List;
  * @param dek                short standfirst text
  * @param coverImageUrl      this editorial's cover image, {@code null} until uploaded
  * @param principalImageUrl  this editorial's principal image, {@code null} until uploaded
- * @param secondaryImageUrl  this editorial's secondary image, {@code null} until uploaded
- * @param bannerImageUrl     this editorial's banner image, {@code null} until uploaded
- * @param footerImageUrl     this editorial's footer image, {@code null} until uploaded
  * @param likeCount          denormalized total, read straight off the entity
  * @param likedByCurrentUser whether the caller's own user has liked it
  * @param createdAt          when this editorial was created
@@ -31,9 +28,6 @@ public record TrackEditorialDto(
     String dek,
     String coverImageUrl,
     String principalImageUrl,
-    String secondaryImageUrl,
-    String bannerImageUrl,
-    String footerImageUrl,
     int likeCount,
     boolean likedByCurrentUser,
     Instant createdAt,
