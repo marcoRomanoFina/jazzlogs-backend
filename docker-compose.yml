@@ -76,7 +76,9 @@ services:
       - "${MINIO_API_PORT:-9000}:9000"
       - "${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
-      - minio-data:/data
+      # Bitnami's image serves /bitnami/minio/data, not the /data the old
+      # image used — mounted anywhere else, MinIO starts empty.
+      - minio-data:/bitnami/minio/data
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 10s

@@ -19,12 +19,14 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import com.jazzlogs.backend.agent.AgentOrchestrator;
+import com.jazzlogs.backend.agent.limit.MessageLimitService;
 import com.jazzlogs.backend.chat.chat.Chat;
 import com.jazzlogs.backend.chat.chat.ChatService;
 import com.jazzlogs.backend.chat.chat.dto.ChatDto;
 import com.jazzlogs.backend.chat.chatexchange.ChatExchangeService;
 import com.jazzlogs.backend.chat.chatexchange.dto.ChatExchangeDto;
 import com.jazzlogs.backend.chat.chatexchange.dto.SendMessageRequest;
+import com.jazzlogs.backend.user.User;
 import com.jazzlogs.backend.user.UserService;
 
 import lombok.AllArgsConstructor;
@@ -42,6 +44,7 @@ public class ChatController {
     private final ChatExchangeService chatExchangeService;
     private final UserService userService;
     private final AgentOrchestrator agentOrchestrator;
+    private final MessageLimitService messageLimitService;
 
      /**
      * Lists the authenticated user's chats, paged and ordered by most recent
@@ -96,7 +99,9 @@ public class ChatController {
      */
     @PostMapping
     public SseEmitter createChat(@Valid @RequestBody SendMessageRequest request, @AuthenticationPrincipal Jwt jwt) {
-        Chat chat = chatService.createChat(userService.resolveFromJwt(jwt));
+        User user = userService.resolveFromJwt(jwt);
+        Chat chat = chatService.createChat(user);
+        messageLimitService.reserve(user);
         return agentOrchestrator.runExchange(chat, request.userMessage(), request.timezone());
     }
 
@@ -107,6 +112,10 @@ public class ChatController {
      * {@link ChatService#getOwnedChat} resolves the chat and checks {@code
      * jwt}'s user actually owns it — 404 if no such chat exists, 403 if it
      * belongs to someone else — before any agent work starts.
+     * <p>
+     * Both endpoints count the message against the user's limits before the
+     * stream opens (see {@link MessageLimitService}), so a spent limit is a
+     * plain 429 response rather than an error event mid-stream.
      *
      * @param chatId  the chat to continue
      * @param request the message to send — {@code userMessage} and an
@@ -120,7 +129,9 @@ public class ChatController {
         @Valid @RequestBody SendMessageRequest request,
         @AuthenticationPrincipal Jwt jwt
     ) {
-        Chat chat = chatService.getOwnedChat(chatId, currentUserId(jwt));
+        User user = userService.resolveFromJwt(jwt);
+        Chat chat = chatService.getOwnedChat(chatId, user.getId());
+        messageLimitService.reserve(user);
         return agentOrchestrator.runExchange(chat, request.userMessage(), request.timezone());
     }
 
